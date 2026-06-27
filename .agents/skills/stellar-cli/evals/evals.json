@@ -1,0 +1,26 @@
+{
+  "skill_name": "stellar-cli",
+  "evals": [
+    {
+      "id": 1,
+      "name": "deploy-invoke-contract",
+      "prompt": "I have a Soroban contract built at target/wasm32v1-none/release/mycounter.wasm. I want to deploy it to testnet under the alias \"counter\", funded by my \"alice\" identity, and then call its increment function. Give me the exact stellar CLI commands.",
+      "expected_output": "A sequence of stellar CLI commands using `stellar contract deploy --wasm ... --source alice --network testnet --alias counter` followed by `stellar contract invoke --id counter --source alice --network testnet -- increment`. Should reference the slop (`--`) for the invoke args.",
+      "files": []
+    },
+    {
+      "id": 2,
+      "name": "multisig-payment-tx",
+      "prompt": "Using the stellar CLI, build a transaction that sends 50 XLM from alice to GBDEST..., then add a second payment of 10 USDC (issuer GABC...) from alice to GBOTHER..., sign it with both alice and bob, and submit it to testnet. Show the piped commands.",
+      "expected_output": "A piped sequence using `stellar tx new payment --build-only` -> `stellar tx op add payment` (with --asset USDC:GABC...) -> `stellar tx sign --sign-with-key alice` -> `stellar tx sign --sign-with-key bob` -> `stellar tx send`. Should use --build-only on the first step and pipe XDR between commands.",
+      "files": []
+    },
+    {
+      "id": 3,
+      "name": "read-only-invoke-and-storage",
+      "prompt": "I have a deployed contract aliased \"vault\" on testnet. I want to (a) call its get_balance function as a read-only view without submitting a transaction, and (b) read the raw persistent storage entry keyed by the symbol \"Balance\" from that contract. What are the stellar CLI commands?",
+      "expected_output": "Uses `stellar contract invoke --id vault --network testnet --send no -- get_balance` (with --send no BEFORE the -- slop) for the read-only call, and `stellar contract read --id vault --key Balance --durability persistent --output json` for the storage read. Must not put --send inside the slop.",
+      "files": []
+    }
+  ]
+}
