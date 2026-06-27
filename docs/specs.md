@@ -149,7 +149,8 @@ The split is fixed by ADR-0001.
 ### 7.4 Blockchain
 
 - Stellar Testnet.
-- Soroban contract in Rust (`soroban-sdk`).
+- Soroban contract in Rust (`soroban-sdk = 26.1.0`, MSRV 1.91.0, ADR-0004).
+  Contract lives in a `contracts/` Cargo workspace at the repo root.
 - SAC tokens via `token::Client` for transfers.
 
 ### 7.5 Deploy
@@ -290,11 +291,17 @@ OBS Overlay /overlay/[handle]
 
 ## 9. Smart contract spec — DonationRouter
 
+> Implementation decisions in this section are fixed by ADR-0004 (SDK baseline,
+> token allowlist, `max_fee_bps` immutability, OR-auth pattern, replay
+> handling, zero-transfer skip, payout validation, TTL, admin rotation, typed
+> errors).
+
 ### 9.1 Role
 
 The contract holds only trust-minimized state (ADR-0001): who is a valid
 Creator, where they get paid, the platform fee, the treasury, how a donation
-settles, and the event proof.
+settles, and the event proof. It also owns the Token Allowlist and the Admin
+role (ADR-0004).
 
 ### 9.2 Global config (instance storage)
 
@@ -303,14 +310,18 @@ Config {
     admin: Address,
     treasury_address: Address,
     platform_fee_bps: u32,
-    max_fee_bps: u32,
+    max_fee_bps: u32,        // immutable after __constructor (ADR-0004)
     paused: bool,
+    token_allowlist: Vec<Address>,
 }
 ```
 
 - `platform_fee_bps`: basis points, `100 = 1%`.
-- `max_fee_bps` caps admin fee changes. MVP default `500` (max 5%).
+- `max_fee_bps` caps admin fee changes and is **immutable after construction**
+  (ADR-0004). MVP default `500` (max 5%).
 - `0` is a valid fee (100% to Creator).
+- `token_allowlist`: the on-chain set of accepted SAC token addresses
+  (ADR-0004). Maintained by the Admin.
 
 ### 9.3 Creator (persistent storage)
 
@@ -327,27 +338,32 @@ Keyed by `creator_id_hash: BytesN<32> = sha256(handle)`.
 ### 9.4 Storage layout
 
 - **Instance**: `admin`, `treasury_address`, `platform_fee_bps`, `max_fee_bps`,
-  `paused`.
+  `paused`, `token_allowlist`.
 - **Persistent**: `creator_id_hash -> Creator`.
 - **Not stored**: message, donor name, donation history, leaderboard, overlay
-  state, stream metadata.
+  state, stream metadata, seen `donation_id_hash` values (ADR-0004: no on-chain
+  replay tracking).
 
 ### 9.5 Public functions
 
 ```rust
-// Constructor (CAP-0058) or guarded initialize.
+// CAP-0058 constructor, atomic at deploy (ADR-0004). No initialize().
 __constructor(admin, treasury_address, platform_fee_bps, max_fee_bps)
 
 // Self-register. caller = creator_owner (require_auth). owner is the invoker,
-// not an argument.
+// not an argument. Extends the new Creator entry's TTL.
 register_creator(creator_id_hash: BytesN<32>, payout_address: Address)
 
 update_creator_payout(creator_id_hash: BytesN<32>, new_payout_address: Address)
 set_creator_active(creator_id_hash: BytesN<32>, active: bool)
 
+// Admin config.
+set_admin(new_admin: Address)                       // ADR-0004
 set_treasury_address(new_treasury_address: Address)
-set_platform_fee_bps(new_fee_bps: u32)
+set_platform_fee_bps(new_fee_bps: u32)              // reverts if > max_fee_bps
 set_paused(paused: bool)
+add_token(token: Address)                           // ADR-0004
+remove_token(token: Address)                        // ADR-0004
 
 donate(
     creator_id_hash: BytesN<32>,
@@ -357,6 +373,8 @@ donate(
 )
 ```
 
+No `set_max_fee_bps`: `max_fee_bps` is immutable (ADR-0004).
+
 ### 9.6 Authorization
 
 | Function | Authorized by |
@@ -364,11 +382,19 @@ donate(
 | `__constructor` | deployer |
 | `register_creator` | caller (becomes `owner`) |
 | `update_creator_payout` | Creator's `owner` |
-| `set_creator_active` | Creator's `owner` OR admin |
+| `set_creator_active` | Creator's `owner` OR admin (via `requires_auth()`, ADR-0004) |
+| `set_admin` | admin |
 | `set_treasury_address` | admin |
 | `set_platform_fee_bps` | admin |
 | `set_paused` | admin |
+| `add_token` | admin |
+| `remove_token` | admin |
 | `donate` | donor (caller) |
+
+The OR-authorization for `set_creator_active` uses the non-panicking
+`Address::requires_auth()` on both the Creator's owner and the Admin, reverting
+with `Unauthorized` only if neither authorized (ADR-0004). All other auth uses
+`require_auth()`.
 
 ### 9.7 Donate logic
 
@@ -376,20 +402,24 @@ donate(
 Input: creator_id_hash, token, amount, donation_id_hash
 Steps:
 1. require_auth(donor)  // donor is the caller
-2. require !paused
-3. require creator exists
-4. require creator.active
-5. require amount > 0
-6. validate token is a legitimate SAC token address (not arbitrary contract)
-7. fee_amount  = amount * platform_fee_bps / 10_000
-8. net_amount  = amount - fee_amount
-9. token.transfer(donor, treasury_address, fee_amount)   // auth propagation
-10. token.transfer(donor, creator.payout_address, net_amount)
-11. emit DonationReceived
+2. require !paused                          -> Error::Paused
+3. require creator exists                   -> Error::CreatorNotFound
+4. require creator.active                   -> Error::CreatorInactive
+5. require amount > 0                       -> Error::InvalidAmount
+6. require token_allowlist.contains(token)  -> Error::TokenNotAllowed (ADR-0004)
+7. fee_amount = amount * platform_fee_bps / 10_000
+8. net_amount = amount - fee_amount
+9. if fee_amount > 0: token.transfer(donor, treasury_address, fee_amount)
+10. if net_amount > 0: token.transfer(donor, creator.payout_address, net_amount)
+11. extend TTL of creator entry and instance storage (ADR-0004)
+12. emit DonationReceived
 ```
 
 No `approve`/`transfer_from`. The donor signs `donate()` once; Soroban auth
-propagation covers the nested `token.transfer` calls (ADR-0001).
+propagation covers the nested `token.transfer` calls (ADR-0001). Zero-amount
+transfers are skipped (ADR-0004). No on-chain replay check on
+`donation_id_hash`; uniqueness is enforced off-chain by the `donations` table
+unique constraint (ADR-0004).
 
 ### 9.8 Events
 
@@ -426,10 +456,32 @@ CreatorActiveChanged {
 PlatformFeeUpdated { old_fee_bps: u32, new_fee_bps: u32 }
 TreasuryUpdated { old_treasury_address: Address, new_treasury_address: Address }
 PausedChanged { paused: bool }
+AdminUpdated { old_admin: Address, new_admin: Address }              // ADR-0004
+TokenAllowlistUpdated { token: Address, added: bool }               // ADR-0004
 ```
 
 `message_hash` is intentionally absent (ADR-0001): moderation can edit a
 message, so binding its hash on-chain would either break or lie.
+
+### 9.9 Errors (ADR-0004)
+
+All reverts use a typed `#[contracterror]` enum so the off-chain confirm and
+indexer paths can decode revert reasons:
+
+```rust
+#[contracterror]
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum Error {
+    Unauthorized = 1,
+    Paused = 2,
+    CreatorNotFound = 3,
+    CreatorInactive = 4,
+    InvalidAmount = 5,
+    TokenNotAllowed = 6,
+    FeeCapExceeded = 7,
+    AlreadyRegistered = 8,
+}
+```
 
 ## 10. Message design
 
@@ -650,12 +702,20 @@ admin `set_creator_active`) are not exposed as API routes; they run via the
 
 ### 14.1 Contract
 
-- `require_auth` on every state-changing function per §9.6.
+- `require_auth` on every state-changing function per §9.6; OR-auth for
+  `set_creator_active` via `requires_auth()` (ADR-0004).
 - `amount > 0`, `new_fee_bps <= max_fee_bps`, `!paused` checks in `donate`.
-- Validate `token` is a legitimate SAC token address, not an arbitrary contract
-  (avoid malicious token contracts that imitate the token interface).
-- No unbounded storage growth: donations emit events, not stored arrays.
+- Token validation via on-chain allowlist (ADR-0004): `donate()` reverts with
+  `TokenNotAllowed` if `token` is not in `token_allowlist`. The Admin adds the
+  XLM SAC and USDC testnet SAC addresses post-deploy.
+- `max_fee_bps` immutable after construction (ADR-0004).
+- No unbounded storage growth: donations emit events, not stored arrays; no
+  on-chain replay tracking for `donation_id_hash` (ADR-0004).
 - Emergency `paused` switch.
+- Storage TTL extended on every access (ADR-0004).
+- No payout address validation (ADR-0004): the off-chain UI must warn the
+  Creator before submitting a `payout_address` equal to the contract address
+  or the Treasury.
 
 ### 14.2 Backend
 
@@ -759,7 +819,10 @@ No seeded data; every donation has a real tx hash.
    signMessage verify.
 4. **Contract**: `__constructor`, `register_creator`, `set_platform_fee_bps`,
    `set_treasury_address`, `update_creator_payout`, `set_creator_active`,
-   `set_paused`, `donate`, events. Unit tests.
+   `set_admin`, `add_token`, `remove_token`, `set_paused`, `donate`, events,
+   typed `Error` enum. Unit tests (testutils) + 1 integration test on local
+   network via `stellar` CLI (ADR-0004). Post-deploy: Admin adds XLM SAC and
+   USDC testnet SAC to the allowlist.
 5. **Onboarding flow**: profile creation, wallet link, on-chain register,
    indexing of `CreatorRegistered`.
 6. **Donate flow**: prepare, asset selector, trustline guidance, `donate()`,

@@ -49,8 +49,9 @@ _Avoid_: fee address, platform wallet.
 
 **Admin**:
 The single Stellar address that controls DonationRouter configuration: Platform
-Fee, Treasury address, the `paused` switch, and force-pausing a Creator. Admin
-operations run via the `stellar` CLI, not through the web app.
+Fee, Treasury address, the `paused` switch, the Token Allowlist, and
+force-pausing a Creator. Transferable via `set_admin`. Admin operations run via
+the `stellar` CLI, not through the web app.
 _Avoid_: owner, superuser, operator.
 
 **Platform Fee**:
@@ -60,8 +61,17 @@ _Avoid_: commission, cut, service fee.
 
 **DonationRouter**:
 The Soroban contract that settles Donations: validates Creator, splits fee,
-transfers to Treasury and Payout Address, emits `DonationReceived`.
+transfers to Treasury and Payout Address, emits `DonationReceived`. Also owns
+the Token Allowlist and the Admin role.
 _Avoid_: the contract, router, payment contract (be specific).
+
+**Token Allowlist**:
+The on-chain set of SAC token contract addresses that `donate()` accepts.
+Maintained by the Admin via `add_token` / `remove_token`. A `donate()` call
+with a `token` not in the allowlist reverts. The only mechanism that prevents
+a malicious token contract from being passed to `donate()`.
+_Avoid_: token list, supported tokens, accepted assets (off-chain UI lists
+derive from this but are not the source of truth).
 
 **Overlay**:
 A browser source page (`/overlay/[handle]`) the Creator adds to OBS. Subscribes
@@ -76,7 +86,8 @@ _Avoid_: flag, filter state.
 ## Boundaries
 
 - **On-chain (DonationRouter)**: Creator registry (Handle hash → owner + payout),
-  Platform Fee config, Treasury address, Donation settlement, `DonationReceived`
-  event, Donation ID Hash. Nothing else.
+  Platform Fee config, `max_fee_bps` (immutable), Treasury address, Admin role
+  (`set_admin`), Token Allowlist, `paused` switch, Donation settlement,
+  `DonationReceived` event, Donation ID Hash. Nothing else.
 - **Off-chain (Supabase)**: full message, donor name, Creator profile, Overlay
   theme, leaderboard, donation goal, Moderation Status, dashboard data.
