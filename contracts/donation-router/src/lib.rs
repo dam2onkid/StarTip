@@ -122,6 +122,22 @@ pub struct TokenAllowlistUpdated {
     pub added: bool,
 }
 
+/// Emitted by `donate`. The off-chain indexer and confirm path depend on this
+/// exact field set to link the on-chain settlement to the pending Donation
+/// row. Field names, order, and types match PRD user story 29.
+#[contractevent]
+#[derive(Clone)]
+pub struct DonationReceived {
+    pub creator_id_hash: BytesN<32>,
+    pub token: Address,
+    pub amount: i128,
+    pub fee_amount: i128,
+    pub net_amount: i128,
+    pub treasury_address: Address,
+    pub payout_address: Address,
+    pub donation_id_hash: BytesN<32>,
+}
+
 #[contract]
 pub struct DonationRouter;
 
@@ -424,6 +440,91 @@ impl DonationRouter {
         TokenAllowlistUpdated { token, added: false }.publish(&env);
     }
 
+    /// The core settlement path. Splits a donation into a platform fee (sent
+    /// to the Treasury) and a net amount (sent to the Creator's payout
+    /// address), then emits `DonationReceived` for the off-chain indexer.
+    ///
+    /// Validation order: donor auth, paused, creator exists, creator active,
+    /// amount > 0, token in allowlist. Fee split: `fee_amount = amount *
+    /// platform_fee_bps / 10_000`, `net_amount = amount - fee_amount`. Zero
+    /// transfers are skipped (ADR-0004). Transfers use
+    /// `token::Client::transfer` with the donor as `from`; Soroban auth
+    /// propagation covers the nested calls so the donor signs once.
+    ///
+    /// No on-chain replay tracking for `donation_id_hash` (ADR-0004). No
+    /// per-Donation storage.
+    pub fn donate(
+        env: Env,
+        donor: Address,
+        creator_id_hash: BytesN<32>,
+        token: Address,
+        amount: i128,
+        donation_id_hash: BytesN<32>,
+    ) {
+        donor.require_auth();
+
+        let config = Self::load_config(&env);
+        if config.paused {
+            soroban_sdk::panic_with_error!(&env, Error::Paused);
+        }
+
+        let key = DataKey::Creator(creator_id_hash.clone());
+        let creator: Creator = match env.storage().persistent().get(&key) {
+            Some(c) => c,
+            None => soroban_sdk::panic_with_error!(&env, Error::CreatorNotFound),
+        };
+        if !creator.active {
+            soroban_sdk::panic_with_error!(&env, Error::CreatorInactive);
+        }
+        if amount <= 0 {
+            soroban_sdk::panic_with_error!(&env, Error::InvalidAmount);
+        }
+        if !config.token_allowlist.contains(&token) {
+            soroban_sdk::panic_with_error!(&env, Error::TokenNotAllowed);
+        }
+
+        let fee_amount = amount
+            .checked_mul(config.platform_fee_bps as i128)
+            .expect("fee multiplication must not overflow")
+            / 10_000;
+        let net_amount = amount
+            .checked_sub(fee_amount)
+            .expect("net amount must not overflow");
+
+        let token_client = soroban_sdk::token::Client::new(&env, &token);
+        if fee_amount > 0 {
+            token_client.transfer(
+                &donor,
+                &config.treasury_address,
+                &fee_amount,
+            );
+        }
+        if net_amount > 0 {
+            token_client.transfer(
+                &donor,
+                &creator.payout_address,
+                &net_amount,
+            );
+        }
+
+        // Extend TTLs: the Creator entry (persistent) and the Config
+        // (instance) both get bumped so a burst of donations keeps them live.
+        env.storage().persistent().extend_ttl(&key, 518_400, 518_400);
+        env.storage().instance().extend_ttl(100, 518_400);
+
+        DonationReceived {
+            creator_id_hash,
+            token,
+            amount,
+            fee_amount,
+            net_amount,
+            treasury_address: config.treasury_address,
+            payout_address: creator.payout_address,
+            donation_id_hash,
+        }
+        .publish(&env);
+    }
+
     /// Load the packed `Config` from instance storage. The constructor always
     /// stores it, so `expect` is safe; if it is missing the contract was
     /// deployed incorrectly and every call should fail fast.
@@ -460,6 +561,8 @@ mod tests {
         testutils::{storage::Persistent, Address as _, Events as _},
         Address, Env, Event as _,
     };
+    use soroban_sdk::token::StellarAssetClient;
+    use soroban_sdk::token::TokenClient;
     use std::panic::{catch_unwind, AssertUnwindSafe};
 
     /// 30 days at 5s per ledger. Every Creator-touching call extends the
@@ -1195,5 +1298,379 @@ mod tests {
             rendered.contains("Error(Contract, #1)"),
             "expected Unauthorized (Error(Contract, #1)), got: {rendered}"
         );
+    }
+
+    // ----- donate ----------------------------------------------------------
+
+    /// Build a donation-ready environment: contract deployed with 1% fee,
+    /// a mock SAC token registered and added to the allowlist, a Creator
+    /// registered with a payout address, and the donor funded with
+    /// `donor_balance` tokens. Returns everything the tests need.
+    fn donate_setup<'a>(
+        donor_balance: i128,
+    ) -> (
+        Env,
+        soroban_sdk::Address,
+        DonationRouterClient<'a>,
+        Address,
+        Address,
+        Address,
+        Address,
+        BytesN<32>,
+        soroban_sdk::Address,
+        StellarAssetClient<'a>,
+        TokenClient<'a>,
+    ) {
+        let (env, contract_id, client, admin, treasury) = setup();
+
+        // Register a mock SAC token and add it to the allowlist.
+        let token_admin = Address::generate(&env);
+        let token_contract = env.register_stellar_asset_contract_v2(token_admin.clone());
+        let token_id = token_contract.address();
+        let sac = StellarAssetClient::new(&env, &token_id);
+        let token = TokenClient::new(&env, &token_id);
+        client.add_token(&admin, &token_id);
+
+        // Register a Creator.
+        let owner = Address::generate(&env);
+        let payout = Address::generate(&env);
+        let id_hash = creator_id_hash(&env, 20);
+        client.register_creator(&owner, &id_hash, &payout);
+
+        // Fund the donor.
+        let donor = Address::generate(&env);
+        sac.mint(&donor, &donor_balance);
+
+        (
+            env, contract_id, client, admin, treasury, donor, payout, id_hash,
+            token_id, sac, token,
+        )
+    }
+
+    /// `donate` splits the amount into fee and net, transfers each to the
+    /// correct destination, extends TTLs, and emits `DonationReceived` with
+    /// all nine fields matching the expected values.
+    #[test]
+    fn donate_happy_path_splits_and_emits_event() {
+        let amount: i128 = 10_000_000; // 1 unit at 7 decimals
+        let (env, contract_id, client, _admin, treasury, donor, payout, id_hash, token_id, _sac, token) =
+            donate_setup(amount);
+
+        let donation_id_hash = creator_id_hash(&env, 99);
+
+        client.donate(&donor, &id_hash, &token_id, &amount, &donation_id_hash);
+
+        // Event captured immediately after the call that emitted it.
+        let expected = DonationReceived {
+            creator_id_hash: id_hash.clone(),
+            token: token_id.clone(),
+            amount,
+            fee_amount: 100_000, // 1% of 10_000_000
+            net_amount: 9_900_000,
+            treasury_address: treasury.clone(),
+            payout_address: payout.clone(),
+            donation_id_hash: donation_id_hash.clone(),
+        };
+        let events = env.events().all().filter_by_contract(&contract_id);
+        assert_eq!(events, std::vec![expected.to_xdr(&env, &contract_id)]);
+
+        // Balances: fee to treasury, net to payout, donor spent the full amount.
+        assert_eq!(token.balance(&treasury), 100_000);
+        assert_eq!(token.balance(&payout), 9_900_000);
+        assert_eq!(token.balance(&donor), 0);
+
+        // TTLs extended.
+        let creator_ttl = env.as_contract(&contract_id, || {
+            env.storage()
+                .persistent()
+                .get_ttl(&DataKey::Creator(id_hash.clone()))
+        });
+        assert_eq!(creator_ttl, CREATOR_TTL);
+    }
+
+    /// `donate` reverts with `Paused` (error code 2) when the contract is
+    /// paused.
+    #[test]
+    fn donate_reverts_when_paused() {
+        let amount: i128 = 1_000;
+        let (env, _contract_id, client, admin, _treasury, donor, _payout, id_hash, token_id, _sac, _token) =
+            donate_setup(amount);
+
+        client.set_paused(&admin, &true);
+
+        let donation_id_hash = creator_id_hash(&env, 98);
+        let result = catch_unwind(AssertUnwindSafe(|| {
+            client.donate(&donor, &id_hash, &token_id, &amount, &donation_id_hash)
+        }));
+        assert!(result.is_err(), "paused contract must revert");
+
+        let events = env.host().get_diagnostic_events().unwrap().0;
+        let rendered: std::string::String =
+            events.iter().map(|e| std::format!("{}", e)).collect();
+        assert!(
+            rendered.contains("Error(Contract, #2)"),
+            "expected Paused (Error(Contract, #2)), got: {rendered}"
+        );
+    }
+
+    /// `donate` reverts with `CreatorNotFound` (error code 3) for an
+    /// unregistered Creator ID Hash.
+    #[test]
+    fn donate_reverts_when_creator_missing() {
+        let amount: i128 = 1_000;
+        let (env, _contract_id, client, _admin, _treasury, donor, _payout, _id_hash, token_id, _sac, _token) =
+            donate_setup(amount);
+
+        let missing_id = creator_id_hash(&env, 77);
+        let donation_id_hash = creator_id_hash(&env, 98);
+        let result = catch_unwind(AssertUnwindSafe(|| {
+            client.donate(&donor, &missing_id, &token_id, &amount, &donation_id_hash)
+        }));
+        assert!(result.is_err(), "missing creator must revert");
+
+        let events = env.host().get_diagnostic_events().unwrap().0;
+        let rendered: std::string::String =
+            events.iter().map(|e| std::format!("{}", e)).collect();
+        assert!(
+            rendered.contains("Error(Contract, #3)"),
+            "expected CreatorNotFound (Error(Contract, #3)), got: {rendered}"
+        );
+    }
+
+    /// `donate` reverts with `CreatorInactive` (error code 4) when the
+    /// Creator's `active` flag is false.
+    #[test]
+    fn donate_reverts_when_creator_inactive() {
+        let amount: i128 = 1_000;
+        let (env, _contract_id, client, admin, _treasury, donor, _payout, id_hash, token_id, _sac, _token) =
+            donate_setup(amount);
+
+        // Force-pause the creator via the admin kill-switch.
+        client.force_pause_creator(&admin, &id_hash, &false);
+
+        let donation_id_hash = creator_id_hash(&env, 98);
+        let result = catch_unwind(AssertUnwindSafe(|| {
+            client.donate(&donor, &id_hash, &token_id, &amount, &donation_id_hash)
+        }));
+        assert!(result.is_err(), "inactive creator must revert");
+
+        let events = env.host().get_diagnostic_events().unwrap().0;
+        let rendered: std::string::String =
+            events.iter().map(|e| std::format!("{}", e)).collect();
+        assert!(
+            rendered.contains("Error(Contract, #4)"),
+            "expected CreatorInactive (Error(Contract, #4)), got: {rendered}"
+        );
+    }
+
+    /// `donate` reverts with `InvalidAmount` (error code 5) for `amount <= 0`.
+    #[test]
+    fn donate_reverts_for_zero_or_negative_amount() {
+        let amount: i128 = 1_000;
+        let (env, _contract_id, client, _admin, _treasury, donor, _payout, id_hash, token_id, _sac, _token) =
+            donate_setup(amount);
+
+        let donation_id_hash = creator_id_hash(&env, 98);
+
+        // Zero amount.
+        let result = catch_unwind(AssertUnwindSafe(|| {
+            client.donate(&donor, &id_hash, &token_id, &0i128, &donation_id_hash)
+        }));
+        assert!(result.is_err(), "zero amount must revert");
+        let events = env.host().get_diagnostic_events().unwrap().0;
+        let rendered: std::string::String =
+            events.iter().map(|e| std::format!("{}", e)).collect();
+        assert!(
+            rendered.contains("Error(Contract, #5)"),
+            "expected InvalidAmount (Error(Contract, #5)) for zero, got: {rendered}"
+        );
+
+        // Negative amount.
+        let result = catch_unwind(AssertUnwindSafe(|| {
+            client.donate(&donor, &id_hash, &token_id, &-1i128, &donation_id_hash)
+        }));
+        assert!(result.is_err(), "negative amount must revert");
+        let events = env.host().get_diagnostic_events().unwrap().0;
+        let rendered: std::string::String =
+            events.iter().map(|e| std::format!("{}", e)).collect();
+        assert!(
+            rendered.contains("Error(Contract, #5)"),
+            "expected InvalidAmount (Error(Contract, #5)) for negative, got: {rendered}"
+        );
+    }
+
+    /// `donate` reverts with `TokenNotAllowed` (error code 6) for a token not
+    /// in the allowlist.
+    #[test]
+    fn donate_reverts_for_token_not_in_allowlist() {
+        let amount: i128 = 1_000;
+        let (env, _contract_id, client, _admin, _treasury, donor, _payout, id_hash, _token_id, _sac, _token) =
+            donate_setup(amount);
+
+        // Register a second token but do NOT add it to the allowlist.
+        let token_admin2 = Address::generate(&env);
+        let token2 = env
+            .register_stellar_asset_contract_v2(token_admin2)
+            .address();
+
+        let donation_id_hash = creator_id_hash(&env, 98);
+        let result = catch_unwind(AssertUnwindSafe(|| {
+            client.donate(&donor, &id_hash, &token2, &amount, &donation_id_hash)
+        }));
+        assert!(result.is_err(), "token not in allowlist must revert");
+
+        let events = env.host().get_diagnostic_events().unwrap().0;
+        let rendered: std::string::String =
+            events.iter().map(|e| std::format!("{}", e)).collect();
+        assert!(
+            rendered.contains("Error(Contract, #6)"),
+            "expected TokenNotAllowed (Error(Contract, #6)), got: {rendered}"
+        );
+    }
+
+    /// When `platform_fee_bps == 0`, `fee_amount == 0` and the fee transfer is
+    /// skipped. Only the net transfer (full amount) reaches the payout
+    /// address. The event still records `fee_amount = 0`.
+    #[test]
+    fn donate_skips_fee_transfer_when_fee_is_zero() {
+        // Deploy a contract with 0% fee.
+        let env = Env::default();
+        env.mock_all_auths();
+        let admin = Address::generate(&env);
+        let treasury = Address::generate(&env);
+        let contract_id = env.register(DonationRouter, (&admin, &treasury, &0u32, &500u32));
+        let client = DonationRouterClient::new(&env, &contract_id);
+
+        // Register token and creator.
+        let token_admin = Address::generate(&env);
+        let token_id = env
+            .register_stellar_asset_contract_v2(token_admin.clone())
+            .address();
+        let sac = StellarAssetClient::new(&env, &token_id);
+        let token = TokenClient::new(&env, &token_id);
+        client.add_token(&admin, &token_id);
+
+        let owner = Address::generate(&env);
+        let payout = Address::generate(&env);
+        let id_hash = creator_id_hash(&env, 21);
+        client.register_creator(&owner, &id_hash, &payout);
+
+        let amount: i128 = 5_000_000;
+        let donor = Address::generate(&env);
+        sac.mint(&donor, &amount);
+
+        let donation_id_hash = creator_id_hash(&env, 97);
+        client.donate(&donor, &id_hash, &token_id, &amount, &donation_id_hash);
+
+        // Event captured immediately after the call that emitted it.
+        let expected = DonationReceived {
+            creator_id_hash: id_hash,
+            token: token_id,
+            amount,
+            fee_amount: 0,
+            net_amount: amount,
+            treasury_address: treasury.clone(),
+            payout_address: payout.clone(),
+            donation_id_hash,
+        };
+        let events = env.events().all().filter_by_contract(&contract_id);
+        assert_eq!(events, std::vec![expected.to_xdr(&env, &contract_id)]);
+
+        // Fee is zero: treasury gets nothing, payout gets the full amount.
+        assert_eq!(token.balance(&treasury), 0);
+        assert_eq!(token.balance(&payout), amount);
+        assert_eq!(token.balance(&donor), 0);
+    }
+
+    /// When `net_amount == 0` (100% fee), the net transfer is skipped. Only
+    /// the fee transfer reaches the treasury. The event records
+    /// `net_amount = 0`.
+    #[test]
+    fn donate_skips_net_transfer_when_net_is_zero() {
+        // Deploy a contract with 100% fee (10_000 bps), cap at 10_000.
+        let env = Env::default();
+        env.mock_all_auths();
+        let admin = Address::generate(&env);
+        let treasury = Address::generate(&env);
+        let contract_id = env.register(DonationRouter, (&admin, &treasury, &10_000u32, &10_000u32));
+        let client = DonationRouterClient::new(&env, &contract_id);
+
+        let token_admin = Address::generate(&env);
+        let token_id = env
+            .register_stellar_asset_contract_v2(token_admin.clone())
+            .address();
+        let sac = StellarAssetClient::new(&env, &token_id);
+        let token = TokenClient::new(&env, &token_id);
+        client.add_token(&admin, &token_id);
+
+        let owner = Address::generate(&env);
+        let payout = Address::generate(&env);
+        let id_hash = creator_id_hash(&env, 22);
+        client.register_creator(&owner, &id_hash, &payout);
+
+        let amount: i128 = 5_000_000;
+        let donor = Address::generate(&env);
+        sac.mint(&donor, &amount);
+
+        let donation_id_hash = creator_id_hash(&env, 96);
+        client.donate(&donor, &id_hash, &token_id, &amount, &donation_id_hash);
+
+        // Event captured immediately after the call that emitted it.
+        let expected = DonationReceived {
+            creator_id_hash: id_hash,
+            token: token_id,
+            amount,
+            fee_amount: amount,
+            net_amount: 0,
+            treasury_address: treasury.clone(),
+            payout_address: payout.clone(),
+            donation_id_hash,
+        };
+        let events = env.events().all().filter_by_contract(&contract_id);
+        assert_eq!(events, std::vec![expected.to_xdr(&env, &contract_id)]);
+
+        // Net is zero: payout gets nothing, treasury gets the full amount.
+        assert_eq!(token.balance(&treasury), amount);
+        assert_eq!(token.balance(&payout), 0);
+        assert_eq!(token.balance(&donor), 0);
+    }
+
+    /// `donate` requires the donor to authorize. Without `mock_all_auths` (or
+    /// an explicit mock auth for the donor), the call reverts. We verify this
+    /// by deploying without mocking auths and asserting the call fails.
+    #[test]
+    fn donate_requires_donor_auth() {
+        let env = Env::default();
+        // No mock_all_auths: every require_auth will fail.
+        let admin = Address::generate(&env);
+        let treasury = Address::generate(&env);
+        let contract_id = env.register(DonationRouter, (&admin, &treasury, &100u32, &500u32));
+        let client = DonationRouterClient::new(&env, &contract_id);
+
+        let token_admin = Address::generate(&env);
+        let token_id = env
+            .register_stellar_asset_contract_v2(token_admin.clone())
+            .address();
+        let sac = StellarAssetClient::new(&env, &token_id);
+        // Switch to mocking auths for the setup calls only.
+        env.mock_all_auths();
+        client.add_token(&admin, &token_id);
+        let owner = Address::generate(&env);
+        let payout = Address::generate(&env);
+        let id_hash = creator_id_hash(&env, 23);
+        client.register_creator(&owner, &id_hash, &payout);
+
+        let amount: i128 = 1_000;
+        let donor = Address::generate(&env);
+        sac.mint(&donor, &amount);
+
+        // Stop mocking auths so the donor's require_auth in donate fails.
+        env.set_auths(&[]);
+
+        let donation_id_hash = creator_id_hash(&env, 95);
+        let result = catch_unwind(AssertUnwindSafe(|| {
+            client.donate(&donor, &id_hash, &token_id, &amount, &donation_id_hash)
+        }));
+        assert!(result.is_err(), "donate without donor auth must revert");
     }
 }
