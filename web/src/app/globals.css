@@ -1,0 +1,80 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+/*
+ * Graphite design system (dark-only).
+ * Tokens sourced from DESIGN.md. No light theme exists.
+ */
+:root {
+  --background: #0e1013; /* Neutral */
+  --foreground: #ECEDEE; /* Primary text */
+
+  --card: #17191c; /* Surface */
+  --card-foreground: #ECEDEE;
+
+  --popover: #17191c;
+  --popover-foreground: #ECEDEE;
+
+  --primary: #b4ff39; /* Tertiary, the single accent */
+  --primary-foreground: #0e1013; /* on-primary */
+
+  --secondary: #17191c;
+  --secondary-foreground: #ECEDEE;
+
+  --muted: #17191c;
+  --muted-foreground: #9ca3af; /* Secondary text and borders */
+
+  --accent: #1f2328;
+  --accent-foreground: #ECEDEE;
+
+  --destructive: #7f1d1d;
+  --destructive-foreground: #ECEDEE;
+
+  --border: #2a2d31;
+  --input: #2a2d31;
+  --ring: #b4ff39;
+
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius: 10px;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 0px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+
+  --font-sans: var(--font-body);
+  --font-mono: var(--font-label);
+  --font-display: var(--font-display);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-body), Arial, Helvetica, sans-serif;
+}
