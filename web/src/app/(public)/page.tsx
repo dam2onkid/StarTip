@@ -1,6 +1,9 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
+import { SecondaryCards } from "@/components/landing/secondary-cards";
+import { HowItWorks } from "@/components/landing/how-it-works";
+import { BuiltOnStellar } from "@/components/landing/built-on-stellar";
 
 export const metadata: Metadata = {
   title: "Fast, global tipping for livestream creators, settled on Stellar",
@@ -26,7 +29,7 @@ export default function LandingPage() {
   return (
     <main className="flex flex-1 flex-col">
       <section className="mx-auto flex w-full max-w-3xl flex-col gap-6 px-6 py-32 sm:py-40">
-        <h1 className="font-display text-4xl font-semibold leading-tight tracking-tight sm:text-5xl">
+        <h1 className="font-display text-4xl font-semibold leading-tight tracking-tight text-balance sm:text-5xl">
           Fast, global tips for livestream creators. Settled on Stellar.
         </h1>
         <p className="max-w-xl text-base leading-relaxed text-muted-foreground sm:text-lg">
@@ -40,6 +43,10 @@ export default function LandingPage() {
           </Button>
         </div>
       </section>
+
+      <SecondaryCards />
+      <HowItWorks />
+      <BuiltOnStellar />
     </main>
   );
 }
