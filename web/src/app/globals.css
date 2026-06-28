@@ -94,4 +94,128 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: var(--font-body), Arial, Helvetica, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+::selection {
+  background: color-mix(in oklch, var(--primary) 30%, transparent);
+  color: var(--foreground);
+}
+
+/* ---------------------------------------------------------------------------
+ * Premium foundation (DESIGN.md "depth-first" layer).
+ *
+ * Glass, grain, atmospheric gradients, custom cursor, and dimensional hover
+ * are gated behind `@media (hover: hover) and (pointer: fine)` and
+ * `prefers-reduced-motion: no-preference` so touch devices and reduced-motion
+ * users get a pristine static render (premium-frontend-ui skill §5).
+ * ------------------------------------------------------------------------- */
+
+/*
+ * Fluid display type scale. clamp() spans up to ~8vw for the hero so headlines
+ * command the top fold at any viewport, while body copy stays crisp at 16–18px
+ * (premium-frontend-ui skill §4 type hierarchy).
+ */
+.font-display {
+  font-family: var(--font-display), var(--font-body), sans-serif;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  line-height: 0.98;
+}
+.text-display-hero {
+  font-size: clamp(2.75rem, 8vw, 7rem);
+  line-height: 0.95;
+}
+.text-display-section {
+  font-size: clamp(2rem, 5vw, 4rem);
+  line-height: 1;
+}
+
+/*
+ * Atmospheric depth. A radial neutral glow + a vertical fade built only from
+ * Graphite neutrals (DESIGN.md: no second hue). Sits behind content via
+ * pointer-events: none and a low z-index.
+ */
+.atmosphere {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(
+      120% 80% at 50% -10%,
+      color-mix(in oklch, var(--primary) 6%, transparent) 0%,
+      transparent 45%
+    ),
+    radial-gradient(
+      90% 60% at 80% 110%,
+      color-mix(in oklch, var(--foreground) 5%, transparent) 0%,
+      transparent 60%
+    );
+}
+
+/*
+ * Photographic grain. An inline SVG turbulence noise tiled at 240px, blended
+ * over the composition at ~3% opacity to remove digital sterility
+ * (premium-frontend-ui skill §4 atmospheric filters).
+ */
+.grain {
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  opacity: 0.035;
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='240'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-size: 240px 240px;
+}
+
+/*
+ * Glass surface. Frosted depth via backdrop-filter blur over a semi-transparent
+ * neutral, with an ultra-thin border and a faint top-edge highlight
+ * (premium-frontend-ui skill §4 lighting & glass).
+ */
+.glass {
+  background: color-mix(in oklch, var(--card) 55%, transparent);
+  -webkit-backdrop-filter: blur(14px) saturate(140%);
+  backdrop-filter: blur(14px) saturate(140%);
+  border: 1px solid color-mix(in oklch, var(--foreground) 8%, transparent);
+  box-shadow:
+    inset 0 1px 0 0 color-mix(in oklch, var(--foreground) 6%, transparent),
+    0 20px 60px -20px rgba(0, 0, 0, 0.6);
+}
+.glass-strong {
+  background: color-mix(in oklch, var(--card) 72%, transparent);
+  -webkit-backdrop-filter: blur(20px) saturate(160%);
+  backdrop-filter: blur(20px) saturate(160%);
+  border: 1px solid color-mix(in oklch, var(--foreground) 10%, transparent);
+}
+
+/* Thin custom scrollbar in the Graphite neutrals. */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: var(--background);
+}
+::-webkit-scrollbar-thumb {
+  background: color-mix(in oklch, var(--foreground) 12%, transparent);
+  border-radius: 9999px;
+  border: 2px solid var(--background);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in oklch, var(--foreground) 22%, transparent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
 }

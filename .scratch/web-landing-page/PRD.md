@@ -1,4 +1,4 @@
-Status: ready-for-agent
+Status: done 
 
 # PRD — Web project setup and landing page
 

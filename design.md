@@ -49,7 +49,7 @@ components:
 ---
 ## Overview
 
-An engineering-grade dark palette. Carefully tuned greys across 10 stops, with a single lime-green for focus and CTAs.
+An engineering-grade dark palette. Carefully tuned greys across 10 stops, with a single lime-green for focus and CTAs. The system is dark-only and depth-first: glassmorphism, photographic grain, parallax, and dimensional hover are permitted to build atmosphere, but the Graphite neutrals and the single lime accent remain the load-bearing identity.
 
 ## Colors
 
@@ -62,20 +62,37 @@ The palette is built around high-contrast neutrals and a single accent that driv
 
 ## Typography
 
-- **display:** Inter Tight 4rem
+- **display:** Inter Tight, fluid `clamp(2.5rem, 8vw, 7rem)` for hero display, `clamp(2rem, 5vw, 4rem)` for section display.
 - **h1:** Inter Tight 2.25rem
 - **body:** Inter 0.95rem
 - **label:** JetBrains Mono 0.75rem
 
 ## Do's and Don'ts
 
-- **Do** use Tertiary for exactly one primary action per route/view. Secondary
-  and ghost variants carry the rest; Tertiary is reserved for the single most
-  important CTA on the screen.
+- **Do** use Tertiary for exactly one primary action per route/view at rest.
+  Secondary and ghost variants carry the rest; Tertiary is reserved for the
+  single most important CTA on the screen.
 - **Do** let Neutral carry the composition — negative space is a feature.
 - **Do** allow hover/interaction state shifts on the Tertiary element
   (background lightening/darkening, opacity, scale). The single-accent rule
   applies to resting state; interaction feedback is permitted.
-- **Don't** introduce gradients. This system is flat on purpose.
+- **Do** use glassmorphism (`backdrop-filter: blur()` over semi-transparent
+  surfaces with ultra-thin borders) to build depth on navigation, cards, and
+  the footer. Keep glass subtle; the neutrals stay readable.
+- **Do** use a faint photographic grain overlay (SVG noise, opacity 0.02–0.05,
+  `mix-blend-mode: overlay`) to remove digital sterility.
+- **Do** use parallax, scroll-driven reveals, magnetic components, a custom
+  lerp cursor, and dimensional hover (`transform: scale/rotateX/translate3d`)
+  to build a premium tactile layer. Gate all of these behind
+  `@media (hover: hover) and (pointer: fine)` and `prefers-reduced-motion:
+  no-preference` so touch and reduced-motion users get a pristine static
+  render.
+- **Do** allow subtle atmospheric gradients (radial glows, vertical depth
+  fades) built from the Graphite neutrals to support glass and parallax. Never
+  introduce a second hue.
 - **Don't** mix Tertiary with alternate accents; the single-accent rule is
-  load-bearing.
+  load-bearing. The lime is the only non-neutral color.
+- **Don't** animate properties that trigger layout (`width`, `height`, `top`,
+  `margin`). Animate `transform` and `opacity` only.
+- **Don't** ship hover, cursor, or magnetic logic on touch devices, and don't
+  ship continuous motion to reduced-motion users.

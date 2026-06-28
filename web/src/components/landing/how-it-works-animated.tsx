@@ -11,7 +11,8 @@ import { howItWorksSteps } from "@/content/landing";
  *
  * Only `transform` (`y`) and `opacity` are animated, per the
  * `premium-frontend-ui` skill §5 hardware acceleration guardrail. Steps reveal
- * with a 120ms stagger as the section enters the viewport.
+ * with a 120ms stagger as the section enters the viewport. Each step shows a
+ * large faded ordinal behind the label for editorial weight.
  */
 const containerVariants: Variants = {
   hidden: {},
@@ -21,8 +22,8 @@ const containerVariants: Variants = {
 };
 
 const stepVariants: Variants = {
-  hidden: { opacity: 0, y: 16 },
-  show: { opacity: 1, y: 0, transition: { duration: 0.4, ease: "easeOut" } },
+  hidden: { opacity: 0, y: 24 },
+  show: { opacity: 1, y: 0, transition: { duration: 0.55, ease: [0.22, 1, 0.36, 1] } },
 };
 
 export function HowItWorksAnimated() {
@@ -32,20 +33,30 @@ export function HowItWorksAnimated() {
       initial="hidden"
       whileInView="show"
       viewport={{ once: true, amount: 0.2 }}
-      className="mt-12 grid gap-8 sm:grid-cols-3"
+      className="mt-14 grid gap-4 sm:grid-cols-3"
     >
-      {howItWorksSteps.map((step) => (
+      {howItWorksSteps.map((step, i) => (
         <motion.li
           key={step.label}
           variants={stepVariants}
-          className="flex flex-col gap-3"
+          className="group relative flex flex-col gap-4 overflow-hidden rounded-2xl border border-foreground/10 bg-card/40 p-8 backdrop-blur-sm transition-colors duration-300 hover:bg-card/70"
         >
-          <p className="font-mono text-sm tracking-wide text-muted-foreground">
+          <span
+            aria-hidden
+            className="pointer-events-none absolute right-4 top-3 font-display text-7xl font-semibold leading-none text-foreground/[0.05] transition-colors duration-300 group-hover:text-primary/10"
+          >
+            {String(i + 1).padStart(2, "0")}
+          </span>
+          <p className="relative z-10 font-mono text-sm tracking-wide text-primary/80">
             {step.label}
           </p>
-          <p className="text-base leading-relaxed text-foreground">
+          <p className="relative z-10 max-w-xs text-base leading-relaxed text-foreground">
             {step.body}
           </p>
+          <span
+            aria-hidden
+            className="relative z-10 mt-2 h-px w-10 origin-left bg-primary/50 transition-transform duration-500 group-hover:scale-x-[2.5]"
+          />
         </motion.li>
       ))}
     </motion.ol>
