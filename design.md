@@ -69,7 +69,13 @@ The palette is built around high-contrast neutrals and a single accent that driv
 
 ## Do's and Don'ts
 
-- **Do** use Tertiary for exactly one action per screen.
+- **Do** use Tertiary for exactly one primary action per route/view. Secondary
+  and ghost variants carry the rest; Tertiary is reserved for the single most
+  important CTA on the screen.
 - **Do** let Neutral carry the composition — negative space is a feature.
+- **Do** allow hover/interaction state shifts on the Tertiary element
+  (background lightening/darkening, opacity, scale). The single-accent rule
+  applies to resting state; interaction feedback is permitted.
 - **Don't** introduce gradients. This system is flat on purpose.
-- **Don't** mix Tertiary with alternate accents; the single-accent rule is load-bearing.
+- **Don't** mix Tertiary with alternate accents; the single-accent rule is
+  load-bearing.
