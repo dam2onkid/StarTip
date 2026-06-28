@@ -4,6 +4,22 @@
 @custom-variant dark (&:is(.dark *));
 
 /*
+ * Hover-only interactions are gated behind `@media (hover: hover) and
+ * (pointer: fine)` so the page does not ship hover logic that breaks on touch
+ * devices (per `premium-frontend-ui` skill §5 responsive degradation guardrail,
+ * PRD user story 36, issue 04). On touch devices the `hover:` utilities resolve
+ * to nothing; on desktop with a fine pointer they apply as usual, preserving
+ * shadcn's tactile hover affordance (PRD user story 19).
+ */
+@custom-variant hover {
+  @media (hover: hover) and (pointer: fine) {
+    &:hover {
+      @slot;
+    }
+  }
+}
+
+/*
  * Graphite design system (dark-only).
  * Tokens sourced from DESIGN.md. No light theme exists.
  */
