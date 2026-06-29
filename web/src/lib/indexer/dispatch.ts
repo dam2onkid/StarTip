@@ -1,0 +1,346 @@
+import "server-only";
+import * as StellarSdk from "@stellar/stellar-sdk";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import type { TokenMetadata } from "@/lib/stellar/token";
+
+/**
+ * bytea values travel over the PostgREST API as hex strings with the `\x`
+ * prefix: that is how Postgres casts text to bytea and how PostgREST encodes
+ * bytea in JSON responses. `handle_hash` and `donation_id_hash` are stored as
+ * bytea, so every value we send or filter on must use this format.
+ */
+export function toByteaHex(buf: Buffer): string {
+  return "\\x" + buf.toString("hex");
+}
+
+/** RPC surface the indexer depends on (structural subset of rpc.Server). */
+export interface RpcLike {
+  getEvents(
+    request: StellarSdk.rpc.Api.GetEventsRequest,
+  ): Promise<{ events: StellarSdk.rpc.Api.EventResponse[]; cursor: string }>;
+  getLatestLedger(): Promise<{ sequence: number }>;
+}
+
+export interface IndexerDeps<R extends RpcLike = RpcLike> {
+  supabase: SupabaseClient;
+  rpc: R;
+  tokenReader: (rpc: R, contractAddress: string) => Promise<TokenMetadata>;
+  contractId: string;
+}
+
+export interface PollResult {
+  processed: number;
+  lastLedger: number | null;
+  cursor: string | null;
+}
+
+interface IndexerState {
+  id: number;
+  last_ledger: number;
+  last_cursor: string | null;
+}
+
+interface ProfileRow {
+  id: string;
+  owner_address: string | null;
+}
+
+interface DonationRow {
+  id: string;
+  status: string;
+}
+
+/** Decoded DonationRouter event: topic name + native field map. */
+interface DecodedEvent {
+  topic: string;
+  value: Record<string, unknown>;
+}
+
+/**
+ * Decode a Soroban contract event into its topic name and a native field map.
+ * The DonationRouter emits each event as a single Symbol topic (the event
+ * name) and an ScVal map body. `scValToNative` turns the map into a plain
+ * object: Addresses become strkey strings, BytesN become Buffers, i128 become
+ * bigints, booleans stay booleans. Returns null for events with no topic.
+ */
+export function decodeEvent(event: StellarSdk.rpc.Api.EventResponse): DecodedEvent | null {
+  if (!event.topic || event.topic.length === 0) return null;
+  const topic = StellarSdk.scValToNative(event.topic[0]);
+  if (typeof topic !== "string") return null;
+  const value = StellarSdk.scValToNative(event.value) as Record<string, unknown>;
+  return { topic, value: value ?? {} };
+}
+
+function nowIso(): string {
+  return new Date().toISOString();
+}
+
+/**
+ * Load the single indexer_state row. Returns null if it is missing (the
+ * migration seeds it, but the caller may run before the migration on a fresh
+ * DB).
+ */
+async function loadState(supabase: SupabaseClient): Promise<IndexerState | null> {
+  const { data, error } = await supabase
+    .from("indexer_state")
+    .select("id,last_ledger,last_cursor")
+    .eq("id", 1)
+    .maybeSingle();
+  if (error) throw error;
+  return (data as IndexerState | null) ?? null;
+}
+
+/** Dispatch a `DonationReceived` event: upsert the donation by tx_hash. */
+async function dispatchDonationReceived(
+  supabase: SupabaseClient,
+  event: StellarSdk.rpc.Api.EventResponse,
+  value: Record<string, unknown>,
+): Promise<void> {
+  const donationIdHash = toByteaHex(value.donation_id_hash as Buffer);
+  const handleHash = toByteaHex(value.creator_id_hash as Buffer);
+  const txHash = event.txHash;
+  const amount = (value.amount as bigint).toString();
+
+  // 1. Match the pending row by donation_id_hash (the prepare-created row).
+  let row = (
+    await supabase
+      .from("donations")
+      .select("id,status")
+      .eq("donation_id_hash", donationIdHash)
+      .maybeSingle()
+  ).data as DonationRow | null;
+
+  // 2. Fall back to tx_hash (the confirm path may have inserted first).
+  if (!row) {
+    row = (
+      await supabase
+        .from("donations")
+        .select("id,status")
+        .eq("tx_hash", txHash)
+        .maybeSingle()
+    ).data as DonationRow | null;
+  }
+
+  if (row) {
+    // Update in place. Only promote pending -> indexed; never downgrade
+    // confirmed -> indexed. Re-writing tx_hash/indexed_at is idempotent.
+    const patch: Record<string, unknown> = {
+      tx_hash: txHash,
+      indexed_at: nowIso(),
+    };
+    if (row.status === "pending") patch.status = "indexed";
+    await supabase.from("donations").update(patch).eq("id", row.id);
+    return;
+  }
+
+  // 3. No existing row: insert an indexed row. Requires the creator profile.
+  const profile = (
+    await supabase
+      .from("profiles")
+      .select("id")
+      .eq("handle_hash", handleHash)
+      .maybeSingle()
+  ).data as { id: string } | null;
+  if (!profile) {
+    // Orphan donation: creator has no off-chain profile. Skip.
+    return;
+  }
+
+  await supabase.from("donations").insert({
+    donation_id_hash: donationIdHash,
+    tx_hash: txHash,
+    creator_profile_id: profile.id,
+    handle_hash: handleHash,
+    token: value.token as string,
+    amount,
+    donor_name: "Anonymous",
+    status: "indexed",
+    indexed_at: nowIso(),
+  });
+}
+
+/** Dispatch a `CreatorRegistered` event: flip onchain_registered on the profile. */
+async function dispatchCreatorRegistered(
+  supabase: SupabaseClient,
+  value: Record<string, unknown>,
+): Promise<void> {
+  const handleHash = toByteaHex(value.creator_id_hash as Buffer);
+  const owner = value.owner as string;
+  const payoutAddress = value.payout_address as string;
+
+  const profile = (
+    await supabase
+      .from("profiles")
+      .select("id,owner_address")
+      .eq("handle_hash", handleHash)
+      .maybeSingle()
+  ).data as ProfileRow | null;
+  if (!profile) {
+    // Orphan: no off-chain profile reserved for this handle. Skip.
+    return;
+  }
+  if (profile.owner_address !== owner) {
+    // Owner mismatch: the on-chain owner is not the linked wallet. Skip to
+    // avoid flipping a profile the user does not control.
+    return;
+  }
+
+  await supabase
+    .from("profiles")
+    .update({
+      onchain_registered: true,
+      onchain_registered_at: nowIso(),
+      payout_address: payoutAddress,
+    })
+    .eq("handle_hash", handleHash);
+}
+
+/** Dispatch a `CreatorPayoutUpdated` event: mirror the new payout address. */
+async function dispatchCreatorPayoutUpdated(
+  supabase: SupabaseClient,
+  value: Record<string, unknown>,
+): Promise<void> {
+  const handleHash = toByteaHex(value.creator_id_hash as Buffer);
+  const newPayout = value.new_payout_address as string;
+
+  const profile = (
+    await supabase
+      .from("profiles")
+      .select("id")
+      .eq("handle_hash", handleHash)
+      .maybeSingle()
+  ).data as { id: string } | null;
+  if (!profile) return;
+
+  await supabase
+    .from("profiles")
+    .update({ payout_address: newPayout })
+    .eq("handle_hash", handleHash);
+}
+
+/** Dispatch a `CreatorActiveChanged` event: mirror paused = NOT active. */
+async function dispatchCreatorActiveChanged(
+  supabase: SupabaseClient,
+  value: Record<string, unknown>,
+): Promise<void> {
+  const handleHash = toByteaHex(value.creator_id_hash as Buffer);
+  const active = value.active as boolean;
+
+  const profile = (
+    await supabase
+      .from("profiles")
+      .select("id")
+      .eq("handle_hash", handleHash)
+      .maybeSingle()
+  ).data as { id: string } | null;
+  if (!profile) return;
+
+  await supabase
+    .from("profiles")
+    .update({ paused: !active })
+    .eq("handle_hash", handleHash);
+}
+
+/** Dispatch a `TokenAllowlistUpdated` event: upsert or delete a tokens row. */
+async function dispatchTokenAllowlistUpdated<R extends RpcLike>(
+  deps: IndexerDeps<R>,
+  value: Record<string, unknown>,
+): Promise<void> {
+  const token = value.token as string;
+  const added = value.added as boolean;
+
+  if (added) {
+    const meta = await deps.tokenReader(deps.rpc, token);
+    await deps.supabase.from("tokens").upsert({
+      contract_address: meta.contractAddress,
+      symbol: meta.symbol,
+      name: meta.name,
+      issuer: meta.issuer,
+      decimals: meta.decimals,
+    });
+  } else {
+    await deps.supabase.from("tokens").delete().eq("contract_address", token);
+  }
+}
+
+/**
+ * Run one indexer poll: load the cursor, fetch DonationRouter events from the
+ * shared cursor, dispatch each by topic name, and persist the advanced cursor.
+ *
+ * Idempotency: every dispatch is an upsert or a same-value update, so
+ * re-processing the same event (e.g. an overlapping ledger range when the
+ * cursor did not advance) converges to the same state.
+ *
+ * @returns the number of dispatched events and the new cursor position.
+ */
+export async function processPoll<R extends RpcLike>(deps: IndexerDeps<R>): Promise<PollResult> {
+  const { supabase, rpc, contractId } = deps;
+
+  const state = await loadState(supabase);
+  const lastLedger = state?.last_ledger ?? 0;
+  const lastCursor = state?.last_cursor ?? null;
+
+  // Bootstrap: when uninitialized (last_ledger = 0, no cursor), start from the
+  // current ledger so the first poll only sees events after the indexer began.
+  let startLedger = lastLedger;
+  if (lastCursor === null && lastLedger === 0) {
+    const ledger = await rpc.getLatestLedger();
+    startLedger = ledger.sequence;
+  }
+
+  const request: StellarSdk.rpc.Api.GetEventsRequest = lastCursor
+    ? { filters: [{ contractIds: [contractId] }], cursor: lastCursor }
+    : { filters: [{ contractIds: [contractId] }], startLedger };
+  const response = await rpc.getEvents(request);
+  const events = response.events ?? [];
+
+  let processed = 0;
+  for (const event of events) {
+    const decoded = decodeEvent(event);
+    if (!decoded) continue;
+    switch (decoded.topic) {
+      case "DonationReceived":
+        await dispatchDonationReceived(supabase, event, decoded.value);
+        processed++;
+        break;
+      case "CreatorRegistered":
+        await dispatchCreatorRegistered(supabase, decoded.value);
+        processed++;
+        break;
+      case "CreatorPayoutUpdated":
+        await dispatchCreatorPayoutUpdated(supabase, decoded.value);
+        processed++;
+        break;
+      case "CreatorActiveChanged":
+        await dispatchCreatorActiveChanged(supabase, decoded.value);
+        processed++;
+        break;
+      case "TokenAllowlistUpdated":
+        await dispatchTokenAllowlistUpdated(deps, decoded.value);
+        processed++;
+        break;
+      default:
+        // Unknown topic (e.g. admin-only events like TreasuryUpdated). Skip
+        // dispatch but still advance the cursor past it below.
+        break;
+    }
+  }
+
+  // Advance the cursor whenever we read any events, including skipped ones,
+  // so unknown events are not re-read forever. Use the last event's ledger
+  // (for diagnostics / restart) and the response cursor (for the next poll).
+  if (events.length > 0) {
+    const lastEventLedger = events[events.length - 1].ledger;
+    await supabase
+      .from("indexer_state")
+      .update({
+        last_ledger: lastEventLedger,
+        last_cursor: response.cursor,
+        updated_at: nowIso(),
+      })
+      .eq("id", 1);
+    return { processed, lastLedger: lastEventLedger, cursor: response.cursor };
+  }
+
+  return { processed: 0, lastLedger: lastLedger, cursor: lastCursor };
+}

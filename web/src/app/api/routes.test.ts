@@ -42,13 +42,6 @@ describe("api route stubs", () => {
     expect(await res.json()).toEqual({ error: "not_implemented" });
   });
 
-  it("POST /api/indexer/poll returns 501 { error: 'not_implemented' }", async () => {
-    const { POST } = await import("@/app/api/indexer/poll/route");
-    const res = await POST();
-    notImplemented(res);
-    expect(await res.json()).toEqual({ error: "not_implemented" });
-  });
-
   it("GET /api/creators/[handle] returns 501 { error: 'not_implemented' }", async () => {
     const { GET } = await import("@/app/api/creators/[handle]/route");
     const req = new NextRequest("http://localhost/api/creators/somehandle");
