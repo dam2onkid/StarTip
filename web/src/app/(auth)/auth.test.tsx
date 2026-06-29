@@ -1,16 +1,16 @@
 import { describe, it, expect } from "vitest";
 import { render, screen } from "@testing-library/react";
 import AuthLayout from "@/app/(auth)/layout";
-import OnboardingPage from "@/app/(auth)/onboarding/page";
 import DashboardPage from "@/app/(auth)/dashboard/page";
-import ProfilePage from "@/app/(auth)/dashboard/profile/page";
-import WalletPage from "@/app/(auth)/dashboard/wallet/page";
-import PayoutPage from "@/app/(auth)/dashboard/payout/page";
-import OverlaySettingsPage from "@/app/(auth)/dashboard/overlay/page";
-import DonationsPage from "@/app/(auth)/dashboard/donations/page";
+import LoginPage from "@/app/(public)/login/page";
+import ExplorePage from "@/app/(public)/creator/explore/page";
+import CreatorPage from "@/app/(public)/creator/[handle]/page";
+import DonatePage from "@/app/(public)/creator/[handle]/donate/page";
+import OverlayPage from "@/app/(public)/overlay/[handle]/page";
+import DocsPage from "@/app/(public)/docs/page";
 
-describe("(auth) route group placeholders", () => {
-  it("layout renders the StarTip wordmark and placeholder nav links", () => {
+describe("(auth) route group", () => {
+  it("layout renders the StarTip wordmark and a dashboard nav link", () => {
     render(
       <AuthLayout>
         <p>child</p>
@@ -18,36 +18,59 @@ describe("(auth) route group placeholders", () => {
     );
     expect(screen.getByText("StarTip")).toBeInTheDocument();
     expect(screen.getByText("child")).toBeInTheDocument();
-    // Placeholder nav links to the dashboard sub-routes exist.
     expect(screen.getByRole("link", { name: /dashboard/i })).toBeInTheDocument();
   });
 
-  it("onboarding page renders a placeholder heading", () => {
-    render(<OnboardingPage />);
-    expect(
-      screen.getByRole("heading", { name: /onboarding coming soon/i }),
-    ).toBeInTheDocument();
-  });
-
-  it("dashboard page renders a placeholder heading", () => {
+  it("dashboard page renders Donor and Creator tab placeholders", () => {
     render(<DashboardPage />);
     expect(
       screen.getByRole("heading", { name: /dashboard/i }),
     ).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: /donor/i })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: /creator/i })).toBeInTheDocument();
+  });
+});
+
+describe("public route placeholders", () => {
+  it("/login renders a placeholder heading", () => {
+    render(<LoginPage />);
+    expect(
+      screen.getByRole("heading", { name: /login/i }),
+    ).toBeInTheDocument();
   });
 
-  const subroutes: Array<[string, RegExp, React.ComponentType]> = [
-    ["profile", /profile/i, ProfilePage],
-    ["wallet", /wallet/i, WalletPage],
-    ["payout", /payout/i, PayoutPage],
-    ["overlay", /overlay/i, OverlaySettingsPage],
-    ["donations", /donations/i, DonationsPage],
-  ];
+  it("/creator/explore renders a placeholder heading", () => {
+    render(<ExplorePage />);
+    expect(
+      screen.getByRole("heading", { name: /explore/i }),
+    ).toBeInTheDocument();
+  });
 
-  for (const [slug, match, Component] of subroutes) {
-    it(`dashboard/${slug} renders a placeholder heading`, () => {
-      render(<Component />);
-      expect(screen.getByRole("heading", { name: match })).toBeInTheDocument();
-    });
-  }
+  it("/creator/[handle] renders a placeholder heading", () => {
+    render(<CreatorPage />);
+    expect(
+      screen.getByRole("heading", { name: /creator/i }),
+    ).toBeInTheDocument();
+  });
+
+  it("/creator/[handle]/donate renders a placeholder heading", () => {
+    render(<DonatePage />);
+    expect(
+      screen.getByRole("heading", { name: /donate/i }),
+    ).toBeInTheDocument();
+  });
+
+  it("/overlay/[handle] renders a placeholder heading", () => {
+    render(<OverlayPage />);
+    expect(
+      screen.getByRole("heading", { name: /overlay/i }),
+    ).toBeInTheDocument();
+  });
+
+  it("/docs renders a placeholder heading", () => {
+    render(<DocsPage />);
+    expect(
+      screen.getByRole("heading", { name: /docs/i }),
+    ).toBeInTheDocument();
+  });
 });

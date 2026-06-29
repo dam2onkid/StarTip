@@ -155,7 +155,7 @@ export function Hero() {
         >
           <Magnetic strength={0.45}>
             <Button asChild size="lg" className="h-12 px-7 text-base">
-              <Link href="/onboarding" data-cursor="hover">
+              <Link href="/login" data-cursor="hover">
                 Become a Creator
               </Link>
             </Button>

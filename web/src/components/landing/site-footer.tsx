@@ -42,7 +42,7 @@ export function SiteFooter() {
                 Product
               </p>
               <Link
-                href="/onboarding"
+                href="/login"
                 className="text-sm text-foreground/80 transition-colors hover:text-foreground"
               >
                 Become a Creator

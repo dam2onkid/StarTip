@@ -2,9 +2,10 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 
 /**
- * Shared dashboard navigation shell for the `(auth)` route group. Placeholder:
- * renders the StarTip wordmark and links to the dashboard sub-routes so the
- * nav shape is locked for subsequent feature PRDs. No real routing logic yet.
+ * Shared shell for the `(auth)` route group, which now contains only
+ * `/dashboard`. Renders the StarTip wordmark and a Dashboard nav link. The
+ * dashboard sub-routes were collapsed into a single tabbed page; the nav shape
+ * is locked here for subsequent feature PRDs.
  */
 export default function AuthLayout({ children }: { children: ReactNode }) {
   return (
@@ -18,31 +19,6 @@ export default function AuthLayout({ children }: { children: ReactNode }) {
             <li>
               <Link href="/dashboard" className="hover:text-foreground">
                 Dashboard
-              </Link>
-            </li>
-            <li>
-              <Link href="/dashboard/profile" className="hover:text-foreground">
-                Profile
-              </Link>
-            </li>
-            <li>
-              <Link href="/dashboard/wallet" className="hover:text-foreground">
-                Wallet
-              </Link>
-            </li>
-            <li>
-              <Link href="/dashboard/payout" className="hover:text-foreground">
-                Payout
-              </Link>
-            </li>
-            <li>
-              <Link href="/dashboard/overlay" className="hover:text-foreground">
-                Overlay
-              </Link>
-            </li>
-            <li>
-              <Link href="/dashboard/donations" className="hover:text-foreground">
-                Donations
               </Link>
             </li>
           </ul>

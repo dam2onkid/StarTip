@@ -28,27 +28,38 @@ describe("supabase/middleware updateSession", () => {
     expect(res.headers.get("location")).toContain(LOGIN_REDIRECT_URL);
   });
 
-  it("lets authenticated (auth) requests through without redirect", async () => {
+  it("lets authenticated /dashboard requests through without redirect", async () => {
     getUser.mockResolvedValue({
       data: { user: { id: "u1" } },
       error: null,
     });
     const { updateSession } = await import("@/lib/supabase/middleware");
-    const res = await updateSession(makeRequest("/dashboard/profile"));
+    const res = await updateSession(makeRequest("/dashboard"));
     expect(res.status).toBe(200);
     expect(res.headers.get("location")).toBeNull();
   });
 
-  it("does not redirect unauthenticated requests to non-(auth) routes", async () => {
+  it("does not redirect unauthenticated requests to public routes", async () => {
     getUser.mockResolvedValue({ data: { user: null }, error: null });
     const { updateSession } = await import("@/lib/supabase/middleware");
-    const res = await updateSession(makeRequest("/"));
-    expect(res.headers.get("location")).toBeNull();
+    const publicPaths = [
+      "/",
+      "/login",
+      "/creator/explore",
+      "/creator/somehandle",
+      "/creator/somehandle/donate",
+      "/overlay/somehandle",
+      "/docs",
+    ];
+    for (const pathname of publicPaths) {
+      const res = await updateSession(makeRequest(pathname));
+      expect(res.headers.get("location")).toBeNull();
+    }
   });
 });
 
 describe("middleware config matcher", () => {
-  it("covers (auth) routes (/dashboard, /onboarding) and excludes api/, _next/, and static assets", async () => {
+  it("covers /dashboard and excludes api/, _next/, static assets, and public routes are not gated by the matcher", async () => {
     const { config } = await import("@/lib/supabase/middleware");
     const matcher = config.matcher as string[];
     expect(matcher).toBeDefined();
@@ -57,9 +68,16 @@ describe("middleware config matcher", () => {
     function matches(pathname: string): boolean {
       return matcher.some((pattern) => new RegExp(`^${pattern}$`).test(pathname));
     }
+    // The matcher runs updateSession on every non-excluded path so the session
+    // cookie can be refreshed on public routes too. The gating decision is made
+    // inside updateSession, not by the matcher.
     expect(matches("/dashboard")).toBe(true);
-    expect(matches("/dashboard/profile")).toBe(true);
-    expect(matches("/onboarding")).toBe(true);
+    expect(matches("/login")).toBe(true);
+    expect(matches("/creator/explore")).toBe(true);
+    expect(matches("/creator/somehandle")).toBe(true);
+    expect(matches("/overlay/somehandle")).toBe(true);
+    expect(matches("/docs")).toBe(true);
+    // Excluded: api/, _next/, static assets.
     expect(matches("/api/creators")).toBe(false);
     expect(matches("/_next/static/chunk.js")).toBe(false);
     expect(matches("/favicon.ico")).toBe(false);

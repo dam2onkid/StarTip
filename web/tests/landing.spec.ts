@@ -39,7 +39,7 @@ test.describe("landing page — prefers-reduced-motion: no-preference", () => {
     const primaryCta = page
       .getByRole("main")
       .getByRole("link", { name: "Become a Creator" });
-    await expect(primaryCta).toHaveAttribute("href", "/onboarding");
+    await expect(primaryCta).toHaveAttribute("href", "/login");
     // Exactly one primary CTA with this label in the main content.
     await expect(primaryCta).toHaveCount(1);
   });

@@ -160,7 +160,7 @@ export function SiteNav() {
               variant="ghost"
               className="group/cta relative overflow-hidden rounded-xl border border-foreground/10 bg-foreground/[0.03] text-foreground transition-all duration-300 hover:border-primary/40 hover:bg-primary/[0.06] hover:shadow-[0_0_24px_-6px_rgba(180,255,57,0.4)]"
             >
-              <Link href="/onboarding" className="relative z-10">
+              <Link href="/login" className="relative z-10">
                 Become a Creator
               </Link>
             </Button>
@@ -225,7 +225,7 @@ export function SiteNav() {
               ))}
               <li className="p-2">
                 <Button asChild size="lg" className="w-full">
-                  <Link href="/onboarding" onClick={() => setMenuOpen(false)}>
+                  <Link href="/login" onClick={() => setMenuOpen(false)}>
                     Become a Creator
                   </Link>
                 </Button>
