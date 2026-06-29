@@ -10,7 +10,12 @@ import OverlayPage from "@/app/(public)/overlay/[handle]/page";
 import DocsPage from "@/app/(public)/docs/page";
 
 vi.mock("@/lib/supabase/client", () => ({
-  createBrowserClient: () => ({ auth: { signInWithOtp: vi.fn(), signOut: vi.fn() } }),
+  createBrowserClient: () => ({
+    auth: { signInWithOtp: vi.fn(), signOut: vi.fn() },
+    // No-op Realtime channel so the CreatorTab mount does not throw in jsdom.
+    channel: () => ({ on: () => ({ subscribe: () => {} }), subscribe: () => {} }),
+    removeChannel: vi.fn(),
+  }),
 }));
 
 vi.mock("next/navigation", () => ({

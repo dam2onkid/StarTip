@@ -1,13 +1,15 @@
-// Mock Supabase Auth HTTP server for Playwright E2E.
+// Mock Supabase Auth + PostgREST server for Playwright E2E.
 //
 // The StarTip web app points `NEXT_PUBLIC_SUPABASE_URL` / `SUPABASE_URL` at
-// this server during E2E runs. It implements the subset of the Supabase Auth
-// REST surface that the login -> callback -> dashboard -> logout flow needs:
+// this server during E2E runs. It implements the subset of the Supabase surface
+// that the login -> callback -> dashboard -> onboarding flow needs:
 //
 //   POST /auth/v1/otp            -> magic link "sent"
 //   POST /auth/v1/token          -> session (PKCE exchange + refresh)
 //   GET  /auth/v1/user           -> the stub user (Bearer access_token)
 //   POST /auth/v1/logout         -> 204
+//   GET  /rest/v1/profiles       -> the stub profile (PostgREST array shape)
+//   PATCH /rest/v1/profiles      -> 200 (service-role writes; shape echoed)
 //
 // The access token is a fake JWT (unsigned, far-future exp). supabase-js does
 // not verify the signature client-side; it only decodes claims for expiry.
@@ -51,10 +53,25 @@ const SESSION = {
   user: STUB_USER,
 };
 
+// Mutable in-memory profile. The dashboard server component reads it on
+// render; the API routes (when not short-circuited by page.route) PATCH it.
+// Reset to the un-onboarded state on every server start.
+let profile = {
+  id: "00000000-0000-0000-0000-0000000000a",
+  user_id: STUB_USER.id,
+  handle: null,
+  handle_hash: null,
+  owner_address: null,
+  onchain_registered: false,
+  payout_address: null,
+  wallet_link_nonce: null,
+  wallet_link_nonce_expires_at: null,
+};
+
 function cors(res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Headers", "*");
-  res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, PATCH, OPTIONS");
   res.setHeader("Access-Control-Allow-Credentials", "true");
 }
 
@@ -108,6 +125,29 @@ export function startMockSupabase(port) {
     if (req.method === "POST" && path === "/auth/v1/logout") {
       json(res, 200, {});
       return;
+    }
+
+    // PostgREST: profiles. The dashboard server component does a filtered
+    // GET (maybeSingle -> first array element); the API routes PATCH it via
+    // the service role. We ignore the query filter and return the single
+    // in-memory profile.
+    if (path === "/rest/v1/profiles") {
+      if (req.method === "GET") {
+        json(res, 200, [profile]);
+        return;
+      }
+      if (req.method === "PATCH" || req.method === "POST") {
+        const raw = await readBody(req);
+        let patch = {};
+        try {
+          patch = raw ? JSON.parse(raw) : {};
+        } catch {
+          patch = {};
+        }
+        profile = { ...profile, ...patch };
+        json(res, 200, profile);
+        return;
+      }
     }
 
     // Anything else: return an empty 200 so unrelated SDK pings do not fail.

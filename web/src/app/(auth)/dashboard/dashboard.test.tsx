@@ -2,10 +2,12 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen } from "@testing-library/react";
 
 const getUser = vi.fn();
+const serverFrom = vi.fn();
 
 vi.mock("@/lib/supabase/server", () => ({
   createServerClient: vi.fn(async () => ({
     auth: { getUser },
+    from: serverFrom,
   })),
 }));
 
@@ -42,6 +44,7 @@ describe("/dashboard session gating", () => {
   beforeEach(() => {
     getUser.mockReset();
     redirect.mockReset();
+    serverFrom.mockReset();
   });
 
   it("redirects to /login when there is no session", async () => {
@@ -53,6 +56,20 @@ describe("/dashboard session gating", () => {
 
   it("renders the shell when a session is present", async () => {
     getUser.mockResolvedValue({ data: { user: { id: "u1" } }, error: null });
+    const chain = {
+      select: vi.fn(() => chain),
+      eq: vi.fn(() => chain),
+      maybeSingle: vi.fn(async () => ({
+        data: {
+          id: "p1",
+          handle: null,
+          owner_address: null,
+          onchain_registered: false,
+        },
+        error: null,
+      })),
+    };
+    serverFrom.mockReturnValue(chain);
     const { default: DashboardPage } = await import("@/app/(auth)/dashboard/page");
     const element = await DashboardPage();
     const { container } = render(element);

@@ -1,9 +1,20 @@
 packages:
   - web
 
+verifyDepsBeforeRun: false
+
 allowBuilds:
+  '@reown/appkit': false
+  '@stellar/stellar-sdk': false
+  blake-hash: false
+  bufferutil: false
+  protobufjs: false
+  secp256k1: false
   sharp: true
+  tiny-secp256k1: false
   unrs-resolver: true
+  usb: false
+  utf-8-validate: false
 
 onlyBuiltDependencies:
   - sharp
