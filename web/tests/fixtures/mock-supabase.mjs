@@ -1,21 +1,26 @@
-// Mock Supabase Auth + PostgREST server for Playwright E2E.
+// Mock Supabase Auth + PostgREST + Storage server for Playwright E2E.
 //
 // The StarTip web app points `NEXT_PUBLIC_SUPABASE_URL` / `SUPABASE_URL` at
 // this server during E2E runs. It implements the subset of the Supabase surface
-// that the login -> callback -> dashboard -> onboarding -> donate ->
-// explore -> creator page flow needs:
+// that the login -> callback -> dashboard (donor + creator tabs) -> onboarding
+// -> donate -> explore -> creator page flow needs:
 //
 //   POST /auth/v1/otp            -> magic link "sent"
 //   POST /auth/v1/token          -> session (PKCE exchange + refresh)
 //   GET  /auth/v1/user           -> the stub user (Bearer access_token)
 //   POST /auth/v1/logout         -> 204
-//   GET  /rest/v1/profiles       -> the stub profile (dashboard) OR a public
-//                                   creator when queried by `handle=eq.<h>`
-//   PATCH /rest/v1/profiles      -> 200 (service-role writes; shape echoed)
+//   GET  /rest/v1/profiles       -> the stub profile (dashboard), a public
+//                                   creator when queried by `handle=eq.<h>`,
+//                                   or a set of creators when queried by
+//                                   `id=in.(...)` (per-creator rank lookup)
+//   PATCH /rest/v1/profiles      -> 200 (owner UPDATE; shape echoed)
 //   GET  /rest/v1/public_profiles-> the list of registered, not-paused creators
-//   GET  /rest/v1/donations      -> confirmed/indexed visible donations
-//                                   (filtered by creator_profile_id when present)
+//   GET  /rest/v1/donations      -> donations filtered by creator_profile_id,
+//                                   user_id, status, moderation_status; columns
+//                                   projected from the `select` query param
 //   GET  /rest/v1/tokens         -> the stub token allowlist (PostgREST array)
+//   POST /storage/v1/object/avatars/<path> -> 200 (avatar upload; public URL
+//                                   derived client-side by supabase-js)
 //
 // The access token is a fake JWT (unsigned, far-future exp). supabase-js does
 // not verify the signature client-side; it only decodes claims for expiry.
@@ -48,28 +53,59 @@ const PUBLIC_CREATOR = {
 
 const PUBLIC_CREATORS = [PUBLIC_CREATOR];
 
-// Confirmed, visible donations for the Creator. The first two are logged-in
-// donors (user_id set) and contribute to the leaderboard; the third is
-// anonymous (user_id null) and is excluded from the leaderboard but still
-// counts toward the Creator's total received + donation count.
+// Full donation rows. The mock projects the requested columns via the
+// PostgREST `select` query param. The first three are the original seeded
+// donations (Ada, Bob, anonymous); the fourth is the stub user ("Fan") so the
+// Donor tab has a history and a leaderboard rank. Anonymous donations
+// (user_id null) are excluded from leaderboards by the aggregation helpers.
 const DONATIONS = [
   {
+    id: "00000000-0000-0000-0000-0000000000d1",
     donor_name: "Ada",
     amount: "100",
     user_id: "00000000-0000-0000-0000-000000000010",
     creator_profile_id: PUBLIC_CREATOR.id,
+    token: "USDC",
+    message: "Thank you!",
+    status: "confirmed",
+    moderation_status: "visible",
+    created_at: "2026-06-01T00:00:00Z",
   },
   {
+    id: "00000000-0000-0000-0000-0000000000d2",
     donor_name: "Bob",
     amount: "500",
     user_id: "00000000-0000-0000-0000-000000000020",
     creator_profile_id: PUBLIC_CREATOR.id,
+    token: "USDC",
+    message: null,
+    status: "confirmed",
+    moderation_status: "visible",
+    created_at: "2026-06-02T00:00:00Z",
   },
   {
+    id: "00000000-0000-0000-0000-0000000000d3",
     donor_name: "Anonymous",
     amount: "9999",
     user_id: null,
     creator_profile_id: PUBLIC_CREATOR.id,
+    token: "USDC",
+    message: null,
+    status: "confirmed",
+    moderation_status: "visible",
+    created_at: "2026-06-03T00:00:00Z",
+  },
+  {
+    id: "00000000-0000-0000-0000-0000000000d4",
+    donor_name: "Fan",
+    amount: "300",
+    user_id: STUB_USER.id,
+    creator_profile_id: PUBLIC_CREATOR.id,
+    token: "USDC",
+    message: "Keep it up!",
+    status: "confirmed",
+    moderation_status: "visible",
+    created_at: "2026-06-04T00:00:00Z",
   },
 ];
 
@@ -105,6 +141,9 @@ const SESSION = {
 let profile = {
   id: "00000000-0000-0000-0000-0000000000a",
   user_id: STUB_USER.id,
+  display_name: "Fan",
+  avatar_url: null,
+  bio: null,
   handle: null,
   handle_hash: null,
   owner_address: null,
@@ -117,7 +156,7 @@ let profile = {
 function cors(res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Headers", "*");
-  res.setHeader("Access-Control-Allow-Methods", "GET, POST, PATCH, OPTIONS");
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, OPTIONS");
   res.setHeader("Access-Control-Allow-Credentials", "true");
 }
 
@@ -144,6 +183,30 @@ function eqFilters(query) {
     if (m) filters[m[1]] = m[2];
   }
   return filters;
+}
+
+/** Extract `col=in.(v1,v2,...)` filters from the PostgREST query string. */
+function inFilters(query) {
+  const filters = {};
+  for (const [key, value] of query.entries()) {
+    const m = /^([a-z_]+)=in\.\((.+)\)$/.exec(`${key}=${value}`);
+    if (m) filters[m[1]] = m[2].split(",");
+  }
+  return filters;
+}
+
+/** Project each row to only the columns named in the PostgREST `select` param.
+ * If no select param is present, return the rows as-is. */
+function project(rows, selectParam) {
+  if (!selectParam) return rows;
+  const cols = selectParam.split(",").map((c) => c.trim()).filter(Boolean);
+  return rows.map((row) => {
+    const out = {};
+    for (const c of cols) {
+      if (c in row) out[c] = row[c];
+    }
+    return out;
+  });
 }
 
 export function startMockSupabase(port) {
@@ -183,6 +246,16 @@ export function startMockSupabase(port) {
       return;
     }
 
+    // Storage: avatar upload. Accept any path under avatars/ and return the
+    // supabase-js success shape. getPublicUrl is computed client-side.
+    if (req.method === "POST" && path.startsWith("/storage/v1/object/avatars/")) {
+      // Drain the body (the file bytes).
+      await readBody(req);
+      const objectPath = path.replace("/storage/v1/object/", "");
+      json(res, 200, { Key: objectPath });
+      return;
+    }
+
     // PostgREST: public_profiles (the public read view of active creators).
     if (path === "/rest/v1/public_profiles" && req.method === "GET") {
       json(res, 200, PUBLIC_CREATORS.map(({ handle, display_name, avatar_url, bio, onchain_registered }) => ({
@@ -195,29 +268,48 @@ export function startMockSupabase(port) {
       return;
     }
 
-    // PostgREST: donations. The explore page reads all confirmed/indexed
-    // visible donations; the creator page filters by creator_profile_id.
+    // PostgREST: donations. Filters: creator_profile_id (eq), user_id (eq),
+    // status (in), moderation_status (eq). Columns projected from `select`.
     if (path === "/rest/v1/donations" && req.method === "GET") {
-      const filters = eqFilters(query);
-      let rows = DONATIONS;
-      if (filters.creator_profile_id) {
-        rows = rows.filter((d) => d.creator_profile_id === filters.creator_profile_id);
+      const eq = eqFilters(query);
+      const ins = inFilters(query);
+      let rows = DONATIONS.slice();
+      if (eq.creator_profile_id) {
+        rows = rows.filter((d) => d.creator_profile_id === eq.creator_profile_id);
       }
-      json(res, 200, rows.map(({ donor_name, amount, user_id }) => ({ donor_name, amount, user_id })));
+      if (eq.user_id) {
+        rows = rows.filter((d) => d.user_id === eq.user_id);
+      }
+      if (ins.status) {
+        rows = rows.filter((d) => ins.status.includes(d.status));
+      }
+      if (eq.moderation_status) {
+        rows = rows.filter((d) => d.moderation_status === eq.moderation_status);
+      }
+      // Order by created_at descending when requested (donor history).
+      if (query.get("order") === "created_at.desc") {
+        rows.sort((a, b) => (a.created_at < b.created_at ? 1 : -1));
+      }
+      json(res, 200, project(rows, query.get("select")));
       return;
     }
 
     // PostgREST: profiles. The dashboard reads the caller's profile by
-    // user_id; the creator page reads a public creator by handle. When a
-    // `handle=eq.<h>` filter is present, return the matching public creator
-    // (or an empty array so maybeSingle resolves null -> notFound). Otherwise
-    // return the in-memory user profile.
+    // user_id; the creator page reads a public creator by handle; the
+    // dashboard service-role path reads creators by id=in.(...) for the
+    // per-creator rank lookup.
     if (path === "/rest/v1/profiles") {
       if (req.method === "GET") {
-        const filters = eqFilters(query);
-        if (filters.handle) {
-          const match = PUBLIC_CREATORS.find((c) => c.handle === filters.handle);
+        const eq = eqFilters(query);
+        const ins = inFilters(query);
+        if (eq.handle) {
+          const match = PUBLIC_CREATORS.find((c) => c.handle === eq.handle);
           json(res, 200, match ? [match] : []);
+          return;
+        }
+        if (ins.id) {
+          const matches = PUBLIC_CREATORS.filter((c) => ins.id.includes(c.id));
+          json(res, 200, project(matches, query.get("select")));
           return;
         }
         json(res, 200, [profile]);

@@ -3,11 +3,18 @@ import { render, screen } from "@testing-library/react";
 
 const getUser = vi.fn();
 const serverFrom = vi.fn();
+const serviceFrom = vi.fn();
 
 vi.mock("@/lib/supabase/server", () => ({
   createServerClient: vi.fn(async () => ({
     auth: { getUser },
     from: serverFrom,
+  })),
+}));
+
+vi.mock("@/lib/supabase/service", () => ({
+  createServiceClient: vi.fn(() => ({
+    from: serviceFrom,
   })),
 }));
 
@@ -45,6 +52,7 @@ describe("/dashboard session gating", () => {
     getUser.mockReset();
     redirect.mockReset();
     serverFrom.mockReset();
+    serviceFrom.mockReset();
   });
 
   it("redirects to /login when there is no session", async () => {
@@ -56,20 +64,46 @@ describe("/dashboard session gating", () => {
 
   it("renders the shell when a session is present", async () => {
     getUser.mockResolvedValue({ data: { user: { id: "u1" } }, error: null });
-    const chain = {
-      select: vi.fn(() => chain),
-      eq: vi.fn(() => chain),
+    // Session client: profiles (maybeSingle) + donations (array, ordered).
+    const profileChain = {
+      select: vi.fn(() => profileChain),
+      eq: vi.fn(() => profileChain),
       maybeSingle: vi.fn(async () => ({
         data: {
           id: "p1",
+          user_id: "u1",
+          display_name: "Ada",
+          avatar_url: null,
           handle: null,
           owner_address: null,
           onchain_registered: false,
+          payout_address: null,
         },
         error: null,
       })),
+      order: vi.fn(async () => ({ data: [], error: null })),
     };
-    serverFrom.mockReturnValue(chain);
+    const donationsChain = {
+      select: vi.fn(() => donationsChain),
+      eq: vi.fn(() => donationsChain),
+      order: vi.fn(async () => ({ data: [], error: null })),
+    };
+    serverFrom.mockImplementation((table: string) =>
+      table === "profiles" ? profileChain : donationsChain,
+    );
+    // Service client: donations (array) + profiles (array).
+    const serviceDonationsChain = {
+      select: vi.fn(() => serviceDonationsChain),
+      in: vi.fn(() => serviceDonationsChain),
+      eq: vi.fn(async () => ({ data: [], error: null })),
+    };
+    const serviceProfilesChain = {
+      select: vi.fn(() => serviceProfilesChain),
+      in: vi.fn(async () => ({ data: [], error: null })),
+    };
+    serviceFrom.mockImplementation((table: string) =>
+      table === "donations" ? serviceDonationsChain : serviceProfilesChain,
+    );
     const { default: DashboardPage } = await import("@/app/(auth)/dashboard/page");
     const element = await DashboardPage();
     const { container } = render(element);
