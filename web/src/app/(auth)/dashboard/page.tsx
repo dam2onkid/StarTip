@@ -2,7 +2,11 @@ import { redirect } from "next/navigation";
 import { createServerClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
 import { LogoutButton } from "@/app/(auth)/dashboard/logout-button";
-import { CreatorTab, type CreatorProfile } from "@/app/(auth)/dashboard/creator-tab";
+import {
+  CreatorTab,
+  type CreatorProfile,
+  type CreatorActiveData,
+} from "@/app/(auth)/dashboard/creator-tab";
 import {
   DonorTab,
   type DonorProfile,
@@ -10,6 +14,10 @@ import {
   type DonorPerCreatorRank,
 } from "@/app/(auth)/dashboard/donor-tab";
 import { computeDonorRank, type DonorRankRow } from "@/lib/donor/stats";
+import {
+  loadCreatorDashboardData,
+  type CreatorDonationRow,
+} from "@/lib/creators/creator-stats";
 
 /**
  * `/dashboard` — authed shell for the `(auth)` route group.
@@ -45,7 +53,7 @@ export default async function DashboardPage() {
   const { data: profile } = await supabase
     .from("profiles")
     .select(
-      "id,user_id,display_name,avatar_url,handle,owner_address,onchain_registered,payout_address",
+      "id,user_id,display_name,avatar_url,bio,handle,owner_address,onchain_registered,payout_address,paused",
     )
     .eq("user_id", user.id)
     .maybeSingle();
@@ -55,23 +63,40 @@ export default async function DashboardPage() {
     user_id: string;
     display_name: string;
     avatar_url: string | null;
+    bio: string | null;
     handle: string | null;
     owner_address: string | null;
     onchain_registered: boolean;
     payout_address?: string | null;
+    paused: boolean;
   } | null;
 
   const creatorProfile: CreatorProfile = p
     ? {
         id: p.id,
+        user_id: p.user_id,
+        display_name: p.display_name,
+        avatar_url: p.avatar_url,
+        bio: p.bio,
         handle: p.handle,
         owner_address: p.owner_address,
         onchain_registered: p.onchain_registered,
         payout_address: p.payout_address,
+        paused: p.paused,
       }
     : // No profile row yet (should not happen — autocreate trigger) — start at
       // gate 1 with a synthetic id so Realtime can still attach if one appears.
-      { id: "", handle: null, owner_address: null, onchain_registered: false };
+      {
+        id: "",
+        user_id: user.id,
+        display_name: "Anonymous",
+        avatar_url: null,
+        bio: null,
+        handle: null,
+        owner_address: null,
+        onchain_registered: false,
+        paused: false,
+      };
 
   // Donation history via the donor RLS path (own donations, all columns).
   const { data: historyRows } = await supabase
@@ -143,7 +168,29 @@ export default async function DashboardPage() {
       }
     : undefined;
 
-  return <DashboardShell creatorProfile={creatorProfile} donorData={donorData} />;
+  // Creator active-features data: when the profile is an on-chain registered
+  // Creator, load the received donations via the creator RLS path (all
+  // columns, including hidden) and derive stats + the per-creator leaderboard.
+  // The session client carries the user's JWT so the donations_creator_select
+  // policy applies; the service role is not needed for the Creator's own
+  // donations.
+  let creatorActiveData: CreatorActiveData | undefined;
+  if (p && p.onchain_registered && p.handle) {
+    const loaded = await loadCreatorDashboardData(supabase, p.id);
+    creatorActiveData = {
+      stats: loaded.stats,
+      leaderboard: loaded.leaderboard,
+      recent: loaded.recent as CreatorDonationRow[],
+    };
+  }
+
+  return (
+    <DashboardShell
+      creatorProfile={creatorProfile}
+      donorData={donorData}
+      creatorActiveData={creatorActiveData}
+    />
+  );
 }
 
 /**
@@ -156,6 +203,7 @@ export default async function DashboardPage() {
 export function DashboardShell({
   creatorProfile,
   donorData,
+  creatorActiveData,
 }: {
   creatorProfile?: CreatorProfile;
   donorData?: {
@@ -164,9 +212,19 @@ export function DashboardShell({
     globalRank: { rank: number | null; total: string };
     perCreatorRanks: DonorPerCreatorRank[];
   };
+  creatorActiveData?: CreatorActiveData;
 }) {
-  const profile: CreatorProfile =
-    creatorProfile ?? { id: "", handle: null, owner_address: null, onchain_registered: false };
+  const profile: CreatorProfile = creatorProfile ?? {
+    id: "",
+    user_id: "",
+    display_name: "Anonymous",
+    avatar_url: null,
+    bio: null,
+    handle: null,
+    owner_address: null,
+    onchain_registered: false,
+    paused: false,
+  };
   return (
     <section className="mx-auto flex w-full max-w-5xl flex-col gap-6 px-6 py-24">
       <div className="flex items-center justify-between">
@@ -196,7 +254,7 @@ export function DashboardShell({
         )}
       </div>
       <div role="tabpanel" aria-labelledby="creator-tab">
-        <CreatorTab profile={profile} />
+        <CreatorTab profile={profile} activeData={creatorActiveData} />
       </div>
     </section>
   );

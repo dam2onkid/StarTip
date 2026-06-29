@@ -149,9 +149,70 @@ let profile = {
   owner_address: null,
   onchain_registered: false,
   payout_address: null,
+  paused: false,
   wallet_link_nonce: null,
   wallet_link_nonce_expires_at: null,
 };
+
+// Creator-mode: when enabled, the stub user IS a registered on-chain Creator.
+// The dashboard server component then loads the Creator active-features panel.
+// Toggled via `POST /mock/creator-mode` with `{ "enabled": true }`.
+const CREATOR_MODE_PROFILE_ID = "00000000-0000-0000-0000-0000000000c0";
+const CREATOR_MODE_DONATIONS = [
+  {
+    id: "00000000-0000-0000-0000-000000000e1",
+    donor_name: "Bob",
+    amount: "500",
+    user_id: "00000000-0000-0000-0000-000000000020",
+    creator_profile_id: CREATOR_MODE_PROFILE_ID,
+    token: "USDC",
+    message: "Nice stream!",
+    donor_address: "GBBOB",
+    status: "confirmed",
+    moderation_status: "visible",
+    created_at: "2026-06-02T00:00:00Z",
+  },
+  {
+    id: "00000000-0000-0000-0000-000000000e2",
+    donor_name: "Troll",
+    amount: "1",
+    user_id: "00000000-0000-0000-0000-000000000030",
+    creator_profile_id: CREATOR_MODE_PROFILE_ID,
+    token: "USDC",
+    message: "bad words",
+    donor_address: "GBTROLL",
+    status: "confirmed",
+    moderation_status: "hidden",
+    created_at: "2026-06-03T00:00:00Z",
+  },
+  {
+    id: "00000000-0000-0000-0000-000000000e3",
+    donor_name: "Anonymous",
+    amount: "9999",
+    user_id: null,
+    creator_profile_id: CREATOR_MODE_PROFILE_ID,
+    token: "USDC",
+    message: null,
+    donor_address: null,
+    status: "confirmed",
+    moderation_status: "visible",
+    created_at: "2026-06-04T00:00:00Z",
+  },
+];
+// Mutable copies so moderation PATCHes persist for the duration of the run.
+let creatorModeDonations = CREATOR_MODE_DONATIONS.map((d) => ({ ...d }));
+let creatorMode = false;
+function creatorModeProfile() {
+  return {
+    ...profile,
+    id: CREATOR_MODE_PROFILE_ID,
+    handle: "ada",
+    owner_address: "GDF6CFYOXQTZVSLLK2RTDAUZ6N2E72IL4K2L34HXZK32KBR4NLVPLUVA",
+    onchain_registered: true,
+    payout_address: "GBPAYOUTADDRESS",
+    paused: false,
+  };
+}
 
 function cors(res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
@@ -228,6 +289,32 @@ export function startMockSupabase(port) {
       return;
     }
 
+    // Mock control: toggle creator-mode. When enabled, the stub user IS a
+    // registered on-chain Creator so the dashboard renders the active panel.
+    // `POST /mock/creator-mode { "enabled": true }` turns it on; passing
+    // `false` resets to the donor-only profile. Also resets the
+    // creator-mode donations so moderation PATCHes do not leak across runs.
+    if (req.method === "POST" && path === "/mock/creator-mode") {
+      const raw = await readBody(req);
+      let body = {};
+      try { body = raw ? JSON.parse(raw) : {}; } catch { body = {}; }
+      creatorMode = !!body.enabled;
+      creatorModeDonations = CREATOR_MODE_DONATIONS.map((d) => ({ ...d }));
+      // Seed or reset the base profile fields so creator-mode PATCHes do not
+      // leak into the donor-only profile when creator-mode is disabled.
+      if (creatorMode) {
+        profile.display_name = "Ada";
+        profile.bio = "Pioneer programmer.";
+        profile.avatar_url = null;
+      } else {
+        profile.display_name = "Fan";
+        profile.bio = null;
+        profile.avatar_url = null;
+      }
+      json(res, 200, { creatorMode });
+      return;
+    }
+
     // PKCE code exchange or token refresh.
     if (req.method === "POST" && path === "/auth/v1/token") {
       json(res, 200, SESSION);
@@ -270,28 +357,58 @@ export function startMockSupabase(port) {
 
     // PostgREST: donations. Filters: creator_profile_id (eq), user_id (eq),
     // status (in), moderation_status (eq). Columns projected from `select`.
-    if (path === "/rest/v1/donations" && req.method === "GET") {
-      const eq = eqFilters(query);
-      const ins = inFilters(query);
-      let rows = DONATIONS.slice();
-      if (eq.creator_profile_id) {
-        rows = rows.filter((d) => d.creator_profile_id === eq.creator_profile_id);
+    // In creator-mode, donations for the creator's profile_id come from the
+    // creator-mode donation set (so the active panel sees Bob + Troll + Anon);
+    // donor-history queries (user_id eq) still read the donor donations.
+    if (path === "/rest/v1/donations") {
+      if (req.method === "GET") {
+        const eq = eqFilters(query);
+        const ins = inFilters(query);
+        let rows;
+        if (creatorMode && eq.creator_profile_id === CREATOR_MODE_PROFILE_ID) {
+          rows = creatorModeDonations.slice();
+        } else {
+          rows = DONATIONS.slice();
+        }
+        if (eq.creator_profile_id) {
+          rows = rows.filter((d) => d.creator_profile_id === eq.creator_profile_id);
+        }
+        if (eq.user_id) {
+          rows = rows.filter((d) => d.user_id === eq.user_id);
+        }
+        if (ins.status) {
+          rows = rows.filter((d) => ins.status.includes(d.status));
+        }
+        if (eq.moderation_status) {
+          rows = rows.filter((d) => d.moderation_status === eq.moderation_status);
+        }
+        // Order by created_at descending when requested (donor history / moderation list).
+        if (query.get("order") === "created_at.desc") {
+          rows.sort((a, b) => (a.created_at < b.created_at ? 1 : -1));
+        }
+        json(res, 200, project(rows, query.get("select")));
+        return;
       }
-      if (eq.user_id) {
-        rows = rows.filter((d) => d.user_id === eq.user_id);
+      // PATCH /rest/v1/donations?id=eq.<id>: creator moderation toggle. Only
+      // `moderation_status` is writable (mirrors the column-level GRANT). The
+      // moderation RLS policy would reject a non-creator, but the mock does
+      // not enforce RLS; the E2E drives it as the creator.
+      if (req.method === "PATCH") {
+        const eq = eqFilters(query);
+        const raw = await readBody(req);
+        let patch = {};
+        try { patch = raw ? JSON.parse(raw) : {}; } catch { patch = {}; }
+        if (eq.id && "moderation_status" in patch) {
+          creatorModeDonations = creatorModeDonations.map((d) =>
+            d.id === eq.id ? { ...d, moderation_status: patch.moderation_status } : d,
+          );
+          const updated = creatorModeDonations.find((d) => d.id === eq.id);
+          json(res, 200, updated ? [updated] : []);
+        } else {
+          json(res, 200, []);
+        }
+        return;
       }
-      if (ins.status) {
-        rows = rows.filter((d) => ins.status.includes(d.status));
-      }
-      if (eq.moderation_status) {
-        rows = rows.filter((d) => d.moderation_status === eq.moderation_status);
-      }
-      // Order by created_at descending when requested (donor history).
-      if (query.get("order") === "created_at.desc") {
-        rows.sort((a, b) => (a.created_at < b.created_at ? 1 : -1));
-      }
-      json(res, 200, project(rows, query.get("select")));
-      return;
     }
 
     // PostgREST: profiles. The dashboard reads the caller's profile by
@@ -312,7 +429,10 @@ export function startMockSupabase(port) {
           json(res, 200, project(matches, query.get("select")));
           return;
         }
-        json(res, 200, [profile]);
+        // The caller's own profile. In creator-mode, return the registered
+        // creator profile so the dashboard renders the active panel.
+        const own = creatorMode ? creatorModeProfile() : profile;
+        json(res, 200, [own]);
         return;
       }
       if (req.method === "PATCH" || req.method === "POST") {
@@ -324,7 +444,7 @@ export function startMockSupabase(port) {
           patch = {};
         }
         profile = { ...profile, ...patch };
-        json(res, 200, profile);
+        json(res, 200, creatorMode ? { ...creatorModeProfile(), ...patch } : profile);
         return;
       }
     }

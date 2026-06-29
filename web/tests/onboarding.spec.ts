@@ -179,6 +179,7 @@ test.describe("Creator onboarding four-gate flow", () => {
 
     // Drive the Realtime flip via the stub.
     await pushActive?.("GBPAYOUT");
-    await expect(page.getByText(/Creator is active/i)).toBeVisible();
+    await expect(page.getByText(/You are live on-chain/i)).toBeVisible();
+    await expect(page.getByTestId("creator-active")).toBeVisible();
   });
 });

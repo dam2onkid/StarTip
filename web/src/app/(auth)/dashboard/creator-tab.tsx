@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createBrowserClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import {
@@ -26,6 +26,11 @@ import {
   readTreasuryAddress,
   payoutAddressWarning,
 } from "@/lib/onboarding/register";
+import {
+  updateCreatorPayoutOnChain,
+  setCreatorActiveOnChain,
+} from "@/lib/creators/active";
+import { updateDonationModerationStatus } from "@/lib/creators/moderation";
 import { contractId } from "@/lib/stellar/client";
 
 /**
@@ -38,16 +43,53 @@ import { contractId } from "@/lib/stellar/client";
  * Supabase Realtime on the Profile row so the `onchain_pending → active` flip
  * happens the moment the indexer mirrors `CreatorRegistered`, with no manual
  * refresh.
+ *
+ * Once `onchain_registered = true` (gate 4 / active), the tab unlocks the
+ * active-features panel: stats, per-creator leaderboard, payout updates,
+ * self-pause/unpause, profile editing, avatar upload, the Overlay URL, and
+ * donation moderation. All on-chain actions (`update_creator_payout`,
+ * `set_creator_active_owner`) follow the same client-builds + wallet-signs +
+ * submits-to-RPC pattern as `register_creator`, and the dashboard waits for
+ * the indexer to mirror the change via Supabase Realtime (ADR-0003: no
+ * optimistic UI for these events).
  */
 
 export interface CreatorProfile extends OnboardingProfile {
   id: string;
+  user_id: string;
+  display_name: string;
+  avatar_url: string | null;
+  bio: string | null;
   /** On-chain payout address; set by the indexer after `CreatorRegistered`. */
   payout_address?: string | null;
+  /** Mirrored by the indexer from `CreatorActiveChanged` (`paused = !active`). */
+  paused?: boolean;
+}
+
+/** A received-donation row for the moderation list (creator RLS, all columns). */
+export interface CreatorDonationRow {
+  id: string;
+  donor_name: string;
+  amount: string;
+  token: string;
+  message: string | null;
+  donor_address: string | null;
+  user_id: string | null;
+  status: string;
+  moderation_status: string;
+  created_at: string;
+}
+
+/** Active-features data loaded server-side and passed into the active panel. */
+export interface CreatorActiveData {
+  stats: { total: string; count: number };
+  leaderboard: { donor_name: string; total_amount: string }[];
+  recent: CreatorDonationRow[];
 }
 
 export interface CreatorTabProps {
   profile: CreatorProfile;
+  activeData?: CreatorActiveData;
 }
 
 type Status =
@@ -56,7 +98,7 @@ type Status =
   | { kind: "error"; message: string }
   | { kind: "info"; message: string };
 
-export function CreatorTab({ profile }: CreatorTabProps) {
+export function CreatorTab({ profile, activeData }: CreatorTabProps) {
   const [current, setCurrent] = useState<CreatorProfile>(profile);
   const [status, setStatus] = useState<Status>({ kind: "idle" });
   const state = deriveOnboardingState(current);
@@ -101,7 +143,12 @@ export function CreatorTab({ profile }: CreatorTabProps) {
           }
         />
       )}
-      {state === "active" && <ActiveGate current={current} />}
+      {state === "active" && (
+        <>
+          <StatusLine status={status} />
+          <ActiveGate current={current} activeData={activeData} onUpdate={setCurrent} />
+        </>
+      )}
     </div>
   );
 }
@@ -516,19 +563,575 @@ function OnchainPendingGate(args: {
 
 /* ------------------------------------------------------------------ */
 
-/** Gate 4: active. */
-function ActiveGate({ current }: { current: CreatorProfile }) {
+/** Gate 4: active. The full Creator active-features panel. */
+function ActiveGate(args: {
+  current: CreatorProfile;
+  activeData?: CreatorActiveData;
+  onUpdate: (updater: (prev: CreatorProfile) => CreatorProfile) => void;
+}) {
+  const { current, activeData, onUpdate } = args;
+  // Subscribe to Realtime on the profile row so `payout_address` and `paused`
+  // flips (mirrored by the indexer after `update_creator_payout` /
+  // `set_creator_active_owner`) land without a manual refresh.
+  useCreatorActiveRealtime(current, (next) => {
+    onUpdate((prev) => ({ ...prev, ...next }));
+  });
+
+  return (
+    <div className="flex flex-col gap-4" data-testid="creator-active">
+      <OnchainStatusCard current={current} />
+      <StatsCard activeData={activeData} />
+      <LeaderboardCard activeData={activeData} />
+      <PayoutUpdateCard current={current} />
+      <PauseCard current={current} />
+      <ProfileEditCard current={current} onUpdate={onUpdate} />
+      <OverlayUrlCard handle={current.handle} />
+      <ModerationCard activeData={activeData} />
+    </div>
+  );
+}
+
+/** On-chain registration status: owner address, payout address, paused/active. */
+function OnchainStatusCard({ current }: { current: CreatorProfile }) {
+  const paused = current.paused ?? false;
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Creator is active</CardTitle>
+        <CardTitle>On-chain status</CardTitle>
         <CardDescription>
-          You are registered on-chain and can receive donations.
+          Your registration as mirrored by the indexer.
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-1 text-xs text-muted-foreground">
-        <p>Handle: <span className="font-mono text-foreground">@{current.handle}</span></p>
-        <p>Wallet: <span className="font-mono text-foreground">{current.owner_address}</span></p>
+        <p data-testid="onchain-registered">
+          Registered: <span className="font-mono text-foreground">
+            {current.onchain_registered ? "yes" : "no"}
+          </span>
+        </p>
+        <p data-testid="onchain-owner">
+          Owner: <span className="font-mono text-foreground">{current.owner_address}</span>
+        </p>
+        <p data-testid="onchain-payout">
+          Payout: <span className="font-mono text-foreground">
+            {current.payout_address ?? "—"}
+          </span>
+        </p>
+        <p data-testid="onchain-paused">
+          Status: <span className="font-mono text-foreground">
+            {paused ? "paused" : "active"}
+          </span>
+        </p>
+      </CardContent>
+    </Card>
+  );
+}
+
+/** Stats: total received and donation count (including hidden). */
+function StatsCard({ activeData }: { activeData?: CreatorActiveData }) {
+  const total = activeData?.stats.total ?? "0";
+  const count = activeData?.stats.count ?? 0;
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Stats</CardTitle>
+        <CardDescription>
+          Total received and donation count, including hidden donations.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <dl className="flex flex-col gap-2">
+          <div className="flex items-center justify-between">
+            <dt className="text-sm text-muted-foreground">Total received</dt>
+            <dd className="font-mono text-sm text-foreground" data-testid="creator-total-received">
+              {total}
+            </dd>
+          </div>
+          <div className="flex items-center justify-between">
+            <dt className="text-sm text-muted-foreground">Donations</dt>
+            <dd className="font-mono text-sm text-foreground" data-testid="creator-donation-count">
+              {count}
+            </dd>
+          </div>
+        </dl>
+      </CardContent>
+    </Card>
+  );
+}
+
+/** Per-creator leaderboard: top Donors to this Creator (logged-in donors only). */
+function LeaderboardCard({ activeData }: { activeData?: CreatorActiveData }) {
+  const leaderboard = activeData?.leaderboard ?? [];
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Top Donors</CardTitle>
+        <CardDescription>
+          Your top donors, ranked by total donated. Anonymous donations are excluded.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        {leaderboard.length === 0 ? (
+          <p className="text-sm text-muted-foreground">
+            No tracked donations yet.
+          </p>
+        ) : (
+          <ol className="flex flex-col gap-2" data-testid="creator-leaderboard">
+            {leaderboard.map((entry, i) => (
+              <li
+                key={entry.donor_name}
+                className="flex items-center justify-between rounded-md bg-card px-3 py-2 ring-1 ring-foreground/10"
+              >
+                <span className="flex items-center gap-3">
+                  <span className="font-mono text-xs text-muted-foreground">
+                    {String(i + 1).padStart(2, "0")}
+                  </span>
+                  <span className="font-medium text-foreground">{entry.donor_name}</span>
+                </span>
+                <span className="font-mono text-sm text-muted-foreground">
+                  {entry.total_amount}
+                </span>
+              </li>
+            ))}
+          </ol>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+/** Payout update: enter a new Payout Address, sign + submit, wait for Realtime. */
+function PayoutUpdateCard({ current }: { current: CreatorProfile }) {
+  const [payout, setPayout] = useState("");
+  const [treasury, setTreasury] = useState<string | null | undefined>(undefined);
+  const [status, setStatus] = useState<Status>({ kind: "idle" });
+
+  useEffect(() => {
+    let alive = true;
+    readTreasuryAddress()
+      .then((t) => { if (alive) setTreasury(t); })
+      .catch(() => { if (alive) setTreasury(null); });
+    return () => { alive = false; };
+  }, []);
+
+  const warning = useMemo(
+    () =>
+      treasury === undefined
+        ? null
+        : payoutAddressWarning(payout.trim(), { contractId, treasuryAddress: treasury }),
+    [payout, treasury],
+  );
+
+  async function submit() {
+    if (!current.owner_address || !current.handle) return;
+    setStatus({ kind: "busy" });
+    try {
+      await updateCreatorPayoutOnChain({
+        ownerAddress: current.owner_address,
+        handle: current.handle,
+        newPayoutAddress: payout.trim(),
+      });
+      setStatus({
+        kind: "info",
+        message: "Payout update submitted. Waiting for the indexer to mirror it.",
+      });
+    } catch (e) {
+      setStatus({ kind: "error", message: errorMessage(e, "Payout update failed.") });
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Update payout address</CardTitle>
+        <CardDescription>
+          Sign <span className="font-mono">update_creator_payout</span> with your wallet.
+          The indexer will mirror the new address.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-3">
+        <div className="flex flex-col gap-1">
+          <label className="text-xs text-muted-foreground" htmlFor="payout-update-input">
+            New Payout Address
+          </label>
+          <input
+            id="payout-update-input"
+            className="h-9 flex-1 rounded-lg border border-border/50 bg-background px-3 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+            value={payout}
+            onChange={(e) => { setPayout(e.target.value); setStatus({ kind: "idle" }); }}
+            autoComplete="off"
+            spellCheck={false}
+            placeholder="G…"
+            aria-describedby="payout-update-warning"
+            data-testid="payout-update-input"
+          />
+        </div>
+        {warning ? (
+          <p id="payout-update-warning" className="text-xs text-destructive">
+            Warning: this is the {warning === "contract" ? "contract address" : "Treasury address"}.
+            The contract will not reject it and funds sent there will be stranded.
+          </p>
+        ) : null}
+        <Button
+          type="button"
+          size="sm"
+          onClick={submit}
+          disabled={status.kind === "busy" || payout.trim().length === 0}
+          className="self-start"
+          data-testid="payout-update-submit"
+        >
+          {status.kind === "info" ? "Payout update pending" : "Update payout"}
+        </Button>
+        <StatusLine status={status} />
+      </CardContent>
+    </Card>
+  );
+}
+
+/** Self-pause / unpause: sign + submit `set_creator_active_owner`, wait for Realtime. */
+function PauseCard({ current }: { current: CreatorProfile }) {
+  const paused = current.paused ?? false;
+  const [status, setStatus] = useState<Status>({ kind: "idle" });
+
+  async function toggle() {
+    if (!current.owner_address || !current.handle) return;
+    setStatus({ kind: "busy" });
+    try {
+      await setCreatorActiveOnChain({
+        ownerAddress: current.owner_address,
+        handle: current.handle,
+        active: paused,
+      });
+      setStatus({
+        kind: "info",
+        message: paused
+          ? "Unpause submitted. Waiting for the indexer to mirror it."
+          : "Pause submitted. Waiting for the indexer to mirror it.",
+      });
+    } catch (e) {
+      setStatus({ kind: "error", message: errorMessage(e, "Pause/unpause failed.") });
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Pause / unpause</CardTitle>
+        <CardDescription>
+          Sign <span className="font-mono">set_creator_active_owner</span> to stop or resume
+          receiving donations.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-3">
+        <p className="text-xs text-muted-foreground" data-testid="pause-status">
+          Current status: <span className="font-mono text-foreground">
+            {paused ? "paused" : "active"}
+          </span>
+        </p>
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          onClick={toggle}
+          disabled={status.kind === "busy"}
+          className="self-start"
+          data-testid="pause-toggle"
+        >
+          {status.kind === "info"
+            ? paused
+              ? "Unpause pending"
+              : "Pause pending"
+            : paused
+              ? "Unpause"
+              : "Pause"}
+        </Button>
+        <StatusLine status={status} />
+      </CardContent>
+    </Card>
+  );
+}
+
+/** Profile edit: display_name, avatar_url, bio via owner UPDATE RLS + avatar upload. */
+function ProfileEditCard(args: {
+  current: CreatorProfile;
+  onUpdate: (updater: (prev: CreatorProfile) => CreatorProfile) => void;
+}) {
+  const { current, onUpdate } = args;
+  const [displayName, setDisplayName] = useState(current.display_name);
+  const [bio, setBio] = useState(current.bio ?? "");
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(current.avatar_url);
+  const [status, setStatus] = useState<
+    | { kind: "idle" }
+    | { kind: "saving" }
+    | { kind: "saved" }
+    | { kind: "error"; message: string }
+  >({ kind: "idle" });
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  async function save() {
+    setStatus({ kind: "saving" });
+    try {
+      const supabase = createBrowserClient();
+      let nextAvatarUrl = avatarUrl;
+      const file = fileInputRef.current?.files?.[0];
+      if (file) {
+        const ext = file.name.split(".").pop() ?? "png";
+        const path = `${current.user_id}/${Date.now()}.${ext}`;
+        const up = await supabase.storage.from("avatars").upload(path, file, {
+          cacheControl: "3600",
+          upsert: false,
+        });
+        if (up.error) throw up.error;
+        nextAvatarUrl = supabase.storage.from("avatars").getPublicUrl(path).data.publicUrl;
+      }
+      const update: { display_name: string; bio: string; avatar_url?: string | null } = {
+        display_name: displayName.trim() || "Anonymous",
+        bio: bio.trim(),
+      };
+      if (nextAvatarUrl !== current.avatar_url) {
+        update.avatar_url = nextAvatarUrl;
+      }
+      const res = await supabase.from("profiles").update(update).eq("user_id", current.user_id);
+      if (res.error) throw res.error;
+      setAvatarUrl(nextAvatarUrl);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      onUpdate((prev) => ({
+        ...prev,
+        display_name: update.display_name,
+        bio: update.bio,
+        avatar_url: nextAvatarUrl,
+      }));
+      setStatus({ kind: "saved" });
+    } catch (e) {
+      let message = "Could not save profile.";
+      if (e instanceof Error && e.message) message = e.message;
+      else if (e && typeof e === "object" && "message" in e && typeof (e as { message: unknown }).message === "string")
+        message = (e as { message: string }).message;
+      setStatus({ kind: "error", message });
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Edit your creator profile</CardTitle>
+        <CardDescription>
+          Your display name, avatar, and bio appear on your public creator page.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-3">
+        <div className="flex items-center gap-4">
+          {avatarUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={avatarUrl}
+              alt=""
+              width={48}
+              height={48}
+              className="h-12 w-12 rounded-full object-cover"
+              data-testid="creator-avatar-preview"
+            />
+          ) : (
+            <div
+              aria-hidden
+              className="h-12 w-12 rounded-full bg-foreground/10"
+              data-testid="creator-avatar-placeholder"
+            />
+          )}
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-muted-foreground" htmlFor="creator-avatar-input">
+              Avatar
+            </label>
+            <input
+              id="creator-avatar-input"
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              className="text-xs text-muted-foreground"
+              data-testid="creator-avatar-input"
+            />
+          </div>
+        </div>
+        <div className="flex flex-col gap-1">
+          <label className="text-xs text-muted-foreground" htmlFor="creator-display-name-input">
+            Display name
+          </label>
+          <input
+            id="creator-display-name-input"
+            className="h-9 flex-1 rounded-lg border border-border/50 bg-background px-3 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+            value={displayName}
+            onChange={(e) => { setDisplayName(e.target.value); setStatus({ kind: "idle" }); }}
+            placeholder="Anonymous"
+            autoComplete="off"
+          />
+        </div>
+        <div className="flex flex-col gap-1">
+          <label className="text-xs text-muted-foreground" htmlFor="creator-bio-input">
+            Bio
+          </label>
+          <textarea
+            id="creator-bio-input"
+            className="min-h-20 flex-1 rounded-lg border border-border/50 bg-background px-3 py-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+            value={bio}
+            onChange={(e) => { setBio(e.target.value); setStatus({ kind: "idle" }); }}
+            placeholder="Tell donors about yourself."
+            autoComplete="off"
+          />
+        </div>
+        <Button
+          type="button"
+          size="sm"
+          onClick={save}
+          disabled={status.kind === "saving"}
+          className="self-start"
+          data-testid="creator-profile-save"
+        >
+          {status.kind === "saving" ? "Saving…" : "Save profile"}
+        </Button>
+        {status.kind === "saved" && (
+          <p className="text-xs text-tertiary" aria-live="polite" data-testid="creator-save-status">
+            Profile saved.
+          </p>
+        )}
+        {status.kind === "error" && (
+          <p className="text-xs text-destructive" aria-live="polite" role="alert" data-testid="creator-save-status">
+            {status.message}
+          </p>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+/** Overlay URL: show `/overlay/[handle]` with a copy action. */
+function OverlayUrlCard({ handle }: { handle: string | null }) {
+  const [copied, setCopied] = useState(false);
+  // Build the URL client-side only to avoid SSR/CSR hydration mismatch
+  // (`window.location.origin` is undefined on the server).
+  const [url, setUrl] = useState("");
+  useEffect(() => {
+    if (handle) {
+      setUrl(`${window.location.origin}/overlay/${handle}`);
+    }
+  }, [handle]);
+  if (!handle) return null;
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 2000);
+    } catch {
+      setCopied(false);
+    }
+  }
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Overlay URL</CardTitle>
+        <CardDescription>
+          Add this URL as a browser source in OBS to show donation alerts on your stream.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-3">
+        <p className="font-mono text-sm text-foreground break-all" data-testid="overlay-url">
+          {url}
+        </p>
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          onClick={copy}
+          className="self-start"
+          data-testid="overlay-copy"
+        >
+          {copied ? "Copied" : "Copy URL"}
+        </Button>
+      </CardContent>
+    </Card>
+  );
+}
+
+/** Moderation: list incoming donations (including hidden), toggle visibility. */
+function ModerationCard({ activeData }: { activeData?: CreatorActiveData }) {
+  const recent = activeData?.recent ?? [];
+  const [rows, setRows] = useState<CreatorDonationRow[]>(recent);
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  // Keep local rows in sync when the server-provided snapshot changes.
+  useEffect(() => {
+    setRows(recent);
+    setError(null);
+  }, [recent]);
+
+  async function toggle(row: CreatorDonationRow) {
+    const next = row.moderation_status === "visible" ? "hidden" : "visible";
+    setBusyId(row.id);
+    setError(null);
+    try {
+      const supabase = createBrowserClient();
+      const res = await updateDonationModerationStatus(supabase, row.id, next);
+      if (!res.ok) {
+        setError(res.error ?? "Could not update moderation status.");
+        return;
+      }
+      setRows((prev) =>
+        prev.map((r) => (r.id === row.id ? { ...r, moderation_status: next } : r)),
+      );
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Moderation</CardTitle>
+        <CardDescription>
+          Toggle a donation&apos;s visibility. Hidden donations do not appear on the Overlay.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        {rows.length === 0 ? (
+          <p className="text-sm text-muted-foreground">No donations yet.</p>
+        ) : (
+          <ul className="flex flex-col gap-2" data-testid="moderation-list">
+            {rows.map((d) => (
+              <li
+                key={d.id}
+                className="flex items-center justify-between rounded-md bg-card px-3 py-2 ring-1 ring-foreground/10"
+              >
+                <span className="flex flex-col">
+                  <span className="font-mono text-sm text-foreground">
+                    {d.amount} {d.token}
+                  </span>
+                  <span className="text-xs text-muted-foreground">
+                    {d.donor_name}
+                    {d.message ? ` — ${d.message}` : ""}
+                  </span>
+                  <span className="text-xs text-muted-foreground">
+                    {d.moderation_status === "hidden" ? "hidden" : "visible"}
+                  </span>
+                </span>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => toggle(d)}
+                  disabled={busyId === d.id}
+                  data-testid={`moderation-toggle-${d.id}`}
+                  aria-label={`Toggle visibility for donation ${d.id}`}
+                >
+                  {d.moderation_status === "visible" ? "Hide" : "Show"}
+                </Button>
+              </li>
+            ))}
+          </ul>
+        )}
+        {error && (
+          <p className="mt-2 text-xs text-destructive" role="alert" data-testid="moderation-error">
+            {error}
+          </p>
+        )}
       </CardContent>
     </Card>
   );
@@ -591,6 +1194,66 @@ function useOnchainRegisteredRealtime(
             onActiveRef.current({
               payout_address: next.payout_address ?? undefined,
             });
+          }
+        },
+      )
+      .subscribe();
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [profile.id, profile.onchain_registered]);
+}
+
+/**
+ * Subscribe to Supabase Realtime on the caller's profile row and invoke the
+ * callback when the indexer mirrors a `payout_address` or `paused` change
+ * (from `update_creator_payout` / `set_creator_active_owner`). Only attaches
+ * once the Creator is on-chain registered (the active panel).
+ *
+ * Test seam: when `window.__STARTIP_REALTIME_STUB__` is present, the hook
+ * registers the callback with the stub so E2E can push the
+ * `payout_address` / `paused` flip deterministically without a WebSocket.
+ */
+function useCreatorActiveRealtime(
+  profile: CreatorProfile,
+  onUpdate: (next: Partial<CreatorProfile>) => void,
+) {
+  const onUpdateRef = useRef(onUpdate);
+  onUpdateRef.current = onUpdate;
+  useEffect(() => {
+    if (!profile.onchain_registered) return; // only active Creators need this
+
+    const stub =
+      typeof window !== "undefined" ? window.__STARTIP_REALTIME_STUB__ : undefined;
+    if (stub) {
+      return stub.subscribe((next) => onUpdateRef.current(next));
+    }
+
+    const supabase = createBrowserClient();
+    const channel = supabase
+      .channel(`profiles-active:${profile.id}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "profiles",
+          filter: `id=eq.${profile.id}`,
+        },
+        (payload) => {
+          const next = payload.new as {
+            payout_address?: string | null;
+            paused?: boolean;
+          };
+          const update: Partial<CreatorProfile> = {};
+          if (next.payout_address !== undefined) {
+            update.payout_address = next.payout_address;
+          }
+          if (next.paused !== undefined) {
+            update.paused = next.paused;
+          }
+          if (Object.keys(update).length > 0) {
+            onUpdateRef.current(update);
           }
         },
       )

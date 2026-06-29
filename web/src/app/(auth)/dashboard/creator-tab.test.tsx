@@ -1,12 +1,13 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, waitFor, act } from "@testing-library/react";
-import type { CreatorProfile } from "@/app/(auth)/dashboard/creator-tab";
+import type { CreatorProfile, CreatorActiveData } from "@/app/(auth)/dashboard/creator-tab";
 
 /**
- * Creator tab four-gate state machine. The wallet kit, fetch, and on-chain
- * register helpers are mocked so each gate can be exercised in isolation. The
- * Realtime flip is driven through a captured subscription callback.
+ * Creator tab four-gate state machine + active-features panel. The wallet kit,
+ * fetch, on-chain register/update helpers, and moderation helper are mocked so
+ * each gate and active feature can be exercised in isolation. The Realtime
+ * flip is driven through a captured subscription callback.
  */
 
 const STUB_ADDRESS = "GDF6CFYOXQTZVSLLK2RTDAUZ6N2E72IL4K2L34HXZK32KBR4NLVPLUVA";
@@ -18,6 +19,9 @@ const classifySignMessageError = vi.fn((): "unsupported" | "unknown" => "unknown
 const registerCreatorOnChain = vi.fn();
 const readTreasuryAddress = vi.fn(async () => null);
 const payoutAddressWarning = vi.fn((): "contract" | "treasury" | null => null);
+const updateCreatorPayoutOnChain = vi.fn();
+const setCreatorActiveOnChain = vi.fn();
+const updateDonationModerationStatus = vi.fn();
 
 vi.mock("@/lib/wallet/kit", () => ({
   connectWallet,
@@ -30,6 +34,15 @@ vi.mock("@/lib/onboarding/register", () => ({
   registerCreatorOnChain,
   readTreasuryAddress,
   payoutAddressWarning,
+}));
+
+vi.mock("@/lib/creators/active", () => ({
+  updateCreatorPayoutOnChain,
+  setCreatorActiveOnChain,
+}));
+
+vi.mock("@/lib/creators/moderation", () => ({
+  updateDonationModerationStatus,
 }));
 
 vi.mock("@/lib/stellar/client", () => ({
@@ -50,6 +63,14 @@ const subscribe = vi.fn(function (this: unknown) {
   return this;
 });
 
+// Profile edit + moderation use the browser supabase client's `.from()` and
+// `.storage()`. These recorders let the active-feature tests assert on the
+// PATCH shape and avatar upload path.
+const supabaseUpdateResult = { data: null, error: null as unknown };
+const supabaseUploadResult = { data: { path: "u1/t.png" }, error: null as unknown };
+const supabaseFromCalls: { table: string; payload: unknown; filters: Record<string, unknown> }[] = [];
+const supabaseStorageCalls: { bucket: string; op: string; path: string }[] = [];
+
 vi.mock("@/lib/supabase/client", () => ({
   createBrowserClient: vi.fn(() => ({
     channel: vi.fn(() => ({
@@ -57,15 +78,48 @@ vi.mock("@/lib/supabase/client", () => ({
       subscribe,
     })),
     removeChannel,
+    from: vi.fn((table: string) => {
+      const state = { payload: null as unknown, filters: {} as Record<string, unknown> };
+      const self = {
+        update(payload: unknown) { state.payload = payload; return self; },
+        eq(col: string, value: unknown) { state.filters[col] = value; return self; },
+        then(onFulfilled?: (v: { data: unknown; error: unknown }) => unknown) {
+          supabaseFromCalls.push({ table, payload: state.payload, filters: { ...state.filters } });
+          return Promise.resolve(supabaseUpdateResult).then(
+            onFulfilled as ((v: unknown) => unknown) | null,
+          );
+        },
+      };
+      return self;
+    }),
+    storage: vi.fn(() => ({
+      from(bucket: string) {
+        return {
+          upload(path: string) {
+            supabaseStorageCalls.push({ bucket, op: "upload", path });
+            return Promise.resolve(supabaseUploadResult);
+          },
+          getPublicUrl(path: string) {
+            supabaseStorageCalls.push({ bucket, op: "getPublicUrl", path });
+            return { data: { publicUrl: `https://stub/storage/v1/object/public/${bucket}/${path}` } };
+          },
+        };
+      },
+    })),
   })),
 }));
 
 function profile(over: Partial<CreatorProfile> = {}): CreatorProfile {
   return {
     id: "p1",
+    user_id: "u1",
+    display_name: "Anonymous",
+    avatar_url: null,
+    bio: null,
     handle: null,
     owner_address: null,
     onchain_registered: false,
+    paused: false,
     ...over,
   };
 }
@@ -94,7 +148,14 @@ beforeEach(() => {
   registerCreatorOnChain.mockReset();
   readTreasuryAddress.mockReset().mockResolvedValue(null);
   payoutAddressWarning.mockReset().mockReturnValue(null);
+  updateCreatorPayoutOnChain.mockReset();
+  setCreatorActiveOnChain.mockReset();
+  updateDonationModerationStatus.mockReset();
   removeChannel.mockReset();
+  supabaseFromCalls.length = 0;
+  supabaseStorageCalls.length = 0;
+  supabaseUpdateResult.error = null;
+  supabaseUploadResult.error = null;
 });
 
 afterEach(() => {
@@ -138,7 +199,8 @@ describe("CreatorTab — gate rendering", () => {
         })}
       />,
     );
-    expect(screen.getByText(/Creator is active/i)).toBeInTheDocument();
+    expect(screen.getByTestId("creator-active")).toBeInTheDocument();
+    expect(screen.getByText(/On-chain status/i)).toBeInTheDocument();
   });
 });
 
@@ -298,7 +360,200 @@ describe("CreatorTab — Realtime flip to active", () => {
       });
     });
     await waitFor(() => {
-      expect(screen.getByText(/Creator is active/i)).toBeInTheDocument();
+      expect(screen.getByTestId("creator-active")).toBeInTheDocument();
     });
+  });
+});
+
+describe("CreatorTab — active features", () => {
+  function activeProfile(over: Partial<CreatorProfile> = {}): CreatorProfile {
+    return profile({
+      handle: "ada",
+      owner_address: STUB_ADDRESS,
+      onchain_registered: true,
+      payout_address: "GBPAYOUT",
+      paused: false,
+      display_name: "Ada",
+      bio: "Pioneer programmer.",
+      ...over,
+    });
+  }
+
+  function activeData(over: Partial<CreatorActiveData> = {}): CreatorActiveData {
+    return {
+      stats: { total: "900", count: 3 },
+      leaderboard: [
+        { donor_name: "Bob", total_amount: "500" },
+        { donor_name: "Ada", total_amount: "400" },
+      ],
+      recent: [
+        {
+          id: "d1",
+          donor_name: "Bob",
+          amount: "500",
+          token: "USDC",
+          message: "Nice!",
+          donor_address: "G2",
+          user_id: "u2",
+          status: "confirmed",
+          moderation_status: "visible",
+          created_at: "2026-06-02T00:00:00Z",
+        },
+        {
+          id: "d2",
+          donor_name: "Troll",
+          amount: "1",
+          token: "USDC",
+          message: "bad",
+          donor_address: "G3",
+          user_id: "u3",
+          status: "confirmed",
+          moderation_status: "hidden",
+          created_at: "2026-06-03T00:00:00Z",
+        },
+      ],
+      ...over,
+    };
+  }
+
+  it("renders stats (total + count) from activeData", async () => {
+    const { CreatorTab } = await import("@/app/(auth)/dashboard/creator-tab");
+    render(<CreatorTab profile={activeProfile()} activeData={activeData()} />);
+    expect(screen.getByTestId("creator-total-received")).toHaveTextContent("900");
+    expect(screen.getByTestId("creator-donation-count")).toHaveTextContent("3");
+  });
+
+  it("renders the per-creator leaderboard from activeData", async () => {
+    const { CreatorTab } = await import("@/app/(auth)/dashboard/creator-tab");
+    render(<CreatorTab profile={activeProfile()} activeData={activeData()} />);
+    const board = screen.getByTestId("creator-leaderboard");
+    expect(board.textContent).toContain("Bob");
+    expect(board.textContent).toContain("500");
+  });
+
+  it("renders on-chain status (owner, payout, paused/active)", async () => {
+    const { CreatorTab } = await import("@/app/(auth)/dashboard/creator-tab");
+    render(<CreatorTab profile={activeProfile()} activeData={activeData()} />);
+    expect(screen.getByTestId("onchain-owner")).toHaveTextContent(STUB_ADDRESS);
+    expect(screen.getByTestId("onchain-payout")).toHaveTextContent("GBPAYOUT");
+    expect(screen.getByTestId("onchain-paused")).toHaveTextContent("active");
+  });
+
+  it("renders the overlay URL with the handle", async () => {
+    const { CreatorTab } = await import("@/app/(auth)/dashboard/creator-tab");
+    render(<CreatorTab profile={activeProfile()} activeData={activeData()} />);
+    expect(screen.getByTestId("overlay-url")).toHaveTextContent(/\/overlay\/ada/);
+    expect(screen.getByTestId("overlay-copy")).toBeInTheDocument();
+  });
+
+  it("submits update_creator_payout and shows pending", async () => {
+    const { CreatorTab } = await import("@/app/(auth)/dashboard/creator-tab");
+    updateCreatorPayoutOnChain.mockResolvedValue({ status: "PENDING", hash: "tx2" });
+    render(<CreatorTab profile={activeProfile()} activeData={activeData()} />);
+    await act(async () => {
+      fireEvent.change(screen.getByTestId("payout-update-input"), { target: { value: "GBNEW" } });
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("payout-update-submit"));
+    });
+    await waitFor(() => {
+      expect(screen.getByText(/Payout update submitted/i)).toBeInTheDocument();
+    });
+    expect(updateCreatorPayoutOnChain).toHaveBeenCalledWith({
+      ownerAddress: STUB_ADDRESS,
+      handle: "ada",
+      newPayoutAddress: "GBNEW",
+    });
+  });
+
+  it("payout update warns when the address equals the contract address", async () => {
+    const { CreatorTab } = await import("@/app/(auth)/dashboard/creator-tab");
+    payoutAddressWarning.mockReturnValue("contract");
+    render(<CreatorTab profile={activeProfile()} activeData={activeData()} />);
+    await act(async () => {
+      fireEvent.change(screen.getByTestId("payout-update-input"), { target: { value: "C-TEST" } });
+    });
+    await waitFor(() => {
+      expect(screen.getByText(/contract address/i)).toBeInTheDocument();
+    });
+  });
+
+  it("pause toggle signs + submits set_creator_active_owner and shows pending", async () => {
+    const { CreatorTab } = await import("@/app/(auth)/dashboard/creator-tab");
+    setCreatorActiveOnChain.mockResolvedValue({ status: "PENDING", hash: "tx3" });
+    render(<CreatorTab profile={activeProfile()} activeData={activeData()} />);
+    // Currently active -> button says "Pause".
+    expect(screen.getByTestId("pause-toggle")).toHaveTextContent("Pause");
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("pause-toggle"));
+    });
+    await waitFor(() => {
+      expect(screen.getByText(/Pause submitted/i)).toBeInTheDocument();
+    });
+    expect(setCreatorActiveOnChain).toHaveBeenCalledWith({
+      ownerAddress: STUB_ADDRESS,
+      handle: "ada",
+      active: false,
+    });
+  });
+
+  it("edits display_name + bio via the owner UPDATE RLS path", async () => {
+    const { CreatorTab } = await import("@/app/(auth)/dashboard/creator-tab");
+    render(<CreatorTab profile={activeProfile()} activeData={activeData()} />);
+    const nameInput = screen.getByLabelText(/display name/i);
+    const bioInput = screen.getByLabelText(/bio/i);
+    await act(async () => {
+      fireEvent.change(nameInput, { target: { value: "Ada L." } });
+    });
+    await act(async () => {
+      fireEvent.change(bioInput, { target: { value: "Math pioneer." } });
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("creator-profile-save"));
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId("creator-save-status")).toHaveTextContent(/saved/i);
+    });
+    // Assert the PATCH went to profiles with display_name + bio, filtered by user_id.
+    const profilePatch = supabaseFromCalls.find((c) => c.table === "profiles");
+    expect(profilePatch).toBeDefined();
+    expect(profilePatch?.payload).toEqual({
+      display_name: "Ada L.",
+      bio: "Math pioneer.",
+    });
+    expect(profilePatch?.filters.user_id).toBe("u1");
+  });
+
+  it("renders the avatar input and placeholder when no avatar is set", async () => {
+    const { CreatorTab } = await import("@/app/(auth)/dashboard/creator-tab");
+    render(<CreatorTab profile={activeProfile({ avatar_url: null })} activeData={activeData()} />);
+    expect(screen.getByTestId("creator-avatar-placeholder")).toBeInTheDocument();
+    expect(screen.getByTestId("creator-avatar-input")).toBeInTheDocument();
+  });
+
+  it("lists donations including hidden in the moderation list", async () => {
+    const { CreatorTab } = await import("@/app/(auth)/dashboard/creator-tab");
+    render(<CreatorTab profile={activeProfile()} activeData={activeData()} />);
+    const list = screen.getByTestId("moderation-list");
+    expect(list.textContent).toContain("Bob");
+    expect(list.textContent).toContain("Troll");
+  });
+
+  it("toggles a donation's visibility via the moderation RLS path", async () => {
+    const { CreatorTab } = await import("@/app/(auth)/dashboard/creator-tab");
+    updateDonationModerationStatus.mockResolvedValue({ ok: true });
+    render(<CreatorTab profile={activeProfile()} activeData={activeData()} />);
+    // d1 is visible -> button says "Hide".
+    const toggle = screen.getByTestId("moderation-toggle-d1");
+    expect(toggle).toHaveTextContent("Hide");
+    await act(async () => {
+      fireEvent.click(toggle);
+    });
+    await waitFor(() => {
+      expect(updateDonationModerationStatus).toHaveBeenCalled();
+    });
+    const call = updateDonationModerationStatus.mock.calls[0];
+    expect(call[1]).toBe("d1");
+    expect(call[2]).toBe("hidden");
   });
 });

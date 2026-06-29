@@ -27,6 +27,12 @@ async function establishSession(page: Page) {
 
 test.describe("Donor tab", () => {
   test.beforeEach(async ({ page }) => {
+    // Ensure creator-mode is off (it may have been enabled by the creator-tab
+    // tests that share the mock Supabase server).
+    const supabasePort = Number(process.env.MOCK_SUPABASE_PORT ?? "5499");
+    await page.request.post(`http://127.0.0.1:${supabasePort}/mock/creator-mode`, {
+      data: { enabled: false },
+    });
     await establishSession(page);
   });
 
