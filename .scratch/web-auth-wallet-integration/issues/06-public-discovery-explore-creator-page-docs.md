@@ -1,4 +1,4 @@
-Status: ready-for-agent
+Status: done
 
 ## Parent
 
@@ -40,17 +40,17 @@ page), and `/docs` (asserts placeholder renders).
 
 ## Acceptance criteria
 
-- [ ] `GET /api/creators/[handle]` returns public fields for registered +
+- [x] `GET /api/creators/[handle]` returns public fields for registered +
       not-paused creators and 404 otherwise.
-- [ ] `/creator/explore` lists active Creators (display name, avatar, Handle)
+- [x] `/creator/explore` lists active Creators (display name, avatar, Handle)
       and renders the Global Leaderboard (logged-in donors only).
-- [ ] Each Creator in the explore list links to `/creator/[handle]`.
-- [ ] `/creator/[handle]` renders the Creator's public profile, donation stats,
+- [x] Each Creator in the explore list links to `/creator/[handle]`.
+- [x] `/creator/[handle]` renders the Creator's public profile, donation stats,
       per-creator leaderboard, and a Donate CTA to `/creator/[handle]/donate`.
-- [ ] `/docs` renders a static placeholder.
-- [ ] Vitest covers `GET /api/creators/[handle]` public/404 paths.
-- [ ] Playwright covers explore, creator page, and docs.
-- [ ] `pnpm build`, `pnpm typecheck`, `pnpm test` pass.
+- [x] `/docs` renders a static placeholder.
+- [x] Vitest covers `GET /api/creators/[handle]` public/404 paths.
+- [x] Playwright covers explore, creator page, and docs.
+- [x] `pnpm build`, `pnpm typecheck`, `pnpm test` pass.
 
 ## Blocked by
 

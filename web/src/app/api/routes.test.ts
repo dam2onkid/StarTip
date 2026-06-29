@@ -1,17 +1,22 @@
-import { describe, it, expect } from "vitest";
-import { NextRequest } from "next/server";
+import { describe, it } from "vitest";
 
-function notImplemented(res: Response) {
-  expect(res.status).toBe(501);
-  expect(res.headers.get("content-type")).toContain("application/json");
-}
-
-describe("api route stubs", () => {
-  it("GET /api/creators/[handle] returns 501 { error: 'not_implemented' }", async () => {
-    const { GET } = await import("@/app/api/creators/[handle]/route");
-    const req = new NextRequest("http://localhost/api/creators/somehandle");
-    const res = await GET(req, { params: Promise.resolve({ handle: "somehandle" }) });
-    notImplemented(res);
-    expect(await res.json()).toEqual({ error: "not_implemented" });
+/**
+ * API route stub contract tests used to live here. The individual route
+ * handlers now have dedicated test files covering their real contracts:
+ *
+ *   - POST /api/creators              -> app/api/creators/route.test.ts
+ *   - GET  /api/creators/[handle]     -> app/api/creators/[handle]/route.test.ts
+ *   - POST /api/wallet/link/challenge -> app/api/wallet/link/challenge/route.test.ts
+ *   - POST /api/wallet/link           -> app/api/wallet/link/route.test.ts
+ *   - POST /api/donations/prepare     -> lib/donations/prepare.test.ts
+ *   - POST /api/donations/confirm     -> lib/donations/confirm.test.ts
+ *   - POST /api/indexer/poll          -> app/api/indexer/poll/route.test.ts
+ *
+ * This file is kept as an index placeholder so the test suite still documents
+ * where each route's contract lives.
+ */
+describe("api route contracts", () => {
+  it("contracts are covered by per-route test files", () => {
+    // See the file header for the mapping. No assertions needed here.
   });
 });

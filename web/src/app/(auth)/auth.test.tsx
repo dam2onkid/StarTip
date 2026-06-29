@@ -3,8 +3,8 @@ import { render, screen, act } from "@testing-library/react";
 import AuthLayout from "@/app/(auth)/layout";
 import { DashboardShell } from "@/app/(auth)/dashboard/page";
 import LoginPage from "@/app/(public)/login/page";
-import ExplorePage from "@/app/(public)/creator/explore/page";
-import CreatorPage from "@/app/(public)/creator/[handle]/page";
+import { ExplorePageShell } from "@/app/(public)/creator/explore/page";
+import { CreatorPageShell } from "@/app/(public)/creator/[handle]/page";
 import DonatePage from "@/app/(public)/creator/[handle]/donate/page";
 import OverlayPage from "@/app/(public)/overlay/[handle]/page";
 import DocsPage from "@/app/(public)/docs/page";
@@ -57,18 +57,44 @@ describe("public route placeholders", () => {
     ).toBeInTheDocument();
   });
 
-  it("/creator/explore renders a placeholder heading", () => {
-    render(<ExplorePage />);
+  it("/creator/explore renders the explore heading and creator list shell", () => {
+    render(
+      <ExplorePageShell
+        creators={[
+          { handle: "ada", display_name: "Ada Lovelace", avatar_url: null },
+        ]}
+        leaderboard={[]}
+      />,
+    );
     expect(
-      screen.getByRole("heading", { name: /explore/i }),
+      screen.getByRole("heading", { name: /explore creators/i }),
     ).toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: /ada lovelace/i }),
+    ).toHaveAttribute("href", "/creator/ada");
   });
 
-  it("/creator/[handle] renders a placeholder heading", () => {
-    render(<CreatorPage />);
+  it("/creator/[handle] renders the creator shell with profile, stats, and donate CTA", () => {
+    render(
+      <CreatorPageShell
+        handle="ada"
+        displayName="Ada Lovelace"
+        avatarUrl={null}
+        bio="Pioneer programmer."
+        total="350"
+        count={2}
+        leaderboard={[{ donor_name: "Bob", total_amount: "500" }]}
+      />,
+    );
     expect(
-      screen.getByRole("heading", { name: /creator/i }),
+      screen.getByRole("heading", { name: /ada lovelace/i }),
     ).toBeInTheDocument();
+    expect(screen.getByTestId("total-received")).toHaveTextContent("350");
+    expect(screen.getByTestId("donation-count")).toHaveTextContent("2");
+    expect(screen.getByTestId("donate-cta")).toHaveAttribute(
+      "href",
+      "/creator/ada/donate",
+    );
   });
 
   it("/creator/[handle]/donate renders a donate heading", async () => {
