@@ -71,9 +71,13 @@ backend verifies the signature and stores `owner_address` on their
 - Losing access to the Supabase account locks the Creator out of the dashboard
   even if they still hold the wallet. A recovery path (re-link wallet to a new
   Supabase account via on-chain proof) is a post-MVP concern.
-- Fans/Donors never authenticate with Supabase. They only connect a wallet to
-  sign the `donate()` transaction; `/api/donations/prepare` is rate-limited by IP
-  instead of authenticated.
+- Fans/Donors may optionally authenticate with Supabase (magic link, same flow
+  as Creator login but without onboarding or wallet link). Auth is never
+  required to donate: an anonymous Donor connects a wallet and signs `donate()`
+  with no Supabase session. A logged-in Donor's `user_id` is stored on the
+  Donation record to enable tracking and leaderboard ranking; an anonymous
+  Donor's `user_id` is NULL. `/api/donations/prepare` is rate-limited by IP and
+  stores `user_id` only when a session is present.
 - **`signMessage` wallet constraint**: Stellar Wallets Kit V2 does not support
   `signMessage` on every module (WalletConnect cannot sign messages). The
   wallet-link step therefore requires a message-signing-capable wallet.
