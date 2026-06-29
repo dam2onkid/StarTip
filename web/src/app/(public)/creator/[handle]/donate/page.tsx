@@ -1,19 +1,25 @@
+import * as React from "react";
+import { DonateForm } from "./donate-form";
+
 /**
- * `/creator/[handle]/donate` — public donate form: token picker, wallet
- * connect, message, amount. Placeholder; no behavior yet.
+ * `/creator/[handle]/donate` — public donate form. The Donor connects a
+ * Stellar wallet, picks a token from the on-chain allowlist, enters an
+ * amount + optional message, and signs + submits `donate()` directly to
+ * Soroban RPC. See `donate-form.tsx` for the full flow.
  *
- * `params` is optional in the type so the placeholder can be rendered in tests
- * without a Next.js route context. The real implementation will await the
- * promised `handle` param.
+ * `params` is a Promise in Next.js 15; `React.use` unwraps it synchronously
+ * during render so the page stays a sync component (testable with
+ * `@testing-library/react`'s `render`).
  */
-export default function DonatePage(_props: { params?: Promise<{ handle: string }> } = {}) {
+export default function DonatePage({
+  params,
+}: {
+  params: Promise<{ handle: string }>;
+}) {
+  const { handle } = React.use(params);
   return (
     <section className="mx-auto flex w-full max-w-md flex-col gap-4 px-6 py-24">
-      <h1 className="font-display text-3xl font-semibold tracking-tight">Donate</h1>
-      <p className="text-muted-foreground">
-        Donate form with token picker, wallet connect, message, and amount.
-        Placeholder.
-      </p>
+      <DonateForm handle={handle} />
     </section>
   );
 }

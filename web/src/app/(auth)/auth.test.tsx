@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, act } from "@testing-library/react";
 import AuthLayout from "@/app/(auth)/layout";
 import { DashboardShell } from "@/app/(auth)/dashboard/page";
 import LoginPage from "@/app/(public)/login/page";
@@ -15,6 +15,10 @@ vi.mock("@/lib/supabase/client", () => ({
     // No-op Realtime channel so the CreatorTab mount does not throw in jsdom.
     channel: () => ({ on: () => ({ subscribe: () => {} }), subscribe: () => {} }),
     removeChannel: vi.fn(),
+    // DonateForm reads the token allowlist on mount.
+    from: () => ({
+      select: () => ({ then: (cb: (r: { data: unknown[]; error: unknown }) => unknown) => Promise.resolve(cb({ data: [], error: null })) }),
+    }),
   }),
 }));
 
@@ -67,10 +71,12 @@ describe("public route placeholders", () => {
     ).toBeInTheDocument();
   });
 
-  it("/creator/[handle]/donate renders a placeholder heading", () => {
-    render(<DonatePage />);
+  it("/creator/[handle]/donate renders a donate heading", async () => {
+    await act(async () => {
+      render(<DonatePage params={Promise.resolve({ handle: "ada" })} />);
+    });
     expect(
-      screen.getByRole("heading", { name: /donate/i }),
+      screen.getByRole("heading", { name: /donate to ada/i }),
     ).toBeInTheDocument();
   });
 

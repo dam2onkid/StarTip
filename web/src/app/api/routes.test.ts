@@ -7,20 +7,6 @@ function notImplemented(res: Response) {
 }
 
 describe("api route stubs", () => {
-  it("POST /api/donations/prepare returns 501 { error: 'not_implemented' }", async () => {
-    const { POST } = await import("@/app/api/donations/prepare/route");
-    const res = await POST();
-    notImplemented(res);
-    expect(await res.json()).toEqual({ error: "not_implemented" });
-  });
-
-  it("POST /api/donations/confirm returns 501 { error: 'not_implemented' }", async () => {
-    const { POST } = await import("@/app/api/donations/confirm/route");
-    const res = await POST();
-    notImplemented(res);
-    expect(await res.json()).toEqual({ error: "not_implemented" });
-  });
-
   it("GET /api/creators/[handle] returns 501 { error: 'not_implemented' }", async () => {
     const { GET } = await import("@/app/api/creators/[handle]/route");
     const req = new NextRequest("http://localhost/api/creators/somehandle");

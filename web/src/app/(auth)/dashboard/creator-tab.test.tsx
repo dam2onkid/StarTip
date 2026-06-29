@@ -14,10 +14,10 @@ const STUB_ADDRESS = "GDF6CFYOXQTZVSLLK2RTDAUZ6N2E72IL4K2L34HXZK32KBR4NLVPLUVA";
 const connectWallet = vi.fn();
 const getWalletAddress = vi.fn();
 const signWalletMessage = vi.fn();
-const classifySignMessageError = vi.fn(() => "unknown" as const);
+const classifySignMessageError = vi.fn((): "unsupported" | "unknown" => "unknown");
 const registerCreatorOnChain = vi.fn();
 const readTreasuryAddress = vi.fn(async () => null);
-const payoutAddressWarning = vi.fn(() => null);
+const payoutAddressWarning = vi.fn((): "contract" | "treasury" | null => null);
 
 vi.mock("@/lib/wallet/kit", () => ({
   connectWallet,

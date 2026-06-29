@@ -10,6 +10,7 @@
 //   POST /auth/v1/logout         -> 204
 //   GET  /rest/v1/profiles       -> the stub profile (PostgREST array shape)
 //   PATCH /rest/v1/profiles      -> 200 (service-role writes; shape echoed)
+//   GET  /rest/v1/tokens         -> the stub token allowlist (PostgREST array)
 //
 // The access token is a fake JWT (unsigned, far-future exp). supabase-js does
 // not verify the signature client-side; it only decodes claims for expiry.
@@ -148,6 +149,21 @@ export function startMockSupabase(port) {
         json(res, 200, profile);
         return;
       }
+    }
+
+    // PostgREST: tokens (the donate page reads the allowlist on mount).
+    if (path === "/rest/v1/tokens" && req.method === "GET") {
+      json(res, 200, [
+        {
+          contract_address: "CUSDC",
+          symbol: "USDC",
+          name: "USD Coin",
+          issuer: null,
+          decimals: 6,
+          icon_url: null,
+        },
+      ]);
+      return;
     }
 
     // Anything else: return an empty 200 so unrelated SDK pings do not fail.
