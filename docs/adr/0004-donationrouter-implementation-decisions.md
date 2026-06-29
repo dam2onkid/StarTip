@@ -11,10 +11,11 @@ decisions are hard to reverse after the contract is deployed and shape the
 security posture and the off-chain indexer contract, so they are recorded here.
 
 This ADR covers the decisions reached in the grilling session that produced the
-implementation plan: token validation, fee cap mutability, OR-authorization for
-`set_creator_active`, `donation_id_hash` replay handling, zero-transfer
-handling, payout address validation, storage TTL, admin key rotation, and the
-SDK / constructor baseline.
+implementation plan: token validation, fee cap mutability, the
+`set_creator_active` authorization model (originally OR-auth, later revised to
+a two-entrypoint split, see Decision), `donation_id_hash` replay handling,
+zero-transfer handling, payout address validation, storage TTL, admin key
+rotation, and the SDK / constructor baseline.
 
 ## Decision
 
@@ -39,14 +40,33 @@ the Platform Fee above the original cap, even with a compromised admin key. A
 mutable cap would be theatre, the admin could raise the cap then raise the fee
 in two transactions.
 
-**`set_creator_active` uses OR-authorization via `requires_auth()`.** The spec
-authorization table says "Creator's owner OR admin." Soroban's `require_auth()`
-panics on failure, so OR cannot be expressed by calling it on both addresses.
-The contract uses the non-panicking `Address::requires_auth()` (returns `bool`)
-on both the Creator's owner and the Admin, and reverts with a typed
-`Unauthorized` error only if neither returns true. Soroban still binds the
-authorization to the current call arguments, so the authorization cannot be
-replayed for a different Creator.
+**`set_creator_active` is split into two role-scoped entrypoints.** The spec
+authorization table says "Creator's owner OR admin." Rather than expressing OR
+inside a single function via the non-panicking
+`Address::requires_auth()` (returns `bool`) pattern, the contract exposes two
+entrypoints, each with one role and one explicit auth path:
+
+- `set_creator_active_owner(caller, creator_id_hash, active)` —
+  `caller.require_auth()`, then `creator.owner == caller` check. Creator
+  self-service pause/unpause.
+- `force_pause_creator(caller, creator_id_hash, active)` —
+  `caller.require_auth()`, then `config.admin == caller` check. Admin
+  kill-switch.
+
+Both share a private `set_creator_active_inner(check_owner: bool)` body that
+mutates the entry, extends TTL, and emits `CreatorActiveChanged`. The event
+shape is identical for both paths, so the indexer does not need to distinguish
+who paused.
+
+This was revised from the original OR-auth design. Reasons for the revision:
+role separation is explicit at the API surface (the function name tells you
+who is authorized), each entrypoint uses the standard panicking `require_auth()`
+instead of the less common bool-returning variant, and the auth reasoning per
+entrypoint is single-role (simpler to audit). The spec's "owner OR admin"
+semantics are preserved: an owner can self-pause, an admin can force-pause, and
+neither can act on the other's role. Soroban still binds authorization to the
+called entrypoint's arguments, so an authorization cannot be replayed against
+the other entrypoint or a different Creator.
 
 **No on-chain replay tracking for `donation_id_hash`.** The contract does not
 track which `donation_id_hash` values it has seen. Replay protection is an
@@ -74,8 +94,9 @@ and the off-chain UI should warn the Creator before submission.
 
 **Storage TTL: extend-on-access.** Every code path that reads or writes a
 Creator's persistent entry extends its TTL to ~518400 ledgers (30 days):
-`register_creator`, `update_creator_payout`, `set_creator_active`, and
-`donate()`. Instance storage TTL is extended on every call that touches config.
+`register_creator`, `update_creator_payout`, `set_creator_active_owner`,
+`force_pause_creator`, and `donate()`. Instance storage TTL is extended on
+every call that touches config.
 This keeps the registry alive without requiring Creators or the backend to run
 a separate bump job. There is no manual `bump_creator` function.
 
@@ -103,10 +124,22 @@ reasons.
   A malicious contract can implement those too; the probe is theatre.
 - **`max_fee_bps` admin-settable.** Rejected. The cap becomes advisory; a
   compromised or rogue admin can raise both the cap and the fee.
-- **`set_creator_active` owner-only or admin-only.** Both rejected. Owner-only
-  loses the Admin kill-switch on a malicious Creator. Admin-only removes
-  Creator self-service (an owner cannot unpause themselves after the Admin
-  force-paused them). The OR keeps both capabilities and matches spec §9.6.
+- **`set_creator_active` owner-only or admin-only (single entrypoint).** Both
+  rejected. Owner-only loses the Admin kill-switch on a malicious Creator.
+  Admin-only removes Creator self-service (an owner cannot unpause themselves
+  after the Admin force-paused them). Both capabilities must exist; the
+  question is how to expose them.
+- **`set_creator_active` single entrypoint with OR-auth via non-panicking
+  `requires_auth()`.** Originally chosen, later revised. The bool-returning
+  `requires_auth()` pattern is less common, harder to audit, and bundles two
+  roles into one function so the API surface does not communicate who is
+  authorized. Replaced by the two-entrypoint split (see Decision above).
+- **`set_creator_active_owner` + `force_pause_creator` (two role-scoped
+  entrypoints).** Chosen. Each entrypoint has one role and one explicit
+  `require_auth()` path, the function name communicates the authorized caller,
+  and the shared `set_creator_active_inner` body keeps the mutation logic
+  single-sourced. Matches spec §9.6's "owner OR admin" semantics via two
+  distinct entrypoints rather than OR-logic inside one.
 - **On-chain replay set (persistent or temporary TTL).** Both rejected.
   Persistent is unbounded storage; temporary TTL is a half-measure that only
   catches immediate replays. The DB unique constraint is the correct boundary.
@@ -131,6 +164,13 @@ reasons.
   events (`TokenAllowlistUpdated`, `AdminUpdated`, and the existing
   `CreatorActiveChanged` / `PlatformFeeUpdated` / `TreasuryUpdated` /
   `PausedChanged` are kept). `docs/specs.md` §9 is updated to reflect this.
+- The spec's single `set_creator_active` is implemented as two entrypoints
+  (`set_creator_active_owner` + `force_pause_creator`) sharing one private
+  body. The off-chain dashboard and admin tooling must call the correct
+  entrypoint for the actor: the Creator's owner uses
+  `set_creator_active_owner`, the Admin uses `force_pause_creator`. Both emit
+  the same `CreatorActiveChanged` event, so the indexer and overlay need no
+  change.
 - The Admin must add the XLM SAC and USDC testnet SAC addresses to the
   allowlist before any `donate()` can succeed. This is a one-time post-deploy
   step documented in the deploy runbook.
