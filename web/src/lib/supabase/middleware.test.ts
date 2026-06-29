@@ -18,14 +18,16 @@ describe("supabase/middleware updateSession", () => {
     return new NextRequest(new URL(pathname, "http://localhost:3000"));
   }
 
-  it("redirects unauthenticated requests to (auth) routes to the login URL", async () => {
+  it("redirects unauthenticated /dashboard requests to the login URL and forwards the original path as next", async () => {
     getUser.mockResolvedValue({ data: { user: null }, error: null });
     const { updateSession, LOGIN_REDIRECT_URL } = await import(
       "@/lib/supabase/middleware"
     );
     const res = await updateSession(makeRequest("/dashboard"));
     expect(res.status).toBe(307);
-    expect(res.headers.get("location")).toContain(LOGIN_REDIRECT_URL);
+    const location = new URL(res.headers.get("location")!);
+    expect(location.pathname).toBe(LOGIN_REDIRECT_URL);
+    expect(location.searchParams.get("next")).toBe("/dashboard");
   });
 
   it("lets authenticated /dashboard requests through without redirect", async () => {

@@ -1,13 +1,22 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import AuthLayout from "@/app/(auth)/layout";
-import DashboardPage from "@/app/(auth)/dashboard/page";
+import { DashboardShell } from "@/app/(auth)/dashboard/page";
 import LoginPage from "@/app/(public)/login/page";
 import ExplorePage from "@/app/(public)/creator/explore/page";
 import CreatorPage from "@/app/(public)/creator/[handle]/page";
 import DonatePage from "@/app/(public)/creator/[handle]/donate/page";
 import OverlayPage from "@/app/(public)/overlay/[handle]/page";
 import DocsPage from "@/app/(public)/docs/page";
+
+vi.mock("@/lib/supabase/client", () => ({
+  createBrowserClient: () => ({ auth: { signInWithOtp: vi.fn(), signOut: vi.fn() } }),
+}));
+
+vi.mock("next/navigation", () => ({
+  useSearchParams: () => new URLSearchParams(),
+  useRouter: () => ({ push: vi.fn(), replace: vi.fn(), refresh: vi.fn() }),
+}));
 
 describe("(auth) route group", () => {
   it("layout renders the StarTip wordmark and a dashboard nav link", () => {
@@ -21,8 +30,8 @@ describe("(auth) route group", () => {
     expect(screen.getByRole("link", { name: /dashboard/i })).toBeInTheDocument();
   });
 
-  it("dashboard page renders Donor and Creator tab placeholders", () => {
-    render(<DashboardPage />);
+  it("dashboard shell renders Donor and Creator tab placeholders", () => {
+    render(<DashboardShell />);
     expect(
       screen.getByRole("heading", { name: /dashboard/i }),
     ).toBeInTheDocument();
