@@ -107,6 +107,22 @@ const DONATIONS = [
     moderation_status: "visible",
     created_at: "2026-06-04T00:00:00Z",
   },
+  // Hidden donation: same creator, but moderation_status = 'hidden'. The
+  // overlay queries with moderation_status=eq.visible so this row is filtered
+  // out by the mock (mirroring the donations_anon_visible_select RLS policy).
+  // The overlay E2E asserts this donation's message never appears.
+  {
+    id: "00000000-0000-0000-0000-0000000000d5",
+    donor_name: "Troll",
+    amount: "1",
+    user_id: "00000000-0000-0000-0000-000000000040",
+    creator_profile_id: PUBLIC_CREATOR.id,
+    token: "USDC",
+    message: "hidden bad words",
+    status: "confirmed",
+    moderation_status: "hidden",
+    created_at: "2026-06-05T00:00:00Z",
+  },
 ];
 
 function base64url(input) {

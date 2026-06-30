@@ -6,7 +6,6 @@ import LoginPage from "@/app/(public)/login/page";
 import { ExplorePageShell } from "@/app/(public)/creator/explore/page";
 import { CreatorPageShell } from "@/app/(public)/creator/[handle]/page";
 import DonatePage from "@/app/(public)/creator/[handle]/donate/page";
-import OverlayPage from "@/app/(public)/overlay/[handle]/page";
 import DocsPage from "@/app/(public)/docs/page";
 
 vi.mock("@/lib/supabase/client", () => ({
@@ -103,13 +102,6 @@ describe("public route placeholders", () => {
     });
     expect(
       screen.getByRole("heading", { name: /donate to ada/i }),
-    ).toBeInTheDocument();
-  });
-
-  it("/overlay/[handle] renders a placeholder heading", () => {
-    render(<OverlayPage />);
-    expect(
-      screen.getByRole("heading", { name: /overlay/i }),
     ).toBeInTheDocument();
   });
 
