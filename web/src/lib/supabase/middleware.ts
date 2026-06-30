@@ -3,8 +3,9 @@ import { NextResponse, type NextRequest } from "next/server";
 import { env } from "@/lib/env";
 
 /**
- * Placeholder login URL. No login UI is implemented in this issue; subsequent
- * auth work will replace this with the real Supabase Auth redirect target.
+ * Login URL. Unauthenticated `/dashboard` requests are redirected here with the
+ * original path forwarded as the `next` query param so the login page can
+ * return the visitor after authentication.
  */
 export const LOGIN_REDIRECT_URL = "/login";
 
@@ -17,8 +18,8 @@ export const LOGIN_REDIRECT_URL = "/login";
  * (exported via `config`) runs on every non-excluded path so the session cookie
  * is refreshed on public routes too; the auth gating decision is made here, not
  * by the matcher. Only `/dashboard` is gated. Public routes (`/creator/*`,
- * `/overlay/*`, `/docs`, `/login`) are not redirected. `api/`, `_next/`, and
- * static assets are excluded by the matcher.
+ * `/overlay/*`, `/docs`, `/login`, `/signup`) are not redirected. `api/`,
+ * `_next/`, and static assets are excluded by the matcher.
  */
 export async function updateSession(request: NextRequest): Promise<NextResponse> {
   let response = NextResponse.next({ request });

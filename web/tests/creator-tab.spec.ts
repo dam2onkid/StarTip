@@ -21,9 +21,8 @@ const STUB_ADDRESS = "GDF6CFYOXQTZVSLLK2RTDAUZ6N2E72IL4K2L34HXZK32KBR4NLVPLUVA";
 async function establishSession(page: Page) {
   await page.goto("/login");
   await page.getByLabel(/email/i).fill("fan@example.com");
-  await page.getByRole("button", { name: /send magic link/i }).click();
-  await expect(page.getByText(/check your inbox/i)).toBeVisible();
-  await page.goto("/auth/callback?code=stub-code");
+  await page.getByLabel(/password/i).fill("secret123");
+  await page.getByRole("button", { name: /sign in/i }).click();
   await expect(page).toHaveURL(/\/dashboard$/);
 }
 

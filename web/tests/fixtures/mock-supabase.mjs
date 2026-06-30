@@ -2,11 +2,11 @@
 //
 // The StarTip web app points `NEXT_PUBLIC_SUPABASE_URL` / `SUPABASE_URL` at
 // this server during E2E runs. It implements the subset of the Supabase surface
-// that the login -> callback -> dashboard (donor + creator tabs) -> onboarding
+// that the login -> dashboard (donor + creator tabs) -> onboarding
 // -> donate -> explore -> creator page flow needs:
 //
-//   POST /auth/v1/otp            -> magic link "sent"
-//   POST /auth/v1/token          -> session (PKCE exchange + refresh)
+//   POST /auth/v1/signup         -> auto-confirm + session (email + password)
+//   POST /auth/v1/token          -> session (password grant + refresh)
 //   GET  /auth/v1/user           -> the stub user (Bearer access_token)
 //   POST /auth/v1/logout         -> 204
 //   GET  /rest/v1/profiles       -> the stub profile (dashboard), a public
@@ -299,9 +299,16 @@ export function startMockSupabase(port) {
     const path = url.pathname;
     const query = url.searchParams;
 
-    // Magic link request.
-    if (req.method === "POST" && path === "/auth/v1/otp") {
-      json(res, 200, {});
+    // Email + password signup. Auto-confirms and returns a session so the
+    // E2E flow can proceed without an email round-trip (mirrors a confirmed
+    // user signing up against a real Supabase project with confirmation off,
+    // or the post-confirmation state).
+    if (req.method === "POST" && path === "/auth/v1/signup") {
+      await readBody(req);
+      json(res, 200, {
+        user: STUB_USER,
+        session: SESSION,
+      });
       return;
     }
 

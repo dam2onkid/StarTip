@@ -1,48 +1,42 @@
 import { test, expect, type Page } from "@playwright/test";
 
 /**
- * Login -> dashboard -> logout E2E.
+ * Email + password login -> dashboard -> logout E2E.
  *
  * Supabase Auth is stubbed via a mock HTTP server (tests/fixtures/mock-supabase.mjs)
  * that the app talks to during E2E. The flow:
- *   1. /login renders an email input and a "Send magic link" action.
- *   2. Submitting the email calls signInWithOtp (stubbed to succeed) and shows
- *      a confirmation. signInWithOtp also seeds the PKCE code_verifier cookie.
- *   3. Visiting /auth/callback?code=stub exchanges the code (stubbed) and
- *      redirects to /dashboard.
- *   4. /dashboard renders the authed shell with Donor + Creator tabs, a
+ *   1. /login renders an email input, a password input, and a "Sign in" action.
+ *   2. Submitting credentials calls signInWithPassword (stubbed to return a
+ *      session) and the router navigates to /dashboard.
+ *   3. /dashboard renders the authed shell with Donor + Creator tabs, a
  *      "Become a Creator" affordance, and a logout action.
- *   5. Clicking logout ends the session and returns to /login.
+ *   4. Clicking logout ends the session and returns to /login.
+ *
+ * The /signup page is also covered: submitting credentials calls signUp
+ * (stubbed to auto-confirm + return a session) and navigates to /dashboard.
  */
 
-// Drive the real login submit so the PKCE code_verifier cookie is seeded, then
-// complete the magic link callback. After this, the page is authed.
+// Drive the real login submit so the session cookie is seeded, then expect the
+// redirect to /dashboard. After this, the page is authed.
 async function establishSession(page: Page) {
   await page.goto("/login");
   await page.getByLabel(/email/i).fill("fan@example.com");
-  await page.getByRole("button", { name: /send magic link/i }).click();
-  await expect(page.getByText(/check your inbox/i)).toBeVisible();
-  await page.goto("/auth/callback?code=stub-code");
+  await page.getByLabel(/password/i).fill("secret123");
+  await page.getByRole("button", { name: /sign in/i }).click();
   await expect(page).toHaveURL(/\/dashboard$/);
 }
 
-test.describe("magic link login flow", () => {
-  test("/login renders an email input and a Send magic link action", async ({ page }) => {
+test.describe("email + password login flow", () => {
+  test("/login renders an email input, a password input, and a Sign in action", async ({ page }) => {
     await page.goto("/login");
     await expect(page.getByLabel(/email/i)).toBeVisible();
+    await expect(page.getByLabel(/password/i)).toBeVisible();
     await expect(
-      page.getByRole("button", { name: /send magic link/i }),
+      page.getByRole("button", { name: /sign in/i }),
     ).toBeVisible();
   });
 
-  test("submitting the email sends the magic link and shows a confirmation", async ({ page }) => {
-    await page.goto("/login");
-    await page.getByLabel(/email/i).fill("fan@example.com");
-    await page.getByRole("button", { name: /send magic link/i }).click();
-    await expect(page.getByText(/check your inbox/i)).toBeVisible();
-  });
-
-  test("/auth/callback exchanges the code and redirects to /dashboard", async ({ page }) => {
+  test("submitting credentials signs in and redirects to /dashboard", async ({ page }) => {
     await establishSession(page);
   });
 
@@ -70,5 +64,34 @@ test.describe("magic link login flow", () => {
     await establishSession(page);
     await page.getByRole("button", { name: /log out/i }).click();
     await expect(page).toHaveURL(/\/login/);
+  });
+});
+
+test.describe("/signup page", () => {
+  test("/signup renders email, password, confirm password, and a Sign up action", async ({ page }) => {
+    await page.goto("/signup");
+    await expect(page.getByLabel(/email/i)).toBeVisible();
+    await expect(page.getByLabel(/^password$/i)).toBeVisible();
+    await expect(page.getByLabel(/confirm password/i)).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: /sign up/i }),
+    ).toBeVisible();
+  });
+
+  test("submitting signup credentials navigates to /dashboard (mock auto-confirms)", async ({ page }) => {
+    await page.goto("/signup");
+    await page.getByLabel(/email/i).fill("newfan@example.com");
+    await page.getByLabel(/^password$/i).fill("secret123");
+    await page.getByLabel(/confirm password/i).fill("secret123");
+    await page.getByRole("button", { name: /sign up/i }).click();
+    await expect(page).toHaveURL(/\/dashboard$/);
+  });
+
+  test("renders a link back to /login", async ({ page }) => {
+    await page.goto("/signup");
+    await expect(page.getByRole("link", { name: /log in/i })).toHaveAttribute(
+      "href",
+      "/login",
+    );
   });
 });

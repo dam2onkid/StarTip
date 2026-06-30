@@ -47,6 +47,7 @@ describe("supabase/middleware updateSession", () => {
     const publicPaths = [
       "/",
       "/login",
+      "/signup",
       "/creator/explore",
       "/creator/somehandle",
       "/creator/somehandle/donate",
@@ -75,6 +76,7 @@ describe("middleware config matcher", () => {
     // inside updateSession, not by the matcher.
     expect(matches("/dashboard")).toBe(true);
     expect(matches("/login")).toBe(true);
+    expect(matches("/signup")).toBe(true);
     expect(matches("/creator/explore")).toBe(true);
     expect(matches("/creator/somehandle")).toBe(true);
     expect(matches("/overlay/somehandle")).toBe(true);

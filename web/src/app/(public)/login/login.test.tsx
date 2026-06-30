@@ -1,15 +1,18 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 
-const signInWithOtp = vi.fn();
+const signInWithPassword = vi.fn();
+const push = vi.fn();
+const refresh = vi.fn();
 
 vi.mock("@/lib/supabase/client", () => ({
-  createBrowserClient: () => ({ auth: { signInWithOtp } }),
+  createBrowserClient: () => ({ auth: { signInWithPassword } }),
 }));
 
 const searchParams = new URLSearchParams();
 vi.mock("next/navigation", () => ({
   useSearchParams: () => searchParams,
+  useRouter: () => ({ push, refresh }),
 }));
 
 function setNext(value: string | null) {
@@ -17,69 +20,106 @@ function setNext(value: string | null) {
   if (value !== null) searchParams.set("next", value);
 }
 
-async function submitEmail(email: string) {
-  const input = screen.getByLabelText(/email/i) as HTMLInputElement;
-  fireEvent.change(input, { target: { value: email } });
-  fireEvent.click(screen.getByRole("button", { name: /send magic link/i }));
+function setConfirmed(value: boolean) {
+  if (value) searchParams.set("confirmed", "1");
+  else searchParams.delete("confirmed");
 }
 
-describe("/login magic link form", () => {
+async function submitCredentials(email: string, password: string) {
+  fireEvent.change(screen.getByLabelText(/^email$/i), { target: { value: email } });
+  fireEvent.change(screen.getByLabelText(/password/i), { target: { value: password } });
+  fireEvent.click(screen.getByRole("button", { name: /sign in/i }));
+}
+
+describe("/login email + password form", () => {
   beforeEach(() => {
-    signInWithOtp.mockReset();
+    signInWithPassword.mockReset();
+    push.mockReset();
+    refresh.mockReset();
     setNext(null);
+    setConfirmed(false);
   });
 
-  it("renders an email input and a Send magic link action", async () => {
+  it("renders an email input, a password input, and a Sign in action", async () => {
     const { default: LoginPage } = await import("@/app/(public)/login/page");
     render(<LoginPage />);
-    expect(screen.getByLabelText(/email/i)).toBeInTheDocument();
-    expect(
-      screen.getByRole("button", { name: /send magic link/i }),
-    ).toBeInTheDocument();
+    expect(screen.getByLabelText(/^email$/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/password/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /sign in/i })).toBeInTheDocument();
   });
 
-  it("calls signInWithOtp with the email and emailRedirectTo carrying next when submitted", async () => {
+  it("calls signInWithPassword with the email and password when submitted", async () => {
+    signInWithPassword.mockResolvedValue({ data: {}, error: null });
+    const { default: LoginPage } = await import("@/app/(public)/login/page");
+    render(<LoginPage />);
+
+    await submitCredentials("fan@example.com", "secret123");
+
+    await waitFor(() => expect(signInWithPassword).toHaveBeenCalledTimes(1));
+    expect(signInWithPassword).toHaveBeenCalledWith({
+      email: "fan@example.com",
+      password: "secret123",
+    });
+  });
+
+  it("navigates to next when sign in succeeds", async () => {
     setNext("/creator/explore");
-    signInWithOtp.mockResolvedValue({ data: {}, error: null });
+    signInWithPassword.mockResolvedValue({ data: {}, error: null });
     const { default: LoginPage } = await import("@/app/(public)/login/page");
     render(<LoginPage />);
 
-    await submitEmail("fan@example.com");
+    await submitCredentials("fan@example.com", "secret123");
 
-    await waitFor(() => expect(signInWithOtp).toHaveBeenCalledTimes(1));
-    const arg = signInWithOtp.mock.calls[0][0] as {
-      email: string;
-      options: { emailRedirectTo: string };
-    };
-    expect(arg.email).toBe("fan@example.com");
-    const redirect = arg.options.emailRedirectTo;
-    expect(redirect).toContain("/auth/callback");
-    expect(redirect).toContain("next=%2Fcreator%2Fexplore");
+    await waitFor(() => expect(push).toHaveBeenCalledWith("/creator/explore"));
   });
 
-  it("forwards next=/dashboard by default when no next param is present", async () => {
-    signInWithOtp.mockResolvedValue({ data: {}, error: null });
+  it("navigates to /dashboard by default when no next param is present", async () => {
+    signInWithPassword.mockResolvedValue({ data: {}, error: null });
     const { default: LoginPage } = await import("@/app/(public)/login/page");
     render(<LoginPage />);
 
-    await submitEmail("fan@example.com");
+    await submitCredentials("fan@example.com", "secret123");
 
-    await waitFor(() => expect(signInWithOtp).toHaveBeenCalled());
-    const arg = signInWithOtp.mock.calls[0][0] as {
-      options: { emailRedirectTo: string };
-    };
-    expect(arg.options.emailRedirectTo).toContain("next=%2Fdashboard");
+    await waitFor(() => expect(push).toHaveBeenCalledWith("/dashboard"));
   });
 
-  it("shows a confirmation message after the magic link is sent", async () => {
-    signInWithOtp.mockResolvedValue({ data: {}, error: null });
+  it("shows the error message when sign in fails", async () => {
+    signInWithPassword.mockResolvedValue({
+      data: {},
+      error: { message: "Invalid login credentials" },
+    });
     const { default: LoginPage } = await import("@/app/(public)/login/page");
     render(<LoginPage />);
 
-    await submitEmail("fan@example.com");
+    await submitCredentials("fan@example.com", "wrongpass");
 
     await waitFor(() =>
-      expect(screen.getByText(/check your inbox/i)).toBeInTheDocument(),
+      expect(screen.getByTestId("login-error")).toHaveTextContent(
+        "Invalid login credentials",
+      ),
     );
+    expect(push).not.toHaveBeenCalled();
+  });
+
+  it("renders a link to /signup forwarding next when present", async () => {
+    setNext("/creator/explore");
+    const { default: LoginPage } = await import("@/app/(public)/login/page");
+    render(<LoginPage />);
+    const link = screen.getByRole("link", { name: /sign up/i });
+    expect(link).toHaveAttribute("href", "/signup?next=%2Fcreator%2Fexplore");
+  });
+
+  it("renders a link to /signup with no query when next is the default", async () => {
+    const { default: LoginPage } = await import("@/app/(public)/login/page");
+    render(<LoginPage />);
+    const link = screen.getByRole("link", { name: /sign up/i });
+    expect(link).toHaveAttribute("href", "/signup");
+  });
+
+  it("shows the email-confirmed hint when confirmed=1 is present", async () => {
+    setConfirmed(true);
+    const { default: LoginPage } = await import("@/app/(public)/login/page");
+    render(<LoginPage />);
+    expect(screen.getByTestId("email-confirmed-hint")).toBeInTheDocument();
   });
 });
