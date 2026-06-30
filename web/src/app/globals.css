@@ -219,3 +219,200 @@ body {
     scroll-behavior: auto !important;
   }
 }
+
+/* ---------------------------------------------------------------------------
+ * Dashboard surface system.
+ *
+ * The dashboard reuses the Graphite depth layer (glass, atmospheric glow,
+ * dimensional hover) but scoped to a `.dashboard` root so the rest of the app
+ * is untouched. Cards become glass panels with a faint top-edge highlight and
+ * a transform-only hover lift gated behind fine-pointer + no-reduced-motion
+ * (DESIGN.md "Do" list, premium-frontend-ui skill §5). The single lime accent
+ * is reserved for the active tab indicator and the primary per-view CTA.
+ * ------------------------------------------------------------------------- */
+
+.dashboard {
+  position: relative;
+}
+
+/* Glass cards: replace the flat `bg-card` + ring with frosted depth. */
+.dashboard [data-slot="card"] {
+  background: color-mix(in oklch, var(--card) 62%, transparent);
+  -webkit-backdrop-filter: blur(14px) saturate(135%);
+  backdrop-filter: blur(14px) saturate(135%);
+  border: 1px solid color-mix(in oklch, var(--foreground) 7%, transparent);
+  box-shadow:
+    inset 0 1px 0 0 color-mix(in oklch, var(--foreground) 5%, transparent),
+    0 18px 50px -28px rgba(0, 0, 0, 0.7);
+  transition: transform 0.4s cubic-bezier(0.22, 1, 0.36, 1),
+    border-color 0.3s ease, box-shadow 0.3s ease;
+}
+
+/* Dimensional hover: lift + brighten border, transform/opacity only. */
+@media (hover: hover) and (pointer: fine) {
+  .dashboard [data-slot="card"]:hover {
+    transform: translateY(-2px);
+    border-color: color-mix(in oklch, var(--foreground) 12%, transparent);
+    box-shadow:
+      inset 0 1px 0 0 color-mix(in oklch, var(--foreground) 7%, transparent),
+      0 26px 60px -26px rgba(0, 0, 0, 0.8);
+  }
+}
+
+/* Card titles read as small display labels (Inter Tight, tracked). */
+.dashboard [data-slot="card-title"] {
+  font-family: var(--font-display), var(--font-body), sans-serif;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  font-size: 1.0625rem;
+}
+
+/* Row items inside cards: subtle inset surface, refined ring. */
+.dashboard .row-inset {
+  background: color-mix(in oklch, var(--foreground) 4%, transparent);
+  border: 1px solid color-mix(in oklch, var(--foreground) 6%, transparent);
+  border-radius: var(--radius-md);
+  transition: background 0.25s ease, border-color 0.25s ease;
+}
+@media (hover: hover) and (pointer: fine) {
+  .dashboard .row-inset:hover {
+    background: color-mix(in oklch, var(--foreground) 7%, transparent);
+    border-color: color-mix(in oklch, var(--foreground) 12%, transparent);
+  }
+}
+
+/* Hero stat number: display font, oversized, tabular. */
+.dashboard .stat-hero {
+  font-family: var(--font-display), var(--font-body), sans-serif;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  font-size: clamp(2rem, 6vw, 3rem);
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Status pill: neutral by default, lime when active. */
+.dashboard .status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4em;
+  font-family: var(--font-label), monospace;
+  font-size: 0.6875rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 0.25rem 0.6rem;
+  border-radius: 9999px;
+  border: 1px solid color-mix(in oklch, var(--foreground) 12%, transparent);
+  color: var(--muted-foreground);
+  background: color-mix(in oklch, var(--foreground) 4%, transparent);
+}
+.dashboard .status-pill[data-tone="active"] {
+  color: var(--primary);
+  border-color: color-mix(in oklch, var(--primary) 45%, transparent);
+  background: color-mix(in oklch, var(--primary) 10%, transparent);
+}
+.dashboard .status-pill[data-tone="paused"] {
+  color: var(--foreground);
+  border-color: color-mix(in oklch, var(--foreground) 25%, transparent);
+}
+.dashboard .status-pill .dot {
+  width: 0.4em;
+  height: 0.4em;
+  border-radius: 9999px;
+  background: currentColor;
+}
+
+/* Tab list: floating glass pill with an animated lime indicator. */
+.dashboard .tab-list {
+  position: relative;
+  display: inline-flex;
+  gap: 0.25rem;
+  padding: 0.25rem;
+  border-radius: 9999px;
+  background: color-mix(in oklch, var(--card) 60%, transparent);
+  -webkit-backdrop-filter: blur(14px) saturate(135%);
+  backdrop-filter: blur(14px) saturate(135%);
+  border: 1px solid color-mix(in oklch, var(--foreground) 7%, transparent);
+  box-shadow: inset 0 1px 0 0 color-mix(in oklch, var(--foreground) 5%, transparent);
+}
+.dashboard .tab-list .tab-indicator {
+  position: absolute;
+  top: 0.25rem;
+  bottom: 0.25rem;
+  border-radius: 9999px;
+  background: color-mix(in oklch, var(--primary) 14%, transparent);
+  border: 1px solid color-mix(in oklch, var(--primary) 40%, transparent);
+  transition: transform 0.4s cubic-bezier(0.22, 1, 0.36, 1),
+    width 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+  pointer-events: none;
+}
+.dashboard .tab-list [role="tab"] {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1.1rem;
+  border-radius: 9999px;
+  font-size: 0.875rem;
+  color: var(--muted-foreground);
+  transition: color 0.25s ease;
+  white-space: nowrap;
+}
+.dashboard .tab-list [role="tab"][aria-selected="true"] {
+  color: var(--foreground);
+}
+.dashboard .tab-list [role="tab"]:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px color-mix(in oklch, var(--primary) 50%, transparent);
+}
+.dashboard .tab-list [role="tab"] .tab-count {
+  font-family: var(--font-label), monospace;
+  font-size: 0.625rem;
+  letter-spacing: 0.04em;
+  padding: 0.05rem 0.35rem;
+  border-radius: 9999px;
+  background: color-mix(in oklch, var(--foreground) 8%, transparent);
+  color: var(--muted-foreground);
+}
+.dashboard .tab-list [role="tab"][aria-selected="true"] .tab-count {
+  background: color-mix(in oklch, var(--primary) 22%, transparent);
+  color: var(--primary);
+}
+
+/* Identity header: avatar ring + name/handle stack. */
+.dashboard .identity-avatar {
+  position: relative;
+  border-radius: 9999px;
+  background: color-mix(in oklch, var(--foreground) 6%, transparent);
+  padding: 2px;
+}
+.dashboard .identity-avatar img {
+  display: block;
+  border-radius: 9999px;
+  object-fit: cover;
+}
+.dashboard .identity-avatar .ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 9999px;
+  border: 1px solid color-mix(in oklch, var(--foreground) 14%, transparent);
+  pointer-events: none;
+}
+
+/* Empty-state polish: centered, muted, with a hairline top border. */
+.dashboard .empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.35rem;
+  padding: 0.5rem 0 0.25rem;
+  color: var(--muted-foreground);
+}
+.dashboard .empty-state .empty-eyebrow {
+  font-family: var(--font-label), monospace;
+  font-size: 0.625rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: color-mix(in oklch, var(--muted-foreground) 70%, transparent);
+}

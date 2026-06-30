@@ -119,6 +119,15 @@ calling `register_creator`. Once `onchain_registered = true`, the on-chain
 `owner_address` must match it and can no longer be changed.
 _Avoid_: wallet (overloaded), creator address, linked address.
 
+**Donate Wallet**:
+The browser wallet connected via the Stellar Wallets Kit, used to sign
+`donate()`. Shown in the nav as a connect/address pill, always available, never
+requires login. Distinct from the Owner Address: the Donate Wallet is the
+Donor's signing wallet for a single Donation act, the Owner Address is the
+Creator's persistent on-chain identity. The same physical wallet may serve both
+roles but the concepts are tracked separately.
+_Avoid_: connected wallet (overloaded), nav wallet, browser wallet.
+
 **Wallet Link Challenge**:
 A single-use nonce + expiry stored on the Profile row
 (`wallet_link_nonce`, `wallet_link_nonce_expires_at`) that the Creator signs

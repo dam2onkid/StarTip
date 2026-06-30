@@ -10,6 +10,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import {
   deriveOnboardingState,
   type OnboardingProfile,
@@ -156,7 +157,8 @@ export function CreatorTab({ profile, activeData }: CreatorTabProps) {
 /* ------------------------------------------------------------------ */
 
 /** The four-gate progress indicator. The active gate and those before it are
- * lit; the rest are dim. */
+ * lit; the rest are dim. Rendered as a horizontal track with a fill that
+ * advances to the active gate, so progress is legible at a glance. */
 function GateStepper({ state }: { state: OnboardingState }) {
   const order: OnboardingState[] = [
     "profile_pending",
@@ -171,34 +173,55 @@ function GateStepper({ state }: { state: OnboardingState }) {
     active: "Active",
   };
   const activeIdx = order.indexOf(state);
+  const progress = (activeIdx / (order.length - 1)) * 100;
   return (
-    <ol className="flex items-center gap-2 text-xs text-muted-foreground">
-      {order.map((s, i) => {
-        const done = i < activeIdx;
-        const active = i === activeIdx;
-        return (
-          <li key={s} className="flex items-center gap-2">
-            <span
-              className={
-                "inline-flex h-5 w-5 items-center justify-center rounded-full border text-[0.65rem] " +
-                (active
-                  ? "border-tertiary text-tertiary"
-                  : done
-                    ? "border-foreground/40 text-foreground"
-                    : "border-border/50 text-muted-foreground/60")
-              }
-              aria-current={active ? "step" : undefined}
-            >
-              {done ? "✓" : i + 1}
-            </span>
-            <span className={active ? "text-foreground" : ""}>{labels[s]}</span>
-            {i < order.length - 1 && (
-              <span aria-hidden className="h-px w-6 bg-border/40" />
-            )}
-          </li>
-        );
-      })}
-    </ol>
+    <div
+      className="rounded-xl border border-foreground/8 bg-foreground/[0.02] p-4"
+      data-testid="gate-stepper"
+    >
+      <div className="mb-3 flex items-center justify-between">
+        <span className="font-mono text-[0.65rem] uppercase tracking-[0.12em] text-muted-foreground/80">
+          Onboarding
+        </span>
+        <span className="font-mono text-[0.65rem] uppercase tracking-[0.12em] text-muted-foreground/80">
+          {activeIdx + 1} / {order.length}
+        </span>
+      </div>
+      {/* Progress track: a thin neutral rail with a lime fill to the active gate. */}
+      <div
+        aria-hidden
+        className="relative mb-4 h-1 w-full overflow-hidden rounded-full bg-foreground/8"
+      >
+        <div
+          className="absolute inset-y-0 left-0 rounded-full bg-primary/70 transition-[width] duration-500 ease-out"
+          style={{ width: `${progress}%` }}
+        />
+      </div>
+      <ol className="flex items-center justify-between text-xs text-muted-foreground">
+        {order.map((s, i) => {
+          const done = i < activeIdx;
+          const active = i === activeIdx;
+          return (
+            <li key={s} className="flex items-center gap-2">
+              <span
+                className={
+                  "inline-flex h-6 w-6 items-center justify-center rounded-full border text-[0.65rem] transition-colors " +
+                  (active
+                    ? "border-primary/60 text-primary bg-primary/10"
+                    : done
+                      ? "border-foreground/30 text-foreground bg-foreground/5"
+                      : "border-foreground/10 text-muted-foreground/50")
+                }
+                aria-current={active ? "step" : undefined}
+              >
+                {done ? "✓" : i + 1}
+              </span>
+              <span className={active ? "text-foreground" : ""}>{labels[s]}</span>
+            </li>
+          );
+        })}
+      </ol>
+    </div>
   );
 }
 
@@ -311,9 +334,9 @@ function ProfilePendingGate(args: {
             Handle
           </label>
           <div className="flex items-center gap-2">
-            <input
+            <Input
               id="handle-input"
-              className="h-9 flex-1 rounded-lg border border-border/50 bg-background px-3 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+              className="flex-1"
               value={handle}
               onChange={(e) => setHandle(e.target.value)}
               autoComplete="off"
@@ -529,9 +552,9 @@ function OnchainPendingGate(args: {
           <label className="text-xs text-muted-foreground" htmlFor="payout-input">
             Payout Address
           </label>
-          <input
+          <Input
             id="payout-input"
-            className="h-9 flex-1 rounded-lg border border-border/50 bg-background px-3 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+            className="flex-1"
             value={payout}
             onChange={(e) => setPayout(e.target.value)}
             autoComplete="off"
@@ -602,22 +625,27 @@ function OnchainStatusCard({ current }: { current: CreatorProfile }) {
           Your registration as mirrored by the indexer.
         </CardDescription>
       </CardHeader>
-      <CardContent className="flex flex-col gap-1 text-xs text-muted-foreground">
-        <p data-testid="onchain-registered">
-          Registered: <span className="font-mono text-foreground">
+      <CardContent className="flex flex-col gap-3 text-xs text-muted-foreground">
+        <p className="flex items-center justify-between gap-3" data-testid="onchain-registered">
+          <span>Registered</span>
+          <span className="font-mono text-foreground">
             {current.onchain_registered ? "yes" : "no"}
           </span>
         </p>
-        <p data-testid="onchain-owner">
-          Owner: <span className="font-mono text-foreground">{current.owner_address}</span>
+        <p className="flex items-center justify-between gap-3 break-all" data-testid="onchain-owner">
+          <span>Owner</span>
+          <span className="font-mono text-foreground">{current.owner_address}</span>
         </p>
-        <p data-testid="onchain-payout">
-          Payout: <span className="font-mono text-foreground">
+        <p className="flex items-center justify-between gap-3 break-all" data-testid="onchain-payout">
+          <span>Payout</span>
+          <span className="font-mono text-foreground">
             {current.payout_address ?? "—"}
           </span>
         </p>
-        <p data-testid="onchain-paused">
-          Status: <span className="font-mono text-foreground">
+        <p className="flex items-center justify-between gap-3" data-testid="onchain-paused">
+          <span>Status</span>
+          <span className="status-pill" data-tone={paused ? "paused" : "active"}>
+            <span className="dot" aria-hidden />
             {paused ? "paused" : "active"}
           </span>
         </p>
@@ -639,16 +667,23 @@ function StatsCard({ activeData }: { activeData?: CreatorActiveData }) {
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <dl className="flex flex-col gap-2">
-          <div className="flex items-center justify-between">
-            <dt className="text-sm text-muted-foreground">Total received</dt>
-            <dd className="font-mono text-sm text-foreground" data-testid="creator-total-received">
+        <dl className="flex flex-col gap-4 sm:flex-row sm:items-end sm:gap-8">
+          <div className="flex flex-col gap-1">
+            <dt className="font-mono text-[0.65rem] uppercase tracking-[0.12em] text-muted-foreground/80">
+              Total received
+            </dt>
+            <dd className="stat-hero text-foreground" data-testid="creator-total-received">
               {total}
             </dd>
           </div>
-          <div className="flex items-center justify-between">
-            <dt className="text-sm text-muted-foreground">Donations</dt>
-            <dd className="font-mono text-sm text-foreground" data-testid="creator-donation-count">
+          <div className="flex flex-col gap-1">
+            <dt className="font-mono text-[0.65rem] uppercase tracking-[0.12em] text-muted-foreground/80">
+              Donations
+            </dt>
+            <dd
+              className="font-display text-3xl font-semibold tracking-tight text-foreground tabular-nums"
+              data-testid="creator-donation-count"
+            >
               {count}
             </dd>
           </div>
@@ -679,7 +714,7 @@ function LeaderboardCard({ activeData }: { activeData?: CreatorActiveData }) {
             {leaderboard.map((entry, i) => (
               <li
                 key={entry.donor_name}
-                className="flex items-center justify-between rounded-md bg-card px-3 py-2 ring-1 ring-foreground/10"
+                className="row-inset flex items-center justify-between px-3 py-2"
               >
                 <span className="flex items-center gap-3">
                   <span className="font-mono text-xs text-muted-foreground">
@@ -753,9 +788,9 @@ function PayoutUpdateCard({ current }: { current: CreatorProfile }) {
           <label className="text-xs text-muted-foreground" htmlFor="payout-update-input">
             New Payout Address
           </label>
-          <input
+          <Input
             id="payout-update-input"
-            className="h-9 flex-1 rounded-lg border border-border/50 bg-background px-3 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+            className="flex-1"
             value={payout}
             onChange={(e) => { setPayout(e.target.value); setStatus({ kind: "idle" }); }}
             autoComplete="off"
@@ -955,9 +990,9 @@ function ProfileEditCard(args: {
           <label className="text-xs text-muted-foreground" htmlFor="creator-display-name-input">
             Display name
           </label>
-          <input
+          <Input
             id="creator-display-name-input"
-            className="h-9 flex-1 rounded-lg border border-border/50 bg-background px-3 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+            className="flex-1"
             value={displayName}
             onChange={(e) => { setDisplayName(e.target.value); setStatus({ kind: "idle" }); }}
             placeholder="Anonymous"
@@ -970,7 +1005,7 @@ function ProfileEditCard(args: {
           </label>
           <textarea
             id="creator-bio-input"
-            className="min-h-20 flex-1 rounded-lg border border-border/50 bg-background px-3 py-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+            className="min-h-20 flex-1 rounded-lg border border-input bg-transparent px-3 py-2 text-sm outline-none transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30"
             value={bio}
             onChange={(e) => { setBio(e.target.value); setStatus({ kind: "idle" }); }}
             placeholder="Tell donors about yourself."
@@ -1098,7 +1133,7 @@ function ModerationCard({ activeData }: { activeData?: CreatorActiveData }) {
             {rows.map((d) => (
               <li
                 key={d.id}
-                className="flex items-center justify-between rounded-md bg-card px-3 py-2 ring-1 ring-foreground/10"
+                className="row-inset flex items-center justify-between px-3 py-2"
               >
                 <span className="flex flex-col">
                   <span className="font-mono text-sm text-foreground">

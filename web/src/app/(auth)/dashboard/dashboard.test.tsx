@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, fireEvent } from "@testing-library/react";
 
 const getUser = vi.fn();
 const serverFrom = vi.fn();
@@ -29,7 +29,7 @@ vi.mock("next/navigation", () => ({
 }));
 
 describe("/dashboard shell", () => {
-  it("renders Donor and Creator tab placeholders, a Become a Creator affordance, and a logout action", async () => {
+  it("renders Donor and Creator tabs, a Become a Creator affordance, and a logout action", async () => {
     const { DashboardShell } = await import("@/app/(auth)/dashboard/page");
     render(<DashboardShell />);
     expect(
@@ -38,8 +38,12 @@ describe("/dashboard shell", () => {
     expect(
       screen.getByRole("tab", { name: /creator/i }),
     ).toBeInTheDocument();
+    // Creator tab content is mounted only when the Creator tab is active
+    // (the shell now does a real tab switch instead of rendering both panels
+    // at once).
+    fireEvent.click(screen.getByRole("tab", { name: /creator/i }));
     expect(
-      screen.getByRole("button", { name: /become a creator/i }),
+      await screen.findByRole("button", { name: /become a creator/i }),
     ).toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: /log out/i }),

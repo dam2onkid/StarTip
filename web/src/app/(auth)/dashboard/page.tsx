@@ -1,14 +1,15 @@
 import { redirect } from "next/navigation";
 import { createServerClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
-import { LogoutButton } from "@/app/(auth)/dashboard/logout-button";
 import {
-  CreatorTab,
+  DashboardTabs,
+  type DashboardTabsProps,
+} from "@/app/(auth)/dashboard/dashboard-tabs";
+import {
   type CreatorProfile,
   type CreatorActiveData,
 } from "@/app/(auth)/dashboard/creator-tab";
 import {
-  DonorTab,
   type DonorProfile,
   type DonorDonation,
   type DonorPerCreatorRank,
@@ -199,20 +200,17 @@ export default async function DashboardPage() {
  * optional so the shell can render in a default `profile_pending` state.
  * `donorData` is optional so the shell can render without donor data (e.g.
  * before the profile exists).
+ *
+ * Delegates the interactive tab + identity header to the `DashboardTabs`
+ * client component; this wrapper stays a server component so the async session
+ * gate above can run server-side.
  */
 export function DashboardShell({
   creatorProfile,
   donorData,
   creatorActiveData,
-}: {
+}: Omit<DashboardTabsProps, "creatorProfile"> & {
   creatorProfile?: CreatorProfile;
-  donorData?: {
-    profile: DonorProfile;
-    donations: DonorDonation[];
-    globalRank: { rank: number | null; total: string };
-    perCreatorRanks: DonorPerCreatorRank[];
-  };
-  creatorActiveData?: CreatorActiveData;
 }) {
   const profile: CreatorProfile = creatorProfile ?? {
     id: "",
@@ -226,36 +224,10 @@ export function DashboardShell({
     paused: false,
   };
   return (
-    <section className="mx-auto flex w-full max-w-5xl flex-col gap-6 px-6 py-24">
-      <div className="flex items-center justify-between">
-        <h1 className="font-display text-3xl font-semibold tracking-tight">Dashboard</h1>
-        <LogoutButton />
-      </div>
-      <div role="tablist" aria-label="Dashboard" className="flex gap-2 border-b border-border/40">
-        <button role="tab" aria-selected="true" id="donor-tab" className="px-4 py-2 text-sm text-foreground">
-          Donor
-        </button>
-        <button role="tab" aria-selected="false" id="creator-tab" className="px-4 py-2 text-sm text-muted-foreground">
-          Creator
-        </button>
-      </div>
-      <div role="tabpanel" aria-labelledby="donor-tab" className="flex flex-col gap-3">
-        {donorData ? (
-          <DonorTab
-            profile={donorData.profile}
-            donations={donorData.donations}
-            globalRank={donorData.globalRank}
-            perCreatorRanks={donorData.perCreatorRanks}
-          />
-        ) : (
-          <p className="text-sm text-muted-foreground">
-            Donor tab placeholder: donation history, leaderboard rank, edit display name and avatar.
-          </p>
-        )}
-      </div>
-      <div role="tabpanel" aria-labelledby="creator-tab">
-        <CreatorTab profile={profile} activeData={creatorActiveData} />
-      </div>
-    </section>
+    <DashboardTabs
+      creatorProfile={profile}
+      donorData={donorData}
+      creatorActiveData={creatorActiveData}
+    />
   );
 }

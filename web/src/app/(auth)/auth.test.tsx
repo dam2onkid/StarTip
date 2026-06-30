@@ -44,22 +44,22 @@ describe("(auth) route group", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("dashboard shell renders Donor and Creator tab placeholders", () => {
+  it("dashboard shell renders the identity header and Donor/Creator tabs", () => {
     render(<DashboardShell />);
-    expect(
-      screen.getByRole("heading", { name: /dashboard/i }),
-    ).toBeInTheDocument();
+    // The dashboard eyebrow labels the page; the user's display name is the
+    // primary heading and the tabs switch between Donor and Creator panels.
+    expect(screen.getByText("Dashboard")).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: /donor/i })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: /creator/i })).toBeInTheDocument();
   });
 });
 
 describe("public route placeholders", () => {
-  it("/login renders a placeholder heading", () => {
+  it("/login renders the welcome heading and an email + password form", () => {
     render(<LoginPage />);
-    expect(
-      screen.getByRole("heading", { name: /login/i }),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/welcome back/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/^email$/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/^password$/i)).toBeInTheDocument();
   });
 
   it("/creator/explore renders the explore heading and creator list shell", () => {

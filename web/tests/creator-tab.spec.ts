@@ -69,6 +69,9 @@ test.describe("Creator tab active features", () => {
     // ensures the server component re-reads the profile with creator-mode on.
     await enableCreatorMode(page, supabasePort);
     await page.reload();
+    // The dashboard defaults to the Donor tab; switch to the Creator tab so
+    // the active panel mounts.
+    await page.getByRole("tab", { name: /creator/i }).click();
     await expect(page.getByTestId("creator-active")).toBeVisible();
   });
 
@@ -153,6 +156,8 @@ test.describe("Creator tab active features", () => {
   });
 
   test("shows the unified nav with the Discover link on the dashboard", async ({ page }) => {
+    // The auth-aware right cluster (bell + avatar menu) is asserted in
+    // tests/nav-auth.spec.ts; here we only assert the shared structure.
     await expectUnifiedNav(page);
   });
 });

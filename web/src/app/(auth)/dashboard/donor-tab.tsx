@@ -10,6 +10,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 
 /**
  * The Donor tab of `/dashboard`: a logged-in User sees their donation
@@ -142,7 +143,7 @@ export function DonorTab({
               {donations.map((d) => (
                 <li
                   key={d.id}
-                  className="flex items-center justify-between rounded-md bg-card px-3 py-2 ring-1 ring-foreground/10"
+                  className="row-inset flex items-center justify-between px-3 py-2"
                 >
                   <span className="flex flex-col">
                     <span className="font-mono text-sm text-foreground">
@@ -179,12 +180,19 @@ export function DonorTab({
               No tracked donations yet. Log in to donate and climb the board.
             </p>
           ) : (
-            <p className="text-sm" data-testid="global-rank">
-              <span className="font-mono text-foreground">#{globalRank.rank}</span>{" "}
-              <span className="text-muted-foreground">
-                with {globalRank.total} donated.
+            <div className="flex flex-col gap-1" data-testid="global-rank">
+              <span className="font-mono text-[0.65rem] uppercase tracking-[0.12em] text-muted-foreground/80">
+                Your rank
               </span>
-            </p>
+              <div className="flex items-baseline gap-2">
+                <span className="stat-hero text-foreground">
+                  #{globalRank.rank}
+                </span>
+                <span className="text-sm text-muted-foreground">
+                  with {globalRank.total} donated
+                </span>
+              </div>
+            </div>
           )}
         </CardContent>
       </Card>
@@ -207,7 +215,7 @@ export function DonorTab({
               {perCreatorRanks.map((r) => (
                 <li
                   key={r.creator_profile_id}
-                  className="flex items-center justify-between rounded-md bg-card px-3 py-2 ring-1 ring-foreground/10"
+                  className="row-inset flex items-center justify-between px-3 py-2"
                 >
                   <span className="flex flex-col">
                     <span className="font-medium text-foreground">{r.display_name}</span>
@@ -271,9 +279,9 @@ export function DonorTab({
             <label className="text-xs text-muted-foreground" htmlFor="display-name-input">
               Display name
             </label>
-            <input
+            <Input
               id="display-name-input"
-              className="h-9 flex-1 rounded-lg border border-border/50 bg-background px-3 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+              className="flex-1"
               value={displayName}
               onChange={(e) => {
                 setDisplayName(e.target.value);

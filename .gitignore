@@ -35,3 +35,6 @@ pnpm-debug.log*
 web/test-results/
 web/playwright-report/
 web/playwright/.cache/
+
+# Local E2E test credentials (never commit)
+web/.e2e-local-creds.md
