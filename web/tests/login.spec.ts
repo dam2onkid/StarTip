@@ -68,13 +68,17 @@ test.describe("email + password login flow", () => {
   });
 
   test("shows the unified nav with the Discover link on /login and /dashboard", async ({ page }) => {
-    // Unauthenticated: /login inherits the nav from the root layout.
+    // Unauthenticated: /login inherits the nav from the root layout. The
+    // auth-aware right cluster (CTA -> /signup) is asserted in
+    // tests/nav-auth.spec.ts; here we only assert the shared structure.
     await page.goto("/login");
     await expectUnifiedNav(page);
 
-    // Authenticated: /dashboard inherits the same nav. The dashboard's own
-    // "Become a Creator" affordance lives in the Creator tab (a button), so it
-    // does not collide with the nav's CTA link inside the Primary landmark.
+    // Authenticated: /dashboard inherits the same nav. The auth-aware right
+    // cluster (bell + avatar menu) is asserted in tests/nav-auth.spec.ts; here
+    // we only assert the shared structure. The dashboard's own "Become a
+    // Creator" affordance lives in the Creator tab (a button), so it does not
+    // collide with the nav.
     await establishSession(page);
     await expectUnifiedNav(page);
   });

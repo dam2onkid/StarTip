@@ -92,6 +92,8 @@ test.describe("Donor tab", () => {
   });
 
   test("shows the unified nav with the Discover link on the dashboard", async ({ page }) => {
+    // The auth-aware right cluster (bell + avatar menu) is asserted in
+    // tests/nav-auth.spec.ts; here we only assert the shared structure.
     await expectUnifiedNav(page);
   });
 });

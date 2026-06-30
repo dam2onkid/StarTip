@@ -1,13 +1,24 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor, act } from "@testing-library/react";
 
 // Controllable pathname so tests can drive the overlay suppression and the
 // active-link highlight without a Next.js router. `vi.hoisted` keeps the
 // binding alive before the hoisted `vi.mock` factory runs.
 const { pathname } = vi.hoisted(() => ({ pathname: { value: "/" } }));
 
+const push = vi.fn();
+
 vi.mock("next/navigation", () => ({
   usePathname: () => pathname.value,
+  useRouter: () => ({ push }),
+}));
+
+// The authed right cluster's avatar menu delegates to `useLogout`, which
+// builds the browser Supabase client. Render-only assertions never invoke
+// signOut, but the module must resolve. Mock it so no real Supabase client is
+// constructed in jsdom.
+vi.mock("@/lib/supabase/client", () => ({
+  createBrowserClient: () => ({ auth: { signOut: vi.fn(async () => ({ error: null })) } }),
 }));
 
 // Neutralize Framer Motion so the test asserts on rendered structure, not on
@@ -76,11 +87,11 @@ describe("<SiteNav /> unified nav", () => {
     );
   });
 
-  it("keeps the Become a Creator CTA in the right cluster", () => {
+  it("keeps the Become a Creator CTA in the right cluster, retargeted to /signup", () => {
     render(<SiteNav />);
     expect(
       screen.getByRole("link", { name: "Become a Creator" }),
-    ).toHaveAttribute("href", "/login");
+    ).toHaveAttribute("href", "/signup");
   });
 
   it("drops the old How it works and Built on Stellar scroll-spy anchors", () => {
@@ -123,5 +134,76 @@ describe("<SiteNav /> unified nav", () => {
     expect(ctaLinks).toHaveLength(2);
     // The mobile dropdown Discover link still targets the explore route.
     expect(discoverLinks[1]).toHaveAttribute("href", "/creator/explore");
+  });
+});
+
+describe("<SiteNav /> authed right cluster", () => {
+  beforeEach(() => {
+    pathname.value = "/";
+    push.mockClear();
+  });
+
+  const authed = {
+    state: "authenticated",
+    displayName: "Fan",
+    email: "fan@example.com",
+    avatarUrl: null,
+  } as const;
+
+  it("replaces the Become a Creator CTA with a notification bell and an avatar menu trigger", () => {
+    render(<SiteNav auth={authed} />);
+    expect(
+      screen.queryByRole("link", { name: "Become a Creator" }),
+    ).toBeNull();
+    expect(
+      screen.getByRole("button", { name: /notifications/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /account menu for fan/i }),
+    ).toBeInTheDocument();
+  });
+
+  it("notification bell opens an empty-state dropdown", async () => {
+    render(<SiteNav auth={authed} />);
+    const bell = screen.getByRole("button", { name: /notifications/i });
+    await act(async () => {
+      fireEvent.pointerDown(bell, { button: 0 });
+      fireEvent.pointerUp(bell);
+      fireEvent.click(bell);
+    });
+    await waitFor(() =>
+      expect(screen.getByText(/no notifications yet/i)).toBeInTheDocument(),
+    );
+  });
+
+  it("avatar menu opens a header with display_name + email and a Dashboard link to /dashboard", async () => {
+    render(<SiteNav auth={authed} />);
+    const trigger = screen.getByRole("button", { name: /account menu for fan/i });
+    await act(async () => {
+      fireEvent.pointerDown(trigger, { button: 0 });
+      fireEvent.pointerUp(trigger);
+      fireEvent.click(trigger);
+    });
+    await waitFor(() =>
+      expect(screen.getByRole("menuitem", { name: /dashboard/i })).toBeInTheDocument(),
+    );
+    expect(screen.getByText("fan@example.com")).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: /dashboard/i })).toHaveAttribute(
+      "href",
+      "/dashboard",
+    );
+  });
+
+  it("mobile menu mirrors the authed right cluster: Dashboard link + Log out, no CTA", async () => {
+    render(<SiteNav auth={authed} />);
+    fireEvent.click(screen.getByRole("button", { name: /open menu/i }));
+    const dash = await screen.findByRole("link", { name: /dashboard/i });
+    expect(dash).toHaveAttribute("href", "/dashboard");
+    expect(
+      screen.getByRole("button", { name: /log out/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("link", { name: "Become a Creator" }),
+    ).toBeNull();
   });
 });

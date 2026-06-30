@@ -1,26 +1,19 @@
 "use client";
 
-import { useRouter } from "next/navigation";
-import { createBrowserClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
+import { useLogout } from "@/hooks/use-logout";
 
 /**
- * Logout action for the dashboard shell. Calls Supabase Auth `signOut` on the
- * browser client, then navigates to `/login`. Client component because it
- * needs the router and the browser Supabase client for the session cookie
- * clear.
+ * Logout action for the dashboard shell. Delegates the Supabase Auth
+ * `signOut` + redirect-to-`/login` path to the shared `useLogout` hook so the
+ * nav avatar menu (PRD: Unified hybrid navigation, issue 03) reuses the same
+ * handler instead of duplicating the `signOut` call.
  */
 export function LogoutButton() {
-  const router = useRouter();
-
-  async function onLogout() {
-    const supabase = createBrowserClient();
-    await supabase.auth.signOut();
-    router.push("/login");
-  }
+  const logout = useLogout();
 
   return (
-    <Button type="button" variant="outline" size="sm" onClick={onLogout}>
+    <Button type="button" variant="outline" size="sm" onClick={logout}>
       Log out
     </Button>
   );

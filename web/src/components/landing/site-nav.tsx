@@ -10,11 +10,15 @@ import {
   useMotionValueEvent,
   useScroll,
 } from "framer-motion";
-import { Menu, X } from "lucide-react";
+import { Menu, X, Bell } from "lucide-react";
+import { DropdownMenu } from "radix-ui";
 import { Button } from "@/components/ui/button";
 import { Magnetic } from "@/components/landing/magnetic";
 import { DonateWalletConnector } from "@/components/landing/donate-wallet-connector";
+import { NavAvatarMenu } from "@/components/landing/nav-avatar-menu";
+import { useLogout } from "@/hooks/use-logout";
 import { usePrefersReducedMotion } from "@/hooks/use-prefers-reduced-motion";
+import type { NavAuth } from "@/lib/nav/auth";
 import { cn } from "@/lib/utils";
 
 /**
@@ -30,17 +34,23 @@ import { cn } from "@/lib/utils";
  * from the viewport edges, scroll-aware frost, a magnetic CTA with a lime glow
  * on hover, and an animated underline on the desktop links. The left cluster
  * is its final shape: the StarTip logo (links to `/`) and a single "Discover"
- * link to `/creator/explore`. The right cluster keeps the "Become a Creator"
- * CTA for now (reworked in slice 3) and adds the Donate Wallet connector
- * (issue 02), always visible in both auth states, surfacing the browser wallet
- * connected via the Stellar Wallets Kit. The active link is driven by the
- * current pathname (the left links are real routes, not same-page scroll-spy
- * anchors).
+ * link to `/creator/explore`. The right cluster is auth-aware (issue 03): the
+ * root layout resolves the Supabase session server-side and passes a
+ * `NavAuth` prop. Unauthenticated: the "Become a Creator" CTA links to
+ * `/signup`. Authenticated: the CTA is replaced by a static notification bell
+ * (icon-only button with an empty-state dropdown) and an avatar menu
+ * (`NavAvatarMenu`) showing display_name + email, a Dashboard link, and a
+ * Logout item that reuses the shared `useLogout` handler. The Donate Wallet
+ * connector (issue 02) is always visible in both auth states, surfacing the
+ * browser wallet connected via the Stellar Wallets Kit. The active link is
+ * driven by the current pathname (the left links are real routes, not
+ * same-page scroll-spy anchors).
  *
  * Breakpoint strategy: a single `md` split. Below `md` the pill shows logo +
- * hamburger only; the links and CTA live in an animated dropdown that mirrors
- * the left cluster. At `md` and above the pill shows logo + links + CTA, and
- * the hamburger is hidden.
+ * hamburger only; the links and right-cluster actions live in an animated
+ * dropdown that mirrors the left cluster and the desktop right cluster. At
+ * `md` and above the pill shows logo + links + right cluster, and the
+ * hamburger is hidden.
  *
  * Only `transform` and `opacity` are animated. On touch devices and when
  * `prefers-reduced-motion: reduce` is set, the header stays fixed and visible
@@ -50,18 +60,55 @@ const LINKS = [
   { label: "Discover", href: "/creator/explore" },
 ] as const;
 
-export function SiteNav() {
+/**
+ * Static notification bell (PRD: Unified hybrid navigation, issue 03). An
+ * icon-only button that opens an empty-state dropdown. Real notification events
+ * are out of scope; the bell only reserves its place in the authed right
+ * cluster so users know where notifications will appear.
+ */
+function NavNotificationsBell() {
+  return (
+    <DropdownMenu.Root>
+      <DropdownMenu.Trigger asChild>
+        <button
+          type="button"
+          aria-label="Notifications"
+          className="inline-flex size-9 items-center justify-center rounded-xl border border-foreground/10 bg-foreground/[0.03] text-foreground transition-all duration-300 hover:border-primary/40 hover:bg-primary/[0.06] focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
+        >
+          <Bell className="size-4" />
+        </button>
+      </DropdownMenu.Trigger>
+      <DropdownMenu.Portal>
+        <DropdownMenu.Content
+          align="end"
+          sideOffset={8}
+          className="z-50 min-w-[12rem] rounded-xl border border-foreground/10 bg-background/95 px-4 py-3 text-sm text-muted-foreground shadow-[0_8px_40px_-12px_rgba(0,0,0,0.6)] backdrop-blur-md"
+        >
+          No notifications yet
+        </DropdownMenu.Content>
+      </DropdownMenu.Portal>
+    </DropdownMenu.Root>
+  );
+}
+
+export function SiteNav({ auth = { state: "unauthenticated" } }: { auth?: NavAuth } = {}) {
   const pathname = usePathname();
   const reduced = usePrefersReducedMotion();
   const { scrollY } = useScroll();
   const [hidden, setHidden] = React.useState(false);
   const [scrolled, setScrolled] = React.useState(false);
   const [menuOpen, setMenuOpen] = React.useState(false);
+  // Shared signOut + redirect handler. Called from the mobile menu's Logout
+  // button; the desktop avatar menu has its own `useLogout` call site. The
+  // hook is invoked unconditionally (before the overlay early return) so the
+  // hook order stays stable across pathname changes.
+  const logout = useLogout();
 
   // Suppress the nav on the OBS Overlay browser-source surface so it stays
   // transparent and chrome-free for OBS composition. The guard runs after every
   // hook so the hook call order is identical on overlay and non-overlay routes.
   const isOverlay = pathname?.startsWith("/overlay/") ?? false;
+  const authed = auth.state === "authenticated";
 
   useMotionValueEvent(scrollY, "change", (latest) => {
     const prev = scrollY.getPrevious() ?? 0;
@@ -150,25 +197,46 @@ export function SiteNav() {
           })}
         </ul>
 
-        {/* Right cluster: Donate Wallet connector + CTA (desktop) + mobile toggle */}
+        {/* Right cluster: Donate Wallet connector + auth-aware CTA / bell +
+            avatar menu (desktop) + mobile toggle */}
         <div className="flex items-center gap-2">
           {/* Donate Wallet connector — desktop right cluster. On mobile it
-              renders inside the dropdown below, mirroring the CTA. */}
+              renders inside the dropdown below, mirroring the right cluster. */}
           <div className="hidden md:block">
             <DonateWalletConnector />
           </div>
-          <Magnetic strength={0.4} className="hidden md:inline-block">
-            <Button
-              asChild
-              size="lg"
-              variant="ghost"
-              className="group/cta relative overflow-hidden rounded-xl border border-foreground/10 bg-foreground/[0.03] text-foreground transition-all duration-300 hover:border-primary/40 hover:bg-primary/[0.06] hover:shadow-[0_0_24px_-6px_rgba(180,255,57,0.4)]"
-            >
-              <Link href="/login" className="relative z-10">
-                Become a Creator
-              </Link>
-            </Button>
-          </Magnetic>
+          {authed ? (
+            <>
+              {/* Notification bell, desktop right cluster. Static placeholder
+                  with an empty-state dropdown (real events are out of scope). */}
+              <div className="hidden md:block">
+                <NavNotificationsBell />
+              </div>
+              {/* Avatar menu, desktop right cluster. Replaces the CTA when
+                  authed; shows display_name + email header, Dashboard link,
+                  and a Logout item that reuses the shared useLogout handler. */}
+              <div className="hidden md:block">
+                <NavAvatarMenu
+                  displayName={auth.displayName}
+                  email={auth.email}
+                  avatarUrl={auth.avatarUrl}
+                />
+              </div>
+            </>
+          ) : (
+            <Magnetic strength={0.4} className="hidden md:inline-block">
+              <Button
+                asChild
+                size="lg"
+                variant="ghost"
+                className="group/cta relative overflow-hidden rounded-xl border border-foreground/10 bg-foreground/[0.03] text-foreground transition-all duration-300 hover:border-primary/40 hover:bg-primary/[0.06] hover:shadow-[0_0_24px_-6px_rgba(180,255,57,0.4)]"
+              >
+                <Link href="/signup" className="relative z-10">
+                  Become a Creator
+                </Link>
+              </Button>
+            </Magnetic>
+          )}
 
           {/* Mobile menu toggle — shows below md only */}
           <button
@@ -205,8 +273,11 @@ export function SiteNav() {
         </div>
       </nav>
 
-      {/* Mobile dropdown — links + Donate Wallet connector + CTA, animated.
-          Mirrors the left cluster and the desktop right cluster. */}
+      {/* Mobile dropdown: links + Donate Wallet connector + auth-aware right
+          cluster actions, animated. Mirrors the left cluster and the desktop
+          right cluster. Authed: Dashboard link + Log out (reuses the shared
+          useLogout handler). Unauth: the "Become a Creator" CTA. The desktop
+          bell is an icon-only affordance, so it is not mirrored here. */}
       <AnimatePresence>
         {menuOpen && (
           <motion.div
@@ -231,13 +302,36 @@ export function SiteNav() {
               <li className="px-2 pt-2">
                 <DonateWalletConnector />
               </li>
-              <li className="p-2">
-                <Button asChild size="lg" className="w-full">
-                  <Link href="/login" onClick={() => setMenuOpen(false)}>
-                    Become a Creator
-                  </Link>
-                </Button>
-              </li>
+              {authed ? (
+                <>
+                  <li className="p-2">
+                    <Button asChild size="lg" variant="ghost" className="w-full">
+                      <Link href="/dashboard" onClick={() => setMenuOpen(false)}>
+                        Dashboard
+                      </Link>
+                    </Button>
+                  </li>
+                  <li className="p-2">
+                    <Button
+                      type="button"
+                      size="lg"
+                      variant="ghost"
+                      className="w-full"
+                      onClick={logout}
+                    >
+                      Log out
+                    </Button>
+                  </li>
+                </>
+              ) : (
+                <li className="p-2">
+                  <Button asChild size="lg" className="w-full">
+                    <Link href="/signup" onClick={() => setMenuOpen(false)}>
+                      Become a Creator
+                    </Link>
+                  </Button>
+                </li>
+              )}
             </ul>
           </motion.div>
         )}
