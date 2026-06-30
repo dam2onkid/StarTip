@@ -13,6 +13,7 @@ import {
 import { Menu, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Magnetic } from "@/components/landing/magnetic";
+import { DonateWalletConnector } from "@/components/landing/donate-wallet-connector";
 import { usePrefersReducedMotion } from "@/hooks/use-prefers-reduced-motion";
 import { cn } from "@/lib/utils";
 
@@ -30,8 +31,11 @@ import { cn } from "@/lib/utils";
  * on hover, and an animated underline on the desktop links. The left cluster
  * is its final shape: the StarTip logo (links to `/`) and a single "Discover"
  * link to `/creator/explore`. The right cluster keeps the "Become a Creator"
- * CTA for now (reworked in slice 3). The active link is driven by the current
- * pathname (the left links are real routes, not same-page scroll-spy anchors).
+ * CTA for now (reworked in slice 3) and adds the Donate Wallet connector
+ * (issue 02), always visible in both auth states, surfacing the browser wallet
+ * connected via the Stellar Wallets Kit. The active link is driven by the
+ * current pathname (the left links are real routes, not same-page scroll-spy
+ * anchors).
  *
  * Breakpoint strategy: a single `md` split. Below `md` the pill shows logo +
  * hamburger only; the links and CTA live in an animated dropdown that mirrors
@@ -146,8 +150,13 @@ export function SiteNav() {
           })}
         </ul>
 
-        {/* Right cluster: CTA (desktop) + mobile toggle */}
+        {/* Right cluster: Donate Wallet connector + CTA (desktop) + mobile toggle */}
         <div className="flex items-center gap-2">
+          {/* Donate Wallet connector — desktop right cluster. On mobile it
+              renders inside the dropdown below, mirroring the CTA. */}
+          <div className="hidden md:block">
+            <DonateWalletConnector />
+          </div>
           <Magnetic strength={0.4} className="hidden md:inline-block">
             <Button
               asChild
@@ -196,7 +205,8 @@ export function SiteNav() {
         </div>
       </nav>
 
-      {/* Mobile dropdown — links + CTA, animated. Mirrors the left cluster. */}
+      {/* Mobile dropdown — links + Donate Wallet connector + CTA, animated.
+          Mirrors the left cluster and the desktop right cluster. */}
       <AnimatePresence>
         {menuOpen && (
           <motion.div
@@ -218,6 +228,9 @@ export function SiteNav() {
                   </Link>
                 </li>
               ))}
+              <li className="px-2 pt-2">
+                <DonateWalletConnector />
+              </li>
               <li className="p-2">
                 <Button asChild size="lg" className="w-full">
                   <Link href="/login" onClick={() => setMenuOpen(false)}>

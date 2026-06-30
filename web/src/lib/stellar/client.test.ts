@@ -39,3 +39,36 @@ describe("stellar/client", () => {
     expect(a.serverURL.toString()).toBe("https://soroban-testnet.stellar.org/");
   });
 });
+
+describe("stellarExpertAccountUrl", () => {
+  let originalNetwork: string | undefined;
+
+  beforeEach(() => {
+    originalNetwork = process.env.NEXT_PUBLIC_STELLAR_NETWORK;
+  });
+
+  afterEach(() => {
+    if (originalNetwork === undefined) {
+      delete process.env.NEXT_PUBLIC_STELLAR_NETWORK;
+    } else {
+      process.env.NEXT_PUBLIC_STELLAR_NETWORK = originalNetwork;
+    }
+    vi.resetModules();
+  });
+
+  it("returns the testnet explorer URL when the network is testnet", async () => {
+    process.env.NEXT_PUBLIC_STELLAR_NETWORK = "testnet";
+    const { stellarExpertAccountUrl } = await import("@/lib/stellar/client");
+    expect(stellarExpertAccountUrl("GABC...WXYZ")).toBe(
+      "https://stellar.expert/explorer/testnet/account/GABC...WXYZ",
+    );
+  });
+
+  it("returns the pubnet explorer URL when the network is pubnet", async () => {
+    process.env.NEXT_PUBLIC_STELLAR_NETWORK = "pubnet";
+    const { stellarExpertAccountUrl } = await import("@/lib/stellar/client");
+    expect(stellarExpertAccountUrl("GABC...WXYZ")).toBe(
+      "https://stellar.expert/explorer/public/account/GABC...WXYZ",
+    );
+  });
+});

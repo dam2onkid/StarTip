@@ -115,6 +115,10 @@ test.describe("Creator onboarding four-gate flow", () => {
     await installSeams(page);
     await routeApi(page);
     await establishSession(page);
+    // The dashboard defaults to the Donor tab; switch to the Creator tab so
+    // the CreatorTab (and its Realtime seam) mounts before capturing the push
+    // handle.
+    await page.getByRole("tab", { name: /creator/i }).click();
     // Capture the Realtime push handle after the dashboard mounted.
     await page.waitForFunction(() => !!(window as unknown as { __pushActive?: unknown }).__pushActive);
     pushActive = async (payout?: string) => {
@@ -143,7 +147,7 @@ test.describe("Creator onboarding four-gate flow", () => {
     await page.getByRole("button", { name: /^Claim$/i }).click();
     await expect(page.getByText(/Link your Stellar wallet/i)).toBeVisible();
 
-    await page.getByRole("button", { name: /connect wallet/i }).click();
+    await page.getByRole("main").getByRole("button", { name: /connect wallet/i }).click();
     await expect(page.getByText(/Connected:/i)).toBeVisible();
     await page.getByRole("button", { name: /sign challenge & link/i }).click();
     await expect(page.getByPlaceholder("G…")).toBeVisible();
@@ -154,7 +158,7 @@ test.describe("Creator onboarding four-gate flow", () => {
     await page.getByRole("button", { name: /become a creator/i }).click();
     await page.getByPlaceholder("ada-lovelace").fill("ada");
     await page.getByRole("button", { name: /^Claim$/i }).click();
-    await page.getByRole("button", { name: /connect wallet/i }).click();
+    await page.getByRole("main").getByRole("button", { name: /connect wallet/i }).click();
     await page.getByRole("button", { name: /sign challenge & link/i }).click();
     await expect(page.getByPlaceholder("G…")).toBeVisible();
 
@@ -168,7 +172,7 @@ test.describe("Creator onboarding four-gate flow", () => {
     await page.getByRole("button", { name: /become a creator/i }).click();
     await page.getByPlaceholder("ada-lovelace").fill("ada");
     await page.getByRole("button", { name: /^Claim$/i }).click();
-    await page.getByRole("button", { name: /connect wallet/i }).click();
+    await page.getByRole("main").getByRole("button", { name: /connect wallet/i }).click();
     await page.getByRole("button", { name: /sign challenge & link/i }).click();
     await expect(page.getByPlaceholder("G…")).toBeVisible();
 

@@ -11,6 +11,22 @@ export const networkPassphrase: string =
     : StellarSdk.Networks.TESTNET;
 
 /**
+ * `true` when the app is configured for Stellar pubnet. Derived from the same
+ * source as `networkPassphrase` so the two never disagree.
+ */
+export const isPubnet: boolean = env.NEXT_PUBLIC_STELLAR_NETWORK === "pubnet";
+
+/**
+ * Stellar Expert account page URL for the active network. Used by the nav
+ * Donate Wallet connector's "View on Stellar" menu item so a connected donor
+ * can jump to the explorer for their address on the right network.
+ */
+export function stellarExpertAccountUrl(address: string): string {
+  const network = isPubnet ? "public" : "testnet";
+  return `https://stellar.expert/explorer/${network}/account/${address}`;
+}
+
+/**
  * DonationRouter contract id, exposed to the client so the donate flow can
  * build transactions without a server round-trip for contract id lookup.
  */

@@ -102,8 +102,11 @@ test.describe("Donate flow", () => {
     // The heading is visible.
     await expect(page.getByRole("heading", { name: /donate to ada/i })).toBeVisible();
 
-    // Connect wallet.
-    await page.getByRole("button", { name: /connect wallet/i }).click();
+    // Connect wallet. Scoped to the donate form (CSS selector, since the form
+    // has no accessible name and thus no `form` role in the ARIA tree) so the
+    // nav's Donate Wallet connector (also a "Connect wallet" button, issue 02)
+    // is not matched.
+    await page.locator("form").getByRole("button", { name: /connect wallet/i }).click();
     await expect(page.getByText(/Connected:/i)).toBeVisible();
 
     // Wait for the token picker to populate (from the mock Supabase tokens endpoint).
@@ -125,8 +128,8 @@ test.describe("Donate flow", () => {
 
     await page.goto("/creator/ada/donate");
 
-    // Connect wallet.
-    await page.getByRole("button", { name: /connect wallet/i }).click();
+    // Connect wallet. Scoped to the donate form (see happy path note above).
+    await page.locator("form").getByRole("button", { name: /connect wallet/i }).click();
     await expect(page.getByText(/Connected:/i)).toBeVisible();
 
     // Wait for the token picker.
