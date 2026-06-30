@@ -97,7 +97,7 @@ export function CreatorPageShell({
   leaderboard: { donor_name: string; total_amount: string }[];
 }) {
   return (
-    <section className="mx-auto flex w-full max-w-4xl flex-col gap-8 px-6 py-24">
+    <section className="mx-auto flex w-full max-w-4xl flex-col gap-8 px-6 pt-32 pb-24">
       <header className="flex items-start gap-5">
         {avatarUrl ? (
           // eslint-disable-next-line @next/next/no-img-element

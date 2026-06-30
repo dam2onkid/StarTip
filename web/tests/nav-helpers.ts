@@ -70,7 +70,7 @@ export async function expectNoNav(page: Page) {
   await expect(page.getByRole("link", { name: "StarTip home" })).toHaveCount(0);
   await expect(page.getByRole("link", { name: "Discover" })).toHaveCount(0);
   await expect(
-    page.getByRole("link", { name: "Become a Creator" }),
+    page.getByRole("link", { name: "Sign in/up" }),
   ).toHaveCount(0);
   await expect(
     page.getByRole("button", { name: /connect wallet/i }),

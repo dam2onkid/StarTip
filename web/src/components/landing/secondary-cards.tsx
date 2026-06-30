@@ -9,7 +9,7 @@ import { usePrefersReducedMotion } from "@/hooks/use-prefers-reduced-motion";
 
 /**
  * Three secondary cards below the hero. Card CTAs use the secondary Button
- * variant so the hero "Become a Creator" CTA remains the single Tertiary
+ * variant so the hero "Sign in/up" CTA remains the single Tertiary
  * element on the page at rest (single-accent rule, DESIGN.md).
  *
  * Premium layer: each card is a frosted-glass surface with dimensional tilt on

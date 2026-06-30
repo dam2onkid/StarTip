@@ -18,7 +18,7 @@ export default function DonatePage({
 }) {
   const { handle } = React.use(params);
   return (
-    <section className="mx-auto flex w-full max-w-md flex-col gap-4 px-6 py-24">
+    <section className="mx-auto flex w-full max-w-md flex-col gap-4 px-6 pt-32 pb-24">
       <DonateForm handle={handle} />
     </section>
   );

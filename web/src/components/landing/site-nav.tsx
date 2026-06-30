@@ -33,11 +33,14 @@ import { cn } from "@/lib/utils";
  * Visual language is preserved per `DESIGN.md`: a floating glass pill detached
  * from the viewport edges, scroll-aware frost, a magnetic CTA with a lime glow
  * on hover, and an animated underline on the desktop links. The left cluster
- * is its final shape: the StarTip logo (links to `/`) and a single "Discover"
- * link to `/creator/explore`. The right cluster is auth-aware (issue 03): the
+ * is its final shape: the StarTip logo (links to `/`) and three left-aligned
+ * tabs, "Home" (`/`), "Discover" (`/creator/explore`), and "Docs" (`/docs`).
+ * The logo and tabs sit together in a flex-start left cluster so the tabs
+ * follow the logo instead of being centered by the outer `justify-between`.
+ * The right cluster is auth-aware (issue 03): the
  * root layout resolves the Supabase session server-side and passes a
- * `NavAuth` prop. Unauthenticated: the "Become a Creator" CTA links to
- * `/signup`. Authenticated: the CTA is replaced by a static notification bell
+ * `NavAuth` prop. Unauthenticated: the "Sign in/up" CTA links to
+ * `/login`. Authenticated: the CTA is replaced by a static notification bell
  * (icon-only button with an empty-state dropdown) and an avatar menu
  * (`NavAvatarMenu`) showing display_name + email, a Dashboard link, and a
  * Logout item that reuses the shared `useLogout` handler. The Donate Wallet
@@ -57,7 +60,9 @@ import { cn } from "@/lib/utils";
  * and the mobile menu uses plain show/hide.
  */
 const LINKS = [
+  { label: "Home", href: "/" },
   { label: "Discover", href: "/creator/explore" },
+  { label: "Docs", href: "/docs" },
 ] as const;
 
 /**
@@ -147,55 +152,59 @@ export function SiteNav({ auth = { state: "unauthenticated" } }: { auth?: NavAut
             : "border border-transparent bg-transparent",
         )}
       >
-        {/* Logo */}
-        <Link
-          href="/"
-          className="group relative inline-flex h-8 shrink-0 items-center"
-          aria-label="StarTip home"
-        >
-          <Image
-            src="/logo.png"
-            alt="StarTip"
-            width={120}
-            height={32}
-            priority
-            className="h-7 w-auto transition-transform duration-300 group-hover:scale-[1.04] sm:h-8"
-          />
-        </Link>
+        {/* Left cluster: logo + desktop links, flex-start so the tabs follow
+            the logo instead of being centered by the outer justify-between. */}
+        <div className="flex items-center gap-6">
+          {/* Logo */}
+          <Link
+            href="/"
+            className="group relative inline-flex h-8 shrink-0 items-center"
+            aria-label="StarTip home"
+          >
+            <Image
+              src="/logo.png"
+              alt="StarTip"
+              width={120}
+              height={32}
+              priority
+              className="h-7 w-auto transition-transform duration-300 group-hover:scale-[1.04] sm:h-8"
+            />
+          </Link>
 
-        {/* Desktop links with animated underline + active highlight */}
-        <ul className="hidden items-center gap-1 md:flex">
-          {LINKS.map((link) => {
-            const active = pathname === link.href;
-            return (
-              <li key={link.href}>
-                <Magnetic strength={0.2} className="inline-block">
-                  <Link
-                    href={link.href}
-                    aria-current={active ? "page" : undefined}
-                    className={cn(
-                      "group/link relative rounded-md px-3.5 py-2 text-sm transition-colors duration-200",
-                      active
-                        ? "text-foreground"
-                        : "text-muted-foreground hover:text-foreground",
-                    )}
-                  >
-                    {link.label}
-                    <span
-                      aria-hidden
+          {/* Desktop links with animated underline + active highlight */}
+          <ul className="hidden items-center gap-1 md:flex">
+            {LINKS.map((link) => {
+              const active = pathname === link.href;
+              return (
+                <li key={link.href}>
+                  <Magnetic strength={0.2} className="inline-block">
+                    <Link
+                      href={link.href}
+                      aria-current={active ? "page" : undefined}
                       className={cn(
-                        "absolute inset-x-3.5 -bottom-0.5 h-px origin-left bg-primary/60 transition-transform duration-300 ease-out",
+                        "group/link relative rounded-md px-3.5 py-2 text-sm transition-colors duration-200",
                         active
-                          ? "scale-x-100"
-                          : "scale-x-0 group-hover/link:scale-x-100",
+                          ? "text-foreground"
+                          : "text-muted-foreground hover:text-foreground",
                       )}
-                    />
-                  </Link>
-                </Magnetic>
-              </li>
-            );
-          })}
-        </ul>
+                    >
+                      {link.label}
+                      <span
+                        aria-hidden
+                        className={cn(
+                          "absolute inset-x-3.5 -bottom-0.5 h-px origin-left bg-primary/60 transition-transform duration-300 ease-out",
+                          active
+                            ? "scale-x-100"
+                            : "scale-x-0 group-hover/link:scale-x-100",
+                        )}
+                      />
+                    </Link>
+                  </Magnetic>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
 
         {/* Right cluster: Donate Wallet connector + auth-aware CTA / bell +
             avatar menu (desktop) + mobile toggle */}
@@ -231,8 +240,8 @@ export function SiteNav({ auth = { state: "unauthenticated" } }: { auth?: NavAut
                 variant="ghost"
                 className="group/cta relative overflow-hidden rounded-xl border border-foreground/10 bg-foreground/[0.03] text-foreground transition-all duration-300 hover:border-primary/40 hover:bg-primary/[0.06] hover:shadow-[0_0_24px_-6px_rgba(180,255,57,0.4)]"
               >
-                <Link href="/signup" className="relative z-10">
-                  Become a Creator
+                <Link href="/login" className="relative z-10">
+                  Sign in/up
                 </Link>
               </Button>
             </Magnetic>
@@ -276,7 +285,7 @@ export function SiteNav({ auth = { state: "unauthenticated" } }: { auth?: NavAut
       {/* Mobile dropdown: links + Donate Wallet connector + auth-aware right
           cluster actions, animated. Mirrors the left cluster and the desktop
           right cluster. Authed: Dashboard link + Log out (reuses the shared
-          useLogout handler). Unauth: the "Become a Creator" CTA. The desktop
+          useLogout handler). Unauth: the "Sign in/up" CTA. The desktop
           bell is an icon-only affordance, so it is not mirrored here. */}
       <AnimatePresence>
         {menuOpen && (
@@ -326,8 +335,8 @@ export function SiteNav({ auth = { state: "unauthenticated" } }: { auth?: NavAut
               ) : (
                 <li className="p-2">
                   <Button asChild size="lg" className="w-full">
-                    <Link href="/signup" onClick={() => setMenuOpen(false)}>
-                      Become a Creator
+                    <Link href="/login" onClick={() => setMenuOpen(false)}>
+                      Sign in/up
                     </Link>
                   </Button>
                 </li>

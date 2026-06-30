@@ -34,12 +34,12 @@ test.describe("landing page — prefers-reduced-motion: no-preference", () => {
     await expect(subheadline).toContainText(SUBHEADLINE_PREFIX);
 
     // The primary CTA lives in the main content (the hero). The nav and footer
-    // also expose "Become a Creator" links, but those are ghost / text links,
+    // also expose "Sign in/up" links, but those are ghost / text links,
     // not the single Tertiary primary CTA (PRD single-accent rule). Scoping to
     // `main` targets the hero CTA without asserting on internals.
     const primaryCta = page
       .getByRole("main")
-      .getByRole("link", { name: "Become a Creator" });
+      .getByRole("link", { name: "Sign in/up" });
     await expect(primaryCta).toHaveAttribute("href", "/login");
     // Exactly one primary CTA with this label in the main content.
     await expect(primaryCta).toHaveCount(1);
@@ -146,7 +146,7 @@ test.describe("landing page — prefers-reduced-motion: no-preference", () => {
     // Primary CTA background uses the Tertiary color (#B4FF39 -> rgb(180, 255, 57)).
     const primaryCta = page
       .getByRole("main")
-      .getByRole("link", { name: "Become a Creator" });
+      .getByRole("link", { name: "Sign in/up" });
     await expect(primaryCta).toHaveCSS(
       "background-color",
       "rgb(180, 255, 57)",
@@ -155,7 +155,7 @@ test.describe("landing page — prefers-reduced-motion: no-preference", () => {
 
   test("shows the unified nav with the logo and the Discover link", async ({ page }) => {
     // The nav is hoisted into the root layout, so the landing page inherits it.
-    // The hero "Become a Creator" CTA lives in main; the nav CTA is a separate
+    // The hero "Sign in/up" CTA lives in main; the nav CTA is a separate
     // ghost link in the Primary navigation landmark.
     await expectUnifiedNav(page);
   });

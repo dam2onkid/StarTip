@@ -107,7 +107,7 @@ export function Hero() {
 
       <motion.div
         style={reduced ? undefined : { y: contentY, opacity: contentOpacity }}
-        className="relative z-10 mx-auto flex w-full max-w-6xl flex-col gap-8 px-6 pt-28 pb-24"
+        className="relative z-10 mx-auto flex w-full max-w-6xl flex-col gap-8 px-6 pt-36 pb-24"
       >
         <motion.div
           initial={reduced ? false : "hidden"}
@@ -156,7 +156,7 @@ export function Hero() {
           <Magnetic strength={0.45}>
             <Button asChild size="lg" className="h-12 px-7 text-base">
               <Link href="/login" data-cursor="hover">
-                Become a Creator
+                Sign in/up
               </Link>
             </Button>
           </Magnetic>

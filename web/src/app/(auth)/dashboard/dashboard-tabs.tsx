@@ -113,7 +113,7 @@ export function DashboardTabs({
   return (
     <>
       <Grain />
-      <section className="dashboard relative mx-auto flex w-full max-w-5xl flex-col gap-8 px-6 py-16 sm:py-20">
+      <section className="dashboard relative mx-auto flex w-full max-w-5xl flex-col gap-8 px-6 pt-20 sm:pt-24 pb-16 sm:pb-20">
         {/* Identity header */}
         <header className="flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-4">

@@ -69,7 +69,7 @@ test.describe("email + password login flow", () => {
 
   test("shows the unified nav with the Discover link on /login and /dashboard", async ({ page }) => {
     // Unauthenticated: /login inherits the nav from the root layout. The
-    // auth-aware right cluster (CTA -> /signup) is asserted in
+    // auth-aware right cluster (CTA -> /login) is asserted in
     // tests/nav-auth.spec.ts; here we only assert the shared structure.
     await page.goto("/login");
     await expectUnifiedNav(page);

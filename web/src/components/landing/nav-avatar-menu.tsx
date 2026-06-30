@@ -9,7 +9,7 @@ import { useLogout } from "@/hooks/use-logout";
 /**
  * Nav avatar menu (PRD: Unified hybrid navigation, issue 03).
  *
- * The authed right-cluster replacement for the "Become a Creator" CTA. A
+ * The authed right-cluster replacement for the "Sign in/up" CTA. A
  * trigger button shows the caller's avatar (or an initials fallback when
  * `avatarUrl` is null) and opens a dropdown with a display_name + email
  * header, a "Dashboard" link to `/dashboard`, and a "Logout" item that

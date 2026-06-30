@@ -7,7 +7,7 @@ import { expectUnifiedNav } from "./nav-helpers";
  * The root layout resolves the Supabase session server-side and passes a
  * `NavAuth` prop to `SiteNav`, so the right cluster is auth-aware. Coverage:
  *
- *   - Unauthenticated: the "Become a Creator" CTA links to `/signup` (alongside
+ *   - Unauthenticated: the "Sign in/up" CTA links to `/login` (alongside
  *     the Donate Wallet connector); no bell or avatar menu.
  *   - Authenticated: the CTA is replaced by a notification bell + an avatar
  *     menu (no CTA).
@@ -39,13 +39,13 @@ async function establishSession(page: Page) {
 
 test.describe("Nav auth-aware right cluster", () => {
   test.describe("unauthenticated", () => {
-    test("the Become a Creator CTA links to /signup alongside the wallet connector", async ({ page }) => {
+    test("the Sign in/up CTA links to /login alongside the wallet connector", async ({ page }) => {
       await page.goto("/");
       await expectUnifiedNav(page);
       const nav = page.getByRole("navigation", { name: "Primary" });
       await expect(
-        nav.getByRole("link", { name: "Become a Creator" }),
-      ).toHaveAttribute("href", "/signup");
+        nav.getByRole("link", { name: "Sign in/up" }),
+      ).toHaveAttribute("href", "/login");
     });
 
     test("no notification bell or avatar menu is present on a public page", async ({ page }) => {
@@ -57,11 +57,11 @@ test.describe("Nav auth-aware right cluster", () => {
       ).toHaveCount(0);
     });
 
-    test("clicking the CTA navigates to /signup", async ({ page }) => {
+    test("clicking the CTA navigates to /login", async ({ page }) => {
       await page.goto("/");
       const nav = page.getByRole("navigation", { name: "Primary" });
-      await nav.getByRole("link", { name: "Become a Creator" }).click();
-      await expect(page).toHaveURL(/\/signup$/);
+      await nav.getByRole("link", { name: "Sign in/up" }).click();
+      await expect(page).toHaveURL(/\/login$/);
     });
   });
 
@@ -78,7 +78,7 @@ test.describe("Nav auth-aware right cluster", () => {
         nav.getByRole("button", { name: /account menu for/i }),
       ).toBeVisible();
       await expect(
-        nav.getByRole("link", { name: "Become a Creator" }),
+        nav.getByRole("link", { name: "Sign in/up" }),
       ).toHaveCount(0);
     });
 

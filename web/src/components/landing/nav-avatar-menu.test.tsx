@@ -15,18 +15,20 @@ import { render, screen, fireEvent, waitFor, act } from "@testing-library/react"
 
 const signOut = vi.fn(async () => ({ error: null }));
 const push = vi.fn();
+const refresh = vi.fn();
 
 vi.mock("@/lib/supabase/client", () => ({
   createBrowserClient: () => ({ auth: { signOut } }),
 }));
 
 vi.mock("next/navigation", () => ({
-  useRouter: () => ({ push }),
+  useRouter: () => ({ push, refresh }),
 }));
 
 beforeEach(() => {
   signOut.mockClear();
   push.mockClear();
+  refresh.mockClear();
 });
 
 async function renderMenu(props: {
@@ -106,7 +108,7 @@ describe("NavAvatarMenu: dropdown", () => {
     expect(dash).toHaveAttribute("href", "/dashboard");
   });
 
-  it("Logout item calls the shared useLogout handler (signOut + push /login)", async () => {
+  it("Logout item calls the shared useLogout handler (signOut + refresh + push /login)", async () => {
     await renderMenu();
     await openMenu();
 
@@ -115,6 +117,7 @@ describe("NavAvatarMenu: dropdown", () => {
     });
 
     await waitFor(() => expect(signOut).toHaveBeenCalledOnce());
+    expect(refresh).toHaveBeenCalledOnce();
     expect(push).toHaveBeenCalledWith("/login");
   });
 });

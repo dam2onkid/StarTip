@@ -45,7 +45,7 @@ export function SiteFooter() {
                 href="/login"
                 className="text-sm text-foreground/80 transition-colors hover:text-foreground"
               >
-                Become a Creator
+                Sign in/up
               </Link>
               <Link
                 href="/dashboard"

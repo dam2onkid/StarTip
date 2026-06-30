@@ -65,8 +65,8 @@ const { SiteNav } = await import("@/components/landing/site-nav");
 /**
  * Unified nav behavior (PRD issue 01). The nav is hoisted into the root
  * layout so it renders on every route except the OBS Overlay. These tests
- * assert on the public structure: the left cluster (logo + Discover), the
- * removed scroll-spy anchors, the Become a Creator CTA, overlay suppression,
+ * assert on the public structure: the left cluster (logo + Home, Discover,
+ * Docs tabs), the removed scroll-spy anchors, the Sign in/up CTA, overlay suppression,
  * and the mobile menu mirroring the left cluster. Motion is an implementation
  * detail of the visual language and is covered by the landing E2E seam.
  */
@@ -75,9 +75,13 @@ describe("<SiteNav /> unified nav", () => {
     pathname.value = "/";
   });
 
-  it("renders the logo linking home and a Discover link to /creator/explore", () => {
+  it("renders the logo linking home and Home, Discover, Docs tabs", () => {
     render(<SiteNav />);
     expect(screen.getByRole("link", { name: "StarTip home" })).toHaveAttribute(
+      "href",
+      "/",
+    );
+    expect(screen.getByRole("link", { name: "Home" })).toHaveAttribute(
       "href",
       "/",
     );
@@ -85,13 +89,17 @@ describe("<SiteNav /> unified nav", () => {
       "href",
       "/creator/explore",
     );
+    expect(screen.getByRole("link", { name: "Docs" })).toHaveAttribute(
+      "href",
+      "/docs",
+    );
   });
 
-  it("keeps the Become a Creator CTA in the right cluster, retargeted to /signup", () => {
+  it("keeps the Sign in/up CTA in the right cluster, retargeted to /login", () => {
     render(<SiteNav />);
     expect(
-      screen.getByRole("link", { name: "Become a Creator" }),
-    ).toHaveAttribute("href", "/signup");
+      screen.getByRole("link", { name: "Sign in/up" }),
+    ).toHaveAttribute("href", "/login");
   });
 
   it("drops the old How it works and Built on Stellar scroll-spy anchors", () => {
@@ -111,7 +119,7 @@ describe("<SiteNav /> unified nav", () => {
     expect(screen.queryByRole("link", { name: "StarTip home" })).toBeNull();
     expect(screen.queryByRole("link", { name: "Discover" })).toBeNull();
     expect(
-      screen.queryByRole("link", { name: "Become a Creator" }),
+      screen.queryByRole("link", { name: "Sign in/up" }),
     ).toBeNull();
     expect(screen.queryByRole("button", { name: /open menu/i })).toBeNull();
   });
@@ -129,7 +137,7 @@ describe("<SiteNav /> unified nav", () => {
     });
     expect(discoverLinks).toHaveLength(2);
     const ctaLinks = await screen.findAllByRole("link", {
-      name: "Become a Creator",
+      name: "Sign in/up",
     });
     expect(ctaLinks).toHaveLength(2);
     // The mobile dropdown Discover link still targets the explore route.
@@ -150,10 +158,10 @@ describe("<SiteNav /> authed right cluster", () => {
     avatarUrl: null,
   } as const;
 
-  it("replaces the Become a Creator CTA with a notification bell and an avatar menu trigger", () => {
+  it("replaces the Sign in/up CTA with a notification bell and an avatar menu trigger", () => {
     render(<SiteNav auth={authed} />);
     expect(
-      screen.queryByRole("link", { name: "Become a Creator" }),
+      screen.queryByRole("link", { name: "Sign in/up" }),
     ).toBeNull();
     expect(
       screen.getByRole("button", { name: /notifications/i }),
@@ -203,7 +211,7 @@ describe("<SiteNav /> authed right cluster", () => {
       screen.getByRole("button", { name: /log out/i }),
     ).toBeInTheDocument();
     expect(
-      screen.queryByRole("link", { name: "Become a Creator" }),
+      screen.queryByRole("link", { name: "Sign in/up" }),
     ).toBeNull();
   });
 });
