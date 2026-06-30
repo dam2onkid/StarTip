@@ -3,6 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import Image from "next/image";
+import { usePathname } from "next/navigation";
 import {
   AnimatePresence,
   motion,
@@ -16,55 +17,47 @@ import { usePrefersReducedMotion } from "@/hooks/use-prefers-reduced-motion";
 import { cn } from "@/lib/utils";
 
 /**
- * Fluid, contextual navigation (premium-frontend-ui skill §2.3).
+ * Unified site navigation (PRD: Unified hybrid navigation).
  *
- * A floating glass pill detached from the viewport edges. Hides on scroll-down,
- * reveals on scroll-up, and intensifies its frost once the user scrolls past
- * the hero. A thin lime scroll-progress bar tracks page progress on the pill's
- * top edge. Desktop links carry an animated underline and highlight the active
- * section via scroll-spy. The CTA is magnetic with a lime glow on hover.
+ * Rendered from the root `app/layout.tsx` so a single nav appears on every
+ * route. The OBS Overlay browser-source surface (`/overlay/*`) is excluded:
+ * the nav suppresses itself based on the current pathname so the overlay stays
+ * transparent and chrome-free for OBS composition. All hooks run before the
+ * suppression guard so the hook order is stable across pathname changes.
+ *
+ * Visual language is preserved per `DESIGN.md`: a floating glass pill detached
+ * from the viewport edges, scroll-aware frost, a magnetic CTA with a lime glow
+ * on hover, and an animated underline on the desktop links. The left cluster
+ * is its final shape: the StarTip logo (links to `/`) and a single "Discover"
+ * link to `/creator/explore`. The right cluster keeps the "Become a Creator"
+ * CTA for now (reworked in slice 3). The active link is driven by the current
+ * pathname (the left links are real routes, not same-page scroll-spy anchors).
  *
  * Breakpoint strategy: a single `md` split. Below `md` the pill shows logo +
- * hamburger only; the links and CTA live in an animated dropdown. At `md` and
- * above the pill shows logo + links + CTA, and the hamburger is hidden. This
- * avoids the redundant CTA-in-pill + CTA-in-dropdown + CTA-in-hero triple
- * repeat on small screens.
+ * hamburger only; the links and CTA live in an animated dropdown that mirrors
+ * the left cluster. At `md` and above the pill shows logo + links + CTA, and
+ * the hamburger is hidden.
  *
  * Only `transform` and `opacity` are animated. On touch devices and when
  * `prefers-reduced-motion: reduce` is set, the header stays fixed and visible
  * and the mobile menu uses plain show/hide.
  */
 const LINKS = [
-  { label: "How it works", href: "#how-it-works", id: "how-it-works" },
-  { label: "Built on Stellar", href: "#built-on-stellar", id: "built-on-stellar" },
+  { label: "Discover", href: "/creator/explore" },
 ] as const;
 
 export function SiteNav() {
+  const pathname = usePathname();
   const reduced = usePrefersReducedMotion();
   const { scrollY } = useScroll();
   const [hidden, setHidden] = React.useState(false);
   const [scrolled, setScrolled] = React.useState(false);
   const [menuOpen, setMenuOpen] = React.useState(false);
-  const [activeId, setActiveId] = React.useState<string | null>(null);
 
-  // Scroll-spy: highlight the link whose section is currently in view.
-  React.useEffect(() => {
-    const sections = LINKS.map((l) => document.getElementById(l.id)).filter(
-      (el): el is HTMLElement => el !== null,
-    );
-    if (sections.length === 0) return;
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        for (const entry of entries) {
-          if (entry.isIntersecting) setActiveId(entry.target.id);
-        }
-      },
-      { rootMargin: "-40% 0px -55% 0px", threshold: 0 },
-    );
-    for (const section of sections) observer.observe(section);
-    return () => observer.disconnect();
-  }, []);
+  // Suppress the nav on the OBS Overlay browser-source surface so it stays
+  // transparent and chrome-free for OBS composition. The guard runs after every
+  // hook so the hook call order is identical on overlay and non-overlay routes.
+  const isOverlay = pathname?.startsWith("/overlay/") ?? false;
 
   useMotionValueEvent(scrollY, "change", (latest) => {
     const prev = scrollY.getPrevious() ?? 0;
@@ -84,6 +77,8 @@ export function SiteNav() {
       };
     }
   }, [menuOpen]);
+
+  if (isOverlay) return null;
 
   return (
     <motion.header
@@ -120,13 +115,13 @@ export function SiteNav() {
         {/* Desktop links with animated underline + active highlight */}
         <ul className="hidden items-center gap-1 md:flex">
           {LINKS.map((link) => {
-            const active = activeId === link.id;
+            const active = pathname === link.href;
             return (
               <li key={link.href}>
                 <Magnetic strength={0.2} className="inline-block">
                   <Link
                     href={link.href}
-                    aria-current={active ? "true" : undefined}
+                    aria-current={active ? "page" : undefined}
                     className={cn(
                       "group/link relative rounded-md px-3.5 py-2 text-sm transition-colors duration-200",
                       active
@@ -201,7 +196,7 @@ export function SiteNav() {
         </div>
       </nav>
 
-      {/* Mobile dropdown — links + CTA, animated */}
+      {/* Mobile dropdown — links + CTA, animated. Mirrors the left cluster. */}
       <AnimatePresence>
         {menuOpen && (
           <motion.div

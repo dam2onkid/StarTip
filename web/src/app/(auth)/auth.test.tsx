@@ -27,15 +27,21 @@ vi.mock("next/navigation", () => ({
 }));
 
 describe("(auth) route group", () => {
-  it("layout renders the StarTip wordmark and a dashboard nav link", () => {
+  it("layout is a passthrough rendering children in a main landmark (header removed; unified nav hoisted to root)", () => {
     render(
       <AuthLayout>
         <p>child</p>
       </AuthLayout>,
     );
-    expect(screen.getByText("StarTip")).toBeInTheDocument();
     expect(screen.getByText("child")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /dashboard/i })).toBeInTheDocument();
+    expect(screen.getByRole("main")).toBeInTheDocument();
+    // The old static header (StarTip wordmark + Dashboard link) is gone; the
+    // unified SiteNav is hoisted into the root layout so every route inherits
+    // it without per-layout wiring.
+    expect(screen.queryByText("StarTip")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("link", { name: /dashboard/i }),
+    ).not.toBeInTheDocument();
   });
 
   it("dashboard shell renders Donor and Creator tab placeholders", () => {

@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { expectUnifiedNav } from "./nav-helpers";
 
 /**
  * Landing page E2E seam.
@@ -150,6 +151,13 @@ test.describe("landing page — prefers-reduced-motion: no-preference", () => {
       "background-color",
       "rgb(180, 255, 57)",
     );
+  });
+
+  test("shows the unified nav with the logo and the Discover link", async ({ page }) => {
+    // The nav is hoisted into the root layout, so the landing page inherits it.
+    // The hero "Become a Creator" CTA lives in main; the nav CTA is a separate
+    // ghost link in the Primary navigation landmark.
+    await expectUnifiedNav(page);
   });
 });
 

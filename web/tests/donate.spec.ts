@@ -1,4 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
+import { expectUnifiedNav } from "./nav-helpers";
 
 /**
  * Donate flow E2E. The flow is driven with deterministic test seams injected
@@ -139,5 +140,12 @@ test.describe("Donate flow", () => {
     await expect(page.getByRole("alert")).toHaveText(
       /paused and cannot receive donations/i,
     );
+  });
+
+  test("shows the unified nav with the Discover link on the donate page", async ({ page }) => {
+    await installSeams(page, "success");
+    await routeApi(page);
+    await page.goto("/creator/ada/donate");
+    await expectUnifiedNav(page);
   });
 });

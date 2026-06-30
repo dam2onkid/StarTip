@@ -1,4 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
+import { expectUnifiedNav } from "./nav-helpers";
 
 /**
  * Creator tab active-features E2E.
@@ -149,5 +150,9 @@ test.describe("Creator tab active features", () => {
     // The local state updates after the PATCH resolves.
     await expect(active.getByLabel(/display name/i)).toHaveValue("Ada Lovelace");
     await expect(active.getByLabel(/bio/i)).toHaveValue("First programmer.");
+  });
+
+  test("shows the unified nav with the Discover link on the dashboard", async ({ page }) => {
+    await expectUnifiedNav(page);
   });
 });

@@ -1,30 +1,14 @@
-import Link from "next/link";
 import type { ReactNode } from "react";
 
 /**
- * Shared shell for the `(auth)` route group, which now contains only
- * `/dashboard`. Renders the StarTip wordmark and a Dashboard nav link. The
- * dashboard sub-routes were collapsed into a single tabbed page; the nav shape
- * is locked here for subsequent feature PRDs.
+ * Shared shell for the `(auth)` route group, which contains `/dashboard`.
+ *
+ * The unified `SiteNav` is hoisted into the root `app/layout.tsx` so every
+ * route inherits it without per-layout wiring. This layout is now a thin
+ * passthrough that renders the route's children inside a `<main>` landmark,
+ * filling the root layout's flex column. The previous static header (StarTip
+ * wordmark + Dashboard link) is removed; navigation lives in the unified nav.
  */
 export default function AuthLayout({ children }: { children: ReactNode }) {
-  return (
-    <div className="min-h-full flex flex-col">
-      <header className="border-b border-border/40">
-        <nav className="mx-auto flex w-full max-w-5xl items-center justify-between px-6 py-4">
-          <Link href="/" className="font-display text-lg font-semibold tracking-tight">
-            StarTip
-          </Link>
-          <ul className="flex items-center gap-4 text-sm text-muted-foreground">
-            <li>
-              <Link href="/dashboard" className="hover:text-foreground">
-                Dashboard
-              </Link>
-            </li>
-          </ul>
-        </nav>
-      </header>
-      <main className="flex flex-1 flex-col">{children}</main>
-    </div>
-  );
+  return <main className="flex flex-1 flex-col">{children}</main>;
 }

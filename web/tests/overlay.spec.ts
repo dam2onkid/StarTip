@@ -1,4 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
+import { expectNoNav } from "./nav-helpers";
 
 /**
  * Overlay E2E seam for `/overlay/[handle]` (PRD issue 09).
@@ -121,5 +122,10 @@ test.describe("Overlay realtime donation alerts", () => {
   test("404s for an unknown / not-registered / paused handle", async ({ page }) => {
     const res = await page.goto("/overlay/does-not-exist");
     expect(res?.status()).toBe(404);
+  });
+
+  test("renders no nav so the browser-source surface stays transparent and chrome-free", async ({ page }) => {
+    await page.goto("/overlay/ada");
+    await expectNoNav(page);
   });
 });

@@ -1,4 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
+import { expectUnifiedNav } from "./nav-helpers";
 
 /**
  * Email + password login -> dashboard -> logout E2E.
@@ -65,6 +66,18 @@ test.describe("email + password login flow", () => {
     await page.getByRole("button", { name: /log out/i }).click();
     await expect(page).toHaveURL(/\/login/);
   });
+
+  test("shows the unified nav with the Discover link on /login and /dashboard", async ({ page }) => {
+    // Unauthenticated: /login inherits the nav from the root layout.
+    await page.goto("/login");
+    await expectUnifiedNav(page);
+
+    // Authenticated: /dashboard inherits the same nav. The dashboard's own
+    // "Become a Creator" affordance lives in the Creator tab (a button), so it
+    // does not collide with the nav's CTA link inside the Primary landmark.
+    await establishSession(page);
+    await expectUnifiedNav(page);
+  });
 });
 
 test.describe("/signup page", () => {
@@ -93,5 +106,10 @@ test.describe("/signup page", () => {
       "href",
       "/login",
     );
+  });
+
+  test("shows the unified nav with the Discover link on /signup", async ({ page }) => {
+    await page.goto("/signup");
+    await expectUnifiedNav(page);
   });
 });

@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { expectUnifiedNav } from "./nav-helpers";
 
 /**
  * Public discovery E2E seam for `/creator/explore`, `/creator/[handle]`, and
@@ -81,5 +82,12 @@ test.describe("Public discovery", () => {
     await page.goto("/docs");
     await expect(page.getByRole("heading", { name: /docs/i })).toBeVisible();
     await expect(page.getByTestId("docs-placeholder")).toHaveText(/documentation coming soon/i);
+  });
+
+  test("the unified nav with the Discover link is present on every public discovery route", async ({ page }) => {
+    for (const path of ["/creator/explore", "/creator/ada", "/docs"]) {
+      await page.goto(path);
+      await expectUnifiedNav(page);
+    }
   });
 });

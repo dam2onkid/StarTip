@@ -1,4 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
+import { expectUnifiedNav } from "./nav-helpers";
 
 /**
  * Donor tab E2E for `/dashboard`. The stubbed Supabase Auth + seeded donations
@@ -88,5 +89,9 @@ test.describe("Donor tab", () => {
       "src",
       /\/storage\/v1\/object\/public\/avatars\//,
     );
+  });
+
+  test("shows the unified nav with the Discover link on the dashboard", async ({ page }) => {
+    await expectUnifiedNav(page);
   });
 });
