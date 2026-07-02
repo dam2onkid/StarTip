@@ -1,9 +1,17 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor, act } from "@testing-library/react";
 
 const getUser = vi.fn();
 const serverFrom = vi.fn();
 const serviceFrom = vi.fn();
+const updateEq = vi.fn();
+const fromUpdate = vi.fn();
+const storageUpload = vi.fn();
+const storageGetPublicUrl = vi.fn();
+const fromStorage = vi.fn();
+const fromTable = vi.fn();
+const channel = vi.fn();
+const removeChannel = vi.fn();
 
 vi.mock("@/lib/supabase/server", () => ({
   createServerClient: vi.fn(async () => ({
@@ -18,6 +26,15 @@ vi.mock("@/lib/supabase/service", () => ({
   })),
 }));
 
+vi.mock("@/lib/supabase/client", () => ({
+  createBrowserClient: vi.fn(() => ({
+    from: fromTable,
+    storage: { from: fromStorage },
+    channel,
+    removeChannel,
+  })),
+}));
+
 const redirect = vi.fn();
 vi.mock("next/navigation", () => ({
   redirect: (url: string) => {
@@ -29,7 +46,35 @@ vi.mock("next/navigation", () => ({
 }));
 
 describe("/dashboard shell", () => {
-  it("renders Donor and Creator tabs, a Become a Creator affordance, and a logout action", async () => {
+  beforeEach(() => {
+    fromTable.mockReset();
+    fromStorage.mockReset();
+    fromUpdate.mockReset();
+    updateEq.mockReset();
+    storageUpload.mockReset();
+    storageGetPublicUrl.mockReset();
+    channel.mockReset();
+    removeChannel.mockReset();
+
+    updateEq.mockReturnValue({ error: null });
+    fromUpdate.mockReturnValue({ eq: updateEq });
+    fromTable.mockReturnValue({ update: fromUpdate });
+    storageUpload.mockResolvedValue({ error: null });
+    storageGetPublicUrl.mockReturnValue({
+      data: { publicUrl: "https://example.storage/avatars/u1/1.png" },
+    });
+    fromStorage.mockReturnValue({
+      upload: storageUpload,
+      getPublicUrl: storageGetPublicUrl,
+    });
+    const realtimeChannel = {
+      on: vi.fn(() => realtimeChannel),
+      subscribe: vi.fn(() => realtimeChannel),
+    };
+    channel.mockReturnValue(realtimeChannel);
+  });
+
+  it("renders Donor and Creator tabs, a Become a Creator affordance, and no logout action", async () => {
     const { DashboardShell } = await import("@/app/(auth)/dashboard/page");
     render(<DashboardShell />);
     expect(
@@ -46,8 +91,42 @@ describe("/dashboard shell", () => {
       await screen.findByRole("button", { name: /become a creator/i }),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: /log out/i }),
-    ).toBeInTheDocument();
+      screen.queryByRole("button", { name: /log out/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("updates display_name from the dashboard info dialog", async () => {
+    const { DashboardShell } = await import("@/app/(auth)/dashboard/page");
+    render(
+      <DashboardShell
+        creatorProfile={{
+          id: "p1",
+          user_id: "u1",
+          display_name: "Ada",
+          avatar_url: null,
+          bio: null,
+          handle: null,
+          owner_address: null,
+          onchain_registered: false,
+          paused: false,
+        }}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /edit profile/i }));
+    const input = screen.getByLabelText(/display name/i);
+    await act(async () => {
+      fireEvent.change(input, { target: { value: "Ada Lovelace" } });
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /save profile/i }));
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("save-status")).toHaveTextContent(/saved/i);
+    });
+    expect(fromUpdate).toHaveBeenCalledWith({ display_name: "Ada Lovelace" });
+    expect(updateEq).toHaveBeenCalledWith("user_id", "u1");
   });
 });
 

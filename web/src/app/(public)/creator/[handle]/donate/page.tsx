@@ -1,5 +1,16 @@
-import * as React from "react";
+import Link from "next/link";
+import { notFound } from "next/navigation";
+import { ArrowLeft } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { createServiceClient } from "@/lib/supabase/service";
+import { getMockCreator, isMockDataEnabled } from "@/lib/creators/mock";
 import { DonateForm } from "./donate-form";
+
+interface DonateCreatorIdentity {
+  handle: string;
+  displayName: string;
+  avatarUrl: string | null;
+}
 
 /**
  * `/creator/[handle]/donate` — public donate form. The Donor connects a
@@ -7,19 +18,82 @@ import { DonateForm } from "./donate-form";
  * amount + optional message, and signs + submits `donate()` directly to
  * Soroban RPC. See `donate-form.tsx` for the full flow.
  *
- * `params` is a Promise in Next.js 15; `React.use` unwraps it synchronously
- * during render so the page stays a sync component (testable with
- * `@testing-library/react`'s `render`).
+ * `params` is a Promise in Next.js 15; the route awaits it server-side and
+ * loads the public Creator identity before rendering the client form.
  */
-export default function DonatePage({
+export default async function DonatePage({
   params,
 }: {
   params: Promise<{ handle: string }>;
 }) {
-  const { handle } = React.use(params);
+  const { handle } = await params;
+  const normalized = handle.trim().toLowerCase();
+
+  if (isMockDataEnabled()) {
+    const creator = getMockCreator(normalized);
+    if (!creator) notFound();
+    return (
+      <DonatePageShell
+        creator={{
+          handle: creator.handle,
+          displayName: creator.display_name,
+          avatarUrl: creator.avatar_url,
+        }}
+      />
+    );
+  }
+
+  const service = createServiceClient();
+  const { data: profile } = await service
+    .from("profiles")
+    .select("handle,display_name,avatar_url,onchain_registered,paused")
+    .eq("handle", normalized)
+    .maybeSingle();
+
+  const p = profile as {
+    handle: string;
+    display_name: string;
+    avatar_url: string | null;
+    onchain_registered: boolean;
+    paused: boolean;
+  } | null;
+
+  if (!p || !p.onchain_registered || p.paused) {
+    notFound();
+  }
+
+  return (
+    <DonatePageShell
+      creator={{
+        handle: p.handle,
+        displayName: p.display_name,
+        avatarUrl: p.avatar_url,
+      }}
+    />
+  );
+}
+
+export function DonatePageShell({ creator }: { creator: DonateCreatorIdentity }) {
+  const creatorHref = `/creator/${encodeURIComponent(creator.handle)}`;
+
   return (
     <section className="mx-auto flex w-full max-w-md flex-col gap-4 px-6 pt-32 pb-24">
-      <DonateForm handle={handle} />
+      <Button
+        asChild
+        variant="ghost"
+        size="sm"
+        className="w-fit border border-foreground/10 bg-foreground/[0.03] text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground"
+      >
+        <Link href={creatorHref} aria-label={`Back to ${creator.handle} creator page`}>
+          <ArrowLeft className="size-4" aria-hidden />
+          Back to creator
+        </Link>
+      </Button>
+      <DonateForm
+        handle={creator.handle}
+        displayName={creator.displayName}
+        avatarUrl={creator.avatarUrl}
+      />
     </section>
   );
 }

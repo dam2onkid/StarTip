@@ -11,6 +11,7 @@ const push = vi.fn();
 vi.mock("next/navigation", () => ({
   usePathname: () => pathname.value,
   useRouter: () => ({ push }),
+  useSearchParams: () => new URLSearchParams(),
 }));
 
 // The authed right cluster's avatar menu delegates to `useLogout`, which

@@ -3,9 +3,9 @@
 import * as React from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
-import { connectWallet, getWalletAddress, signWalletTransaction } from "@/lib/wallet/kit";
-import { contractId, getRpc, networkPassphrase } from "@/lib/stellar/client";
-import { handleHashBuffer } from "@/lib/creators/handle-shared";
+import { useDonateWallet } from "@/components/landing/donate-wallet-context";
+import { signWalletTransaction } from "@/lib/wallet/kit";
+import { getRpc, networkPassphrase } from "@/lib/stellar/client";
 import { createBrowserClient } from "@/lib/supabase/client";
 import {
   donateOnChain,
@@ -28,9 +28,12 @@ import type { TokenAllowlistEntry } from "@/lib/donations/prepare";
  */
 
 type Phase = "idle" | "preparing" | "submitting" | "confirming" | "success" | "error";
+type TokenLoadState = "loading" | "ready" | "empty" | "error";
 
 interface DonateFormProps {
   handle: string;
+  displayName?: string;
+  avatarUrl?: string | null;
 }
 
 interface PrepareResponse {
@@ -60,11 +63,15 @@ export function displayToRawAmount(display: string, decimals: number): string {
   return raw;
 }
 
-export function DonateForm({ handle }: DonateFormProps) {
-  const [walletAddress, setWalletAddress] = React.useState<string | null>(null);
-  const [connecting, setConnecting] = React.useState(false);
+function creatorInitial(displayName: string): string {
+  return displayName.trim().charAt(0).toUpperCase() || "?";
+}
+
+export function DonateForm({ handle, displayName = handle, avatarUrl = null }: DonateFormProps) {
+  const { address: walletAddress } = useDonateWallet();
   const [tokens, setTokens] = React.useState<TokenAllowlistEntry[]>([]);
   const [selectedToken, setSelectedToken] = React.useState<string>("");
+  const [tokenLoadState, setTokenLoadState] = React.useState<TokenLoadState>("loading");
   const [amount, setAmount] = React.useState("");
   const [message, setMessage] = React.useState("");
   const [donorName, setDonorName] = React.useState("");
@@ -82,28 +89,22 @@ export function DonateForm({ handle }: DonateFormProps) {
       .from("tokens")
       .select("contract_address,symbol,name,issuer,decimals,icon_url")
       .then(({ data, error: fetchErr }) => {
-        if (!fetchErr && data) {
-          setTokens(data as TokenAllowlistEntry[]);
-          if (data.length > 0) {
-            setSelectedToken((data[0] as TokenAllowlistEntry).contract_address);
-          }
+        if (fetchErr || !data) {
+          setTokenLoadState("error");
+          return;
+        }
+
+        const nextTokens = data as TokenAllowlistEntry[];
+        setTokens(nextTokens);
+        if (nextTokens.length > 0) {
+          setSelectedToken(nextTokens[0].contract_address);
+          setTokenLoadState("ready");
+        } else {
+          setSelectedToken("");
+          setTokenLoadState("empty");
         }
       });
   }, []);
-
-  async function handleConnect() {
-    setConnecting(true);
-    setError(null);
-    try {
-      await connectWallet();
-      const address = await getWalletAddress();
-      setWalletAddress(address);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to connect wallet.");
-    } finally {
-      setConnecting(false);
-    }
-  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -141,6 +142,7 @@ export function DonateForm({ handle }: DonateFormProps) {
       }
       const prepared = prepareBody as PrepareResponse;
       setTokens(prepared.token_allowlist);
+      setTokenLoadState(prepared.token_allowlist.length > 0 ? "ready" : "empty");
 
       // 2. Build + sign + submit donate() on-chain.
       setPhase("submitting");
@@ -198,53 +200,70 @@ export function DonateForm({ handle }: DonateFormProps) {
   return (
     <Card className="mx-auto w-full max-w-md">
       <CardHeader>
-        <h1 className="font-display text-2xl font-semibold tracking-tight">
-          Donate to {handle}
-        </h1>
+        <div className="flex items-center gap-3">
+          {avatarUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={avatarUrl}
+              alt=""
+              className="size-12 rounded-full border border-foreground/10 object-cover"
+            />
+          ) : (
+            <div className="flex size-12 items-center justify-center rounded-full border border-foreground/10 bg-foreground/[0.04] font-display text-lg font-semibold text-foreground">
+              {creatorInitial(displayName)}
+            </div>
+          )}
+          <div className="min-w-0">
+            <p className="font-mono text-xs uppercase tracking-wide text-muted-foreground">
+              Donating to
+            </p>
+            <h1 className="truncate font-display text-2xl font-semibold tracking-tight">
+              {displayName}
+            </h1>
+            <p className="truncate font-mono text-xs text-muted-foreground">
+              @{handle}
+            </p>
+          </div>
+        </div>
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-          {/* Wallet connect */}
+          {/* Wallet status */}
           {walletAddress ? (
             <p className="font-mono text-xs text-muted-foreground">
               Connected: {walletAddress.slice(0, 8)}...{walletAddress.slice(-6)}
             </p>
           ) : (
-            <Button
-              type="button"
-              variant="secondary"
-              onClick={handleConnect}
-              disabled={connecting}
-              className="w-full"
-            >
-              {connecting ? "Connecting..." : "Connect Wallet"}
-            </Button>
+            <p className="text-sm text-muted-foreground">
+              Connect your wallet from the navbar to donate.
+            </p>
           )}
 
           {/* Token picker */}
-          {tokens.length > 0 && (
-            <label className="flex flex-col gap-1">
-              <span className="font-mono text-xs uppercase tracking-wide text-muted-foreground">
-                Token
-              </span>
-              <select
-                value={selectedToken}
-                onChange={(e) => setSelectedToken(e.target.value)}
-                disabled={busy}
-                className="rounded-md border border-border bg-background px-3 py-2 text-sm"
-                required
-              >
-                <option value="" disabled>
-                  Select a token
+          <label className="flex flex-col gap-1">
+            <span className="font-mono text-xs uppercase tracking-wide text-muted-foreground">
+              Token
+            </span>
+            <select
+              value={selectedToken}
+              onChange={(e) => setSelectedToken(e.target.value)}
+              disabled={busy || tokenLoadState !== "ready"}
+              className="rounded-md border border-border bg-background px-3 py-2 text-sm"
+              required
+            >
+              <option value="" disabled>
+                {tokenLoadState === "loading" && "Loading tokens..."}
+                {tokenLoadState === "empty" && "No donation tokens available"}
+                {tokenLoadState === "error" && "Could not load tokens"}
+                {tokenLoadState === "ready" && "Select a token"}
+              </option>
+              {tokens.map((t) => (
+                <option key={t.contract_address} value={t.contract_address}>
+                  {t.symbol} ({t.name ?? t.contract_address.slice(0, 8)})
                 </option>
-                {tokens.map((t) => (
-                  <option key={t.contract_address} value={t.contract_address}>
-                    {t.symbol} ({t.name ?? t.contract_address.slice(0, 8)})
-                  </option>
-                ))}
-              </select>
-            </label>
-          )}
+              ))}
+            </select>
+          </label>
 
           {/* Amount */}
           <label className="flex flex-col gap-1">

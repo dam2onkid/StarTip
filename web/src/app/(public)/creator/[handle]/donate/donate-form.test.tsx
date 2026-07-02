@@ -11,12 +11,12 @@ import { render, screen, fireEvent, waitFor, act } from "@testing-library/react"
 const STUB_ADDRESS = "GDF6CFYOXQTZVSLLK2RTDAUZ6N2E72IL4K2L34HXZK32KBR4NLVPLUVA";
 
 const connectWallet = vi.fn();
-const getWalletAddress = vi.fn();
+const disconnectWallet = vi.fn();
 const signWalletTransaction = vi.fn();
 
 vi.mock("@/lib/wallet/kit", () => ({
   connectWallet,
-  getWalletAddress,
+  disconnectWallet,
   signWalletTransaction,
 }));
 
@@ -24,6 +24,9 @@ vi.mock("@/lib/stellar/client", () => ({
   contractId: "C-TEST-CONTRACT",
   networkPassphrase: "Test SDF Network ; September 2015",
   getRpc: vi.fn(),
+  stellarExpertAccountUrl: vi.fn(
+    (address: string) => `https://stellar.expert/explorer/testnet/account/${address}`,
+  ),
 }));
 
 const donateOnChain = vi.fn();
@@ -101,7 +104,7 @@ function jsonRes(status: number, body: unknown): Response {
 
 beforeEach(() => {
   connectWallet.mockReset();
-  getWalletAddress.mockReset();
+  disconnectWallet.mockReset();
   signWalletTransaction.mockReset();
   donateOnChain.mockReset();
   tokensData = [TOKEN_USDC];
@@ -112,10 +115,16 @@ afterEach(() => {
 });
 
 async function renderAndConnect(handle = "ada") {
+  const { DonateWalletProvider } = await import("@/components/landing/donate-wallet-context");
+  const { DonateWalletConnector } = await import("@/components/landing/donate-wallet-connector");
   const { DonateForm } = await import("./donate-form");
-  connectWallet.mockResolvedValue(undefined);
-  getWalletAddress.mockResolvedValue(STUB_ADDRESS);
-  render(<DonateForm handle={handle} />);
+  connectWallet.mockResolvedValue({ address: STUB_ADDRESS });
+  render(
+    <DonateWalletProvider>
+      <DonateWalletConnector />
+      <DonateForm handle={handle} />
+    </DonateWalletProvider>,
+  );
   await act(async () => {
     fireEvent.click(screen.getByRole("button", { name: /connect wallet/i }));
   });
@@ -125,13 +134,23 @@ async function renderAndConnect(handle = "ada") {
 }
 
 describe("DonateForm", () => {
-  it("renders the connect wallet button when no wallet is connected", async () => {
+  it("points donors to the navbar wallet connector when no wallet is connected", async () => {
+    const { DonateWalletProvider } = await import("@/components/landing/donate-wallet-context");
     const { DonateForm } = await import("./donate-form");
-    render(<DonateForm handle="ada" />);
-    expect(screen.getByRole("button", { name: /connect wallet/i })).toBeInTheDocument();
+    render(
+      <DonateWalletProvider>
+        <DonateForm handle="ada" />
+      </DonateWalletProvider>,
+    );
+    expect(
+      screen.getByText(/connect your wallet from the navbar/i),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /connect wallet/i }),
+    ).not.toBeInTheDocument();
   });
 
-  it("connects the wallet and shows the truncated address", async () => {
+  it("shows the navbar-connected wallet address", async () => {
     await renderAndConnect();
     expect(screen.getByText(/Connected:/i)).toBeInTheDocument();
   });
@@ -142,6 +161,24 @@ describe("DonateForm", () => {
     expect(screen.getByPlaceholderText("0.00")).toBeInTheDocument();
     expect(screen.getByPlaceholderText("Anonymous")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /donate/i })).toBeInTheDocument();
+  });
+
+  it("keeps the token select visible when no donation tokens are available", async () => {
+    tokensData = [];
+    const { DonateWalletProvider } = await import("@/components/landing/donate-wallet-context");
+    const { DonateForm } = await import("./donate-form");
+    render(
+      <DonateWalletProvider>
+        <DonateForm handle="ada" />
+      </DonateWalletProvider>,
+    );
+
+    await waitFor(() =>
+      expect(
+        screen.getByRole("option", { name: /no donation tokens available/i }),
+      ).toBeInTheDocument(),
+    );
+    expect(screen.getByRole("combobox", { name: /token/i })).toBeDisabled();
   });
 
   it("completes the full prepare -> submit -> confirm flow and shows success", async () => {

@@ -3,8 +3,8 @@
 import * as React from "react";
 import { DropdownMenu } from "radix-ui";
 import { Wallet, Copy, ExternalLink, LogOut } from "lucide-react";
-import { connectWallet, disconnectWallet } from "@/lib/wallet/kit";
 import { stellarExpertAccountUrl } from "@/lib/stellar/client";
+import { useDonateWallet } from "@/components/landing/donate-wallet-context";
 
 /**
  * Nav Donate Wallet connector (PRD: Unified hybrid navigation, issue 02).
@@ -26,19 +26,14 @@ function truncateAddress(address: string): string {
 }
 
 export function DonateWalletConnector() {
-  const [address, setAddress] = React.useState<string | null>(null);
-  const [connecting, setConnecting] = React.useState(false);
+  const { address, connecting, connect, disconnect } = useDonateWallet();
 
   async function handleConnect() {
-    setConnecting(true);
     try {
-      const { address: addr } = await connectWallet();
-      setAddress(addr);
+      await connect();
     } catch {
       // The kit's authModal closes on rejection; the nav is a presentation
       // surface and does not surface wallet errors here.
-    } finally {
-      setConnecting(false);
     }
   }
 
@@ -54,12 +49,11 @@ export function DonateWalletConnector() {
 
   async function handleDisconnect() {
     try {
-      await disconnectWallet();
+      await disconnect();
     } catch {
-      // Even if the kit disconnect fails, drop the local address so the pill
+      // The provider drops the local address in a finally block so the pill
       // reverts to the Connect CTA. The next connect attempt re-initializes.
     }
-    setAddress(null);
   }
 
   if (address) {

@@ -7,8 +7,6 @@ import { usePathname } from "next/navigation";
 import {
   AnimatePresence,
   motion,
-  useMotionValueEvent,
-  useScroll,
 } from "framer-motion";
 import { Menu, X, Bell } from "lucide-react";
 import { DropdownMenu } from "radix-ui";
@@ -99,9 +97,6 @@ function NavNotificationsBell() {
 export function SiteNav({ auth = { state: "unauthenticated" } }: { auth?: NavAuth } = {}) {
   const pathname = usePathname();
   const reduced = usePrefersReducedMotion();
-  const { scrollY } = useScroll();
-  const [hidden, setHidden] = React.useState(false);
-  const [scrolled, setScrolled] = React.useState(false);
   const [menuOpen, setMenuOpen] = React.useState(false);
   // Shared signOut + redirect handler. Called from the mobile menu's Logout
   // button; the desktop avatar menu has its own `useLogout` call site. The
@@ -114,14 +109,6 @@ export function SiteNav({ auth = { state: "unauthenticated" } }: { auth?: NavAut
   // hook so the hook call order is identical on overlay and non-overlay routes.
   const isOverlay = pathname?.startsWith("/overlay/") ?? false;
   const authed = auth.state === "authenticated";
-
-  useMotionValueEvent(scrollY, "change", (latest) => {
-    const prev = scrollY.getPrevious() ?? 0;
-    setScrolled(latest > 24);
-    if (reduced) return;
-    if (latest > prev && latest > 160 && !menuOpen) setHidden(true);
-    else setHidden(false);
-  });
 
   // Lock body scroll when the mobile menu is open.
   React.useEffect(() => {
@@ -137,17 +124,12 @@ export function SiteNav({ auth = { state: "unauthenticated" } }: { auth?: NavAut
   if (isOverlay) return null;
 
   return (
-    <motion.header
-      initial={false}
-      animate={!reduced ? { y: hidden ? "-140%" : "0%" } : undefined}
-      transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
-      className="fixed inset-x-0 top-0 z-50 px-4 pt-4 sm:px-6 sm:pt-5"
-    >
+    <header className="px-4 pt-4 sm:px-6 sm:pt-5">
       <nav
         aria-label="Primary"
         className={cn(
           "relative mx-auto flex max-w-6xl items-center justify-between gap-4 rounded-2xl px-4 py-2.5 transition-[background,backdrop-filter,border-color,box-shadow] duration-300 sm:px-5",
-          scrolled || menuOpen
+          menuOpen
             ? "glass-strong shadow-[0_8px_40px_-12px_rgba(0,0,0,0.5)]"
             : "border border-transparent bg-transparent",
         )}
@@ -345,6 +327,6 @@ export function SiteNav({ auth = { state: "unauthenticated" } }: { auth?: NavAut
           </motion.div>
         )}
       </AnimatePresence>
-    </motion.header>
+    </header>
   );
 }

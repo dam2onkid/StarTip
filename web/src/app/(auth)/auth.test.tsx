@@ -5,7 +5,8 @@ import { DashboardShell } from "@/app/(auth)/dashboard/page";
 import LoginPage from "@/app/(public)/login/page";
 import { ExplorePageShell } from "@/app/(public)/creator/explore/page";
 import { CreatorPageShell } from "@/app/(public)/creator/[handle]/page";
-import DonatePage from "@/app/(public)/creator/[handle]/donate/page";
+import { DonatePageShell } from "@/app/(public)/creator/[handle]/donate/page";
+import { DonateWalletProvider } from "@/components/landing/donate-wallet-context";
 import DocsPage from "@/app/(public)/docs/page";
 
 vi.mock("@/lib/supabase/client", () => ({
@@ -104,11 +105,25 @@ describe("public route placeholders", () => {
 
   it("/creator/[handle]/donate renders a donate heading", async () => {
     await act(async () => {
-      render(<DonatePage params={Promise.resolve({ handle: "ada" })} />);
+      render(
+        <DonateWalletProvider>
+          <DonatePageShell
+            creator={{
+              handle: "ada",
+              displayName: "Ada Lovelace",
+              avatarUrl: "https://example.com/ada.png",
+            }}
+          />
+        </DonateWalletProvider>,
+      );
     });
     expect(
-      screen.getByRole("heading", { name: /donate to ada/i }),
+      screen.getByRole("link", { name: /back to ada creator page/i }),
+    ).toHaveAttribute("href", "/creator/ada");
+    expect(
+      screen.getByRole("heading", { name: /ada lovelace/i }),
     ).toBeInTheDocument();
+    expect(screen.getByText("@ada")).toBeInTheDocument();
   });
 
   it("/docs renders a placeholder heading", () => {

@@ -52,8 +52,13 @@ afterEach(() => {
 });
 
 async function renderConnector() {
+  const { DonateWalletProvider } = await import("./donate-wallet-context");
   const { DonateWalletConnector } = await import("./donate-wallet-connector");
-  return render(<DonateWalletConnector />);
+  return render(
+    <DonateWalletProvider>
+      <DonateWalletConnector />
+    </DonateWalletProvider>,
+  );
 }
 
 async function connectStubWallet() {
