@@ -62,6 +62,16 @@ vi.mock("framer-motion", async () => {
 });
 
 const { SiteNav } = await import("@/components/landing/site-nav");
+const { DonateWalletProvider } = await import(
+  "@/components/landing/donate-wallet-context"
+);
+
+// SiteNav renders DonateWalletConnector, which reads the shared wallet state
+// from DonateWalletProvider. Wrap every render in the provider so the
+// connector mounts the same way it does under the root Providers wrapper.
+function renderNav(ui: React.ReactElement) {
+  return render(<DonateWalletProvider>{ui}</DonateWalletProvider>);
+}
 
 /**
  * Unified nav behavior (PRD issue 01). The nav is hoisted into the root
@@ -77,7 +87,7 @@ describe("<SiteNav /> unified nav", () => {
   });
 
   it("renders the logo linking home and Home, Discover, Docs tabs", () => {
-    render(<SiteNav />);
+    renderNav(<SiteNav />);
     expect(screen.getByRole("link", { name: "StarTip home" })).toHaveAttribute(
       "href",
       "/",
@@ -97,14 +107,14 @@ describe("<SiteNav /> unified nav", () => {
   });
 
   it("keeps the Sign in/up CTA in the right cluster, retargeted to /login", () => {
-    render(<SiteNav />);
+    renderNav(<SiteNav />);
     expect(
       screen.getByRole("link", { name: "Sign in/up" }),
     ).toHaveAttribute("href", "/login");
   });
 
   it("drops the old How it works and Built on Stellar scroll-spy anchors", () => {
-    render(<SiteNav />);
+    renderNav(<SiteNav />);
     expect(screen.queryByRole("link", { name: /how it works/i })).toBeNull();
     expect(
       screen.queryByRole("link", { name: /built on stellar/i }),
@@ -113,7 +123,7 @@ describe("<SiteNav /> unified nav", () => {
 
   it("suppresses itself on /overlay/* (no nav, logo, links, CTA, or menu toggle)", () => {
     pathname.value = "/overlay/ada";
-    render(<SiteNav />);
+    renderNav(<SiteNav />);
     expect(
       screen.queryByRole("navigation", { name: "Primary" }),
     ).toBeNull();
@@ -126,7 +136,7 @@ describe("<SiteNav /> unified nav", () => {
   });
 
   it("mobile menu reflects the same left links and CTA when opened", async () => {
-    render(<SiteNav />);
+    renderNav(<SiteNav />);
     // Before opening: only the desktop Discover link is in the DOM.
     expect(screen.getAllByRole("link", { name: "Discover" })).toHaveLength(1);
 
@@ -160,7 +170,7 @@ describe("<SiteNav /> authed right cluster", () => {
   } as const;
 
   it("replaces the Sign in/up CTA with a notification bell and an avatar menu trigger", () => {
-    render(<SiteNav auth={authed} />);
+    renderNav(<SiteNav auth={authed} />);
     expect(
       screen.queryByRole("link", { name: "Sign in/up" }),
     ).toBeNull();
@@ -173,7 +183,7 @@ describe("<SiteNav /> authed right cluster", () => {
   });
 
   it("notification bell opens an empty-state dropdown", async () => {
-    render(<SiteNav auth={authed} />);
+    renderNav(<SiteNav auth={authed} />);
     const bell = screen.getByRole("button", { name: /notifications/i });
     await act(async () => {
       fireEvent.pointerDown(bell, { button: 0 });
@@ -186,7 +196,7 @@ describe("<SiteNav /> authed right cluster", () => {
   });
 
   it("avatar menu opens a header with display_name + email and a Dashboard link to /dashboard", async () => {
-    render(<SiteNav auth={authed} />);
+    renderNav(<SiteNav auth={authed} />);
     const trigger = screen.getByRole("button", { name: /account menu for fan/i });
     await act(async () => {
       fireEvent.pointerDown(trigger, { button: 0 });
@@ -204,7 +214,7 @@ describe("<SiteNav /> authed right cluster", () => {
   });
 
   it("mobile menu mirrors the authed right cluster: Dashboard link + Log out, no CTA", async () => {
-    render(<SiteNav auth={authed} />);
+    renderNav(<SiteNav auth={authed} />);
     fireEvent.click(screen.getByRole("button", { name: /open menu/i }));
     const dash = await screen.findByRole("link", { name: /dashboard/i });
     expect(dash).toHaveAttribute("href", "/dashboard");

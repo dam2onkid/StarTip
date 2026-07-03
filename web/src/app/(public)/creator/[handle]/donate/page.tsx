@@ -3,7 +3,6 @@ import { notFound } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { createServiceClient } from "@/lib/supabase/service";
-import { getMockCreator, isMockDataEnabled } from "@/lib/creators/mock";
 import { DonateForm } from "./donate-form";
 
 interface DonateCreatorIdentity {
@@ -28,20 +27,6 @@ export default async function DonatePage({
 }) {
   const { handle } = await params;
   const normalized = handle.trim().toLowerCase();
-
-  if (isMockDataEnabled()) {
-    const creator = getMockCreator(normalized);
-    if (!creator) notFound();
-    return (
-      <DonatePageShell
-        creator={{
-          handle: creator.handle,
-          displayName: creator.display_name,
-          avatarUrl: creator.avatar_url,
-        }}
-      />
-    );
-  }
 
   const service = createServiceClient();
   const { data: profile } = await service

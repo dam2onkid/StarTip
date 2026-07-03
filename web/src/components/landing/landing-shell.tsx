@@ -7,6 +7,7 @@ import { SecondaryCards } from "@/components/landing/secondary-cards";
 import { HowItWorks } from "@/components/landing/how-it-works";
 import { BuiltOnStellar } from "@/components/landing/built-on-stellar";
 import { SiteFooter } from "@/components/landing/site-footer";
+import type { NavAuth } from "@/lib/nav/auth";
 
 /**
  * Landing shell. Composes the grain + atmosphere overlays, the main sections,
@@ -15,13 +16,17 @@ import { SiteFooter } from "@/components/landing/site-footer";
  * (hoisting it out avoids a duplicate nav on the landing page). The native
  * cursor is used (no custom cursor layer); the grain + atmosphere overlays are
  * pure CSS / safe.
+ *
+ * `auth` is resolved server-side in the landing page and threaded down so the
+ * Hero CTA can route authed users to `/creator/explore` and unauthed users to
+ * `/login`.
  */
-export function LandingShell() {
+export function LandingShell({ auth }: { auth: NavAuth }) {
   return (
     <>
       <Grain />
       <main className="relative flex flex-1 flex-col">
-        <Hero />
+        <Hero auth={auth} />
         <SecondaryCards />
         <HowItWorks />
         <BuiltOnStellar />

@@ -26,12 +26,30 @@ export interface IndexerDeps<R extends RpcLike = RpcLike> {
   rpc: R;
   tokenReader: (rpc: R, contractAddress: string) => Promise<TokenMetadata>;
   contractId: string;
+  /**
+   * Optional ledger to start from on the very first poll (when the cursor is
+   * uninitialized). Typically the DonationRouter deploy ledger, set via the
+   * `INDEXER_START_LEDGER` env var, so a fresh indexer scans history instead of
+   * skipping events emitted before it began. When 0/unset, the first poll
+   * starts at `getLatestLedger()`.
+   */
+  startLedger?: number;
 }
 
 export interface PollResult {
   processed: number;
   lastLedger: number | null;
   cursor: string | null;
+  /** Present only when debug=true: per-event trace for diagnostics. */
+  debug?: DebugEventTrace[];
+}
+
+/** One entry per event read in a debug poll. */
+export interface DebugEventTrace {
+  topic: string | null;
+  ledger: number;
+  txHash: string;
+  value: Record<string, unknown>;
 }
 
 interface IndexerState {
@@ -273,19 +291,31 @@ async function dispatchTokenAllowlistUpdated<R extends RpcLike>(
  *
  * @returns the number of dispatched events and the new cursor position.
  */
-export async function processPoll<R extends RpcLike>(deps: IndexerDeps<R>): Promise<PollResult> {
+export async function processPoll<R extends RpcLike>(
+  deps: IndexerDeps<R>,
+  options: { debug?: boolean } = {},
+): Promise<PollResult> {
   const { supabase, rpc, contractId } = deps;
+  const debug = options.debug === true;
+  const debugEvents: DebugEventTrace[] | null = debug ? [] : null;
 
   const state = await loadState(supabase);
   const lastLedger = state?.last_ledger ?? 0;
   const lastCursor = state?.last_cursor ?? null;
 
-  // Bootstrap: when uninitialized (last_ledger = 0, no cursor), start from the
-  // current ledger so the first poll only sees events after the indexer began.
+  // Bootstrap: when uninitialized (last_ledger = 0, no cursor), start from
+  // the configured `INDEXER_START_LEDGER` (e.g. the DonationRouter deploy
+  // ledger) so the first poll scans history. When that is unset (0), fall back
+  // to the current ledger so a fresh indexer only sees events after it began.
   let startLedger = lastLedger;
   if (lastCursor === null && lastLedger === 0) {
-    const ledger = await rpc.getLatestLedger();
-    startLedger = ledger.sequence;
+    const configured = deps.startLedger ?? 0;
+    if (configured > 0) {
+      startLedger = configured;
+    } else {
+      const ledger = await rpc.getLatestLedger();
+      startLedger = ledger.sequence;
+    }
   }
 
   const request: StellarSdk.rpc.Api.GetEventsRequest = lastCursor
@@ -297,6 +327,14 @@ export async function processPoll<R extends RpcLike>(deps: IndexerDeps<R>): Prom
   let processed = 0;
   for (const event of events) {
     const decoded = decodeEvent(event);
+    if (debugEvents) {
+      debugEvents.push({
+        topic: decoded?.topic ?? null,
+        ledger: event.ledger,
+        txHash: event.txHash,
+        value: decoded?.value ?? {},
+      });
+    }
     if (!decoded) continue;
     switch (decoded.topic) {
       case "DonationReceived":
@@ -339,8 +377,18 @@ export async function processPoll<R extends RpcLike>(deps: IndexerDeps<R>): Prom
         updated_at: nowIso(),
       })
       .eq("id", 1);
-    return { processed, lastLedger: lastEventLedger, cursor: response.cursor };
+    return {
+      processed,
+      lastLedger: lastEventLedger,
+      cursor: response.cursor,
+      debug: debugEvents ?? undefined,
+    };
   }
 
-  return { processed: 0, lastLedger: lastLedger, cursor: lastCursor };
+  return {
+    processed: 0,
+    lastLedger: lastLedger,
+    cursor: lastCursor,
+    debug: debugEvents ?? undefined,
+  };
 }

@@ -6,12 +6,12 @@ export const env = createEnv({
     SUPABASE_URL: z.string().url(),
     SUPABASE_SERVICE_ROLE_KEY: z.string().min(1),
     /**
-     * When "true", the public discovery surfaces (`/creator/explore` and
-     * `/creator/[handle]`) serve hardcoded mock Creator data from
-     * `lib/creators/mock.ts` instead of querying Supabase. Local-only UI
-     * testing flag; defaults to false.
+     * Optional starting ledger for the indexer's first poll. When unset (or 0),
+     * the indexer bootstraps from `getLatestLedger()`. Set this to the
+     * DonationRouter deploy ledger (or earlier) so a fresh indexer scans
+     * history instead of skipping every event emitted before its first poll.
      */
-    USE_MOCK_DATA: z.string().default("false"),
+    INDEXER_START_LEDGER: z.coerce.number().int().min(0).default(0),
   },
   client: {
     NEXT_PUBLIC_STELLAR_NETWORK: z
@@ -25,7 +25,7 @@ export const env = createEnv({
   runtimeEnv: {
     SUPABASE_URL: process.env.SUPABASE_URL,
     SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY,
-    USE_MOCK_DATA: process.env.USE_MOCK_DATA,
+    INDEXER_START_LEDGER: process.env.INDEXER_START_LEDGER,
     NEXT_PUBLIC_STELLAR_NETWORK: process.env.NEXT_PUBLIC_STELLAR_NETWORK,
     NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL,
     NEXT_PUBLIC_SUPABASE_ANON_KEY: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,

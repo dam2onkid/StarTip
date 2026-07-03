@@ -181,6 +181,8 @@ describe("CreatorTab — gate rendering", () => {
 
   it("renders the on-chain register gate at onchain_pending", async () => {
     const { CreatorTab } = await import("@/app/(auth)/dashboard/creator-tab");
+    // The gate fires a reconcile fetch on mount; answer it as not-yet-registered.
+    mockFetch([() => jsonRes(200, { onchain_registered: false })]);
     render(
       <CreatorTab profile={profile({ handle: "ada", owner_address: STUB_ADDRESS })} />,
     );
@@ -257,10 +259,11 @@ describe("CreatorTab — gate 2 wallet link", () => {
     connectWallet.mockResolvedValue(undefined);
     getWalletAddress.mockResolvedValue(STUB_ADDRESS);
     signWalletMessage.mockResolvedValue({ signedMessage: "deadbeef", signerAddress: STUB_ADDRESS });
-    // challenge, then link
+    // challenge, then link, then the onchain_pending gate's mount reconcile
     mockFetch([
       () => jsonRes(200, { challenge: "StarTip wallet link\nHandle: ada\nProfile: x\nNonce: n" }),
       () => jsonRes(200, { owner_address: STUB_ADDRESS }),
+      () => jsonRes(200, { onchain_registered: false }),
     ]);
     render(<CreatorTab profile={profile({ handle: "ada" })} />);
     await act(async () => {
@@ -304,6 +307,7 @@ describe("CreatorTab — gate 3 on-chain register", () => {
   it("submits register_creator and shows registration pending", async () => {
     const { CreatorTab } = await import("@/app/(auth)/dashboard/creator-tab");
     registerCreatorOnChain.mockResolvedValue({ status: "PENDING", hash: "txhash" });
+    mockFetch([() => jsonRes(200, { onchain_registered: false })]);
     render(
       <CreatorTab profile={profile({ handle: "ada", owner_address: STUB_ADDRESS })} />,
     );
@@ -325,6 +329,7 @@ describe("CreatorTab — gate 3 on-chain register", () => {
   it("renders the stranded-funds warning when payoutAddressWarning returns 'contract'", async () => {
     const { CreatorTab } = await import("@/app/(auth)/dashboard/creator-tab");
     payoutAddressWarning.mockReturnValue("contract");
+    mockFetch([() => jsonRes(200, { onchain_registered: false })]);
     render(
       <CreatorTab profile={profile({ handle: "ada", owner_address: STUB_ADDRESS })} />,
     );
@@ -341,6 +346,8 @@ describe("CreatorTab — Realtime flip to active", () => {
   it("flips to active when the profile row's onchain_registered becomes true", async () => {
     const { CreatorTab } = await import("@/app/(auth)/dashboard/creator-tab");
     registerCreatorOnChain.mockResolvedValue({ status: "PENDING", hash: "txhash" });
+    // Mount reconcile must not flip prematurely; Realtime drives the flip.
+    mockFetch([() => jsonRes(200, { onchain_registered: false })]);
     render(
       <CreatorTab profile={profile({ handle: "ada", owner_address: STUB_ADDRESS })} />,
     );

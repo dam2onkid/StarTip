@@ -4,11 +4,6 @@ import {
   type LeaderboardRow,
 } from "@/lib/creators/leaderboard";
 import {
-  isMockDataEnabled,
-  MOCK_CREATORS,
-  allMockDonations,
-} from "@/lib/creators/mock";
-import {
   ExploreDiscovery,
   type ExploreDiscoveryCreator,
 } from "@/components/discovery/explore-discovery";
@@ -41,16 +36,6 @@ export default async function ExplorePage({
   searchParams: Promise<{ q?: string }>;
 }) {
   const { q = "" } = await searchParams;
-
-  if (isMockDataEnabled()) {
-    return (
-      <ExplorePageShell
-        creators={MOCK_CREATORS}
-        leaderboard={aggregateLeaderboard(allMockDonations() as LeaderboardRow[])}
-        searchQuery={q}
-      />
-    );
-  }
 
   const service = createServiceClient();
 

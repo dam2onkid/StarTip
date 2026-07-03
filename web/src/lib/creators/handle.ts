@@ -77,6 +77,59 @@ export async function checkHandleAvailability(args: {
   return { available: true };
 }
 
+/** Decoded on-chain Creator entry returned by `readCreatorOnChain`. */
+export interface OnChainCreator {
+  owner: string;
+  payout_address: string;
+  active: boolean;
+}
+
+/**
+ * Read `get_creator(sha256(handle))` on-chain and decode the `Option<Creator>`.
+ * Returns `null` when the handle is not registered (None), or the decoded
+ * Creator when it is (Some). This is the authoritative on-chain read used by
+ * the reconcile path: it does not depend on the indexer mirroring the
+ * `CreatorRegistered` event, so it recovers creators whose registration event
+ * was missed by the indexer (e.g. emitted before the indexer's first poll).
+ *
+ * `Option<Creator>` arrives as an ScVec: empty = None, one map element = Some.
+ */
+export async function readCreatorOnChain(args: {
+  rpc: RpcSimulate;
+  contractId: string;
+  handle: string;
+}): Promise<OnChainCreator | null> {
+  const { rpc, contractId, handle } = args;
+  const normalized = normalizeHandle(handle);
+  if (!normalized.ok || !normalized.value) return null;
+
+  const hash = handleHashBuffer(normalized.value);
+  const contract = new StellarSdk.Contract(contractId);
+  const account = new StellarSdk.Account(SIM_SOURCE_PUBLIC_KEY, "0");
+  const tx = new StellarSdk.TransactionBuilder(account, {
+    fee: StellarSdk.BASE_FEE,
+    networkPassphrase,
+  })
+    .addOperation(contract.call("get_creator", StellarSdk.xdr.ScVal.scvBytes(hash)))
+    .setTimeout(30)
+    .build();
+  const sim = await rpc.simulateTransaction(tx);
+  if (StellarSdk.rpc.Api.isSimulationError(sim)) {
+    throw new Error(`simulate get_creator failed: ${sim.error}`);
+  }
+  if (!sim.result) {
+    throw new Error("simulate get_creator returned no result");
+  }
+  const native = StellarSdk.scValToNative(sim.result.retval) as unknown[];
+  if (!Array.isArray(native) || native.length === 0) return null;
+  const creator = native[0] as Partial<OnChainCreator>;
+  return {
+    owner: creator.owner as string,
+    payout_address: creator.payout_address as string,
+    active: creator.active as boolean,
+  };
+}
+
 /**
  * Source account used only to build the read-only simulation envelope. It does
  * not need to exist on-chain: Soroban RPC simulates read-only calls without

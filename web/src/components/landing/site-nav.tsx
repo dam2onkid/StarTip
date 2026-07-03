@@ -98,11 +98,21 @@ export function SiteNav({ auth = { state: "unauthenticated" } }: { auth?: NavAut
   const pathname = usePathname();
   const reduced = usePrefersReducedMotion();
   const [menuOpen, setMenuOpen] = React.useState(false);
+  const [loggingOut, setLoggingOut] = React.useState(false);
   // Shared signOut + redirect handler. Called from the mobile menu's Logout
   // button; the desktop avatar menu has its own `useLogout` call site. The
   // hook is invoked unconditionally (before the overlay early return) so the
   // hook order stays stable across pathname changes.
   const logout = useLogout();
+
+  async function handleLogout() {
+    setLoggingOut(true);
+    try {
+      await logout();
+    } finally {
+      setLoggingOut(false);
+    }
+  }
 
   // Suppress the nav on the OBS Overlay browser-source surface so it stays
   // transparent and chrome-free for OBS composition. The guard runs after every
@@ -308,7 +318,8 @@ export function SiteNav({ auth = { state: "unauthenticated" } }: { auth?: NavAut
                       size="lg"
                       variant="ghost"
                       className="w-full"
-                      onClick={logout}
+                      loading={loggingOut}
+                      onClick={handleLogout}
                     >
                       Log out
                     </Button>

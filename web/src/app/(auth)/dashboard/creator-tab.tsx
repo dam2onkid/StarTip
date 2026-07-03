@@ -142,6 +142,10 @@ export function CreatorTab({ profile, activeData }: CreatorTabProps) {
               message: "Registration submitted. Waiting for the indexer to mirror it.",
             })
           }
+          onReconciled={(next) => {
+            setCurrent((prev) => ({ ...prev, onchain_registered: true, ...next }));
+            setStatus({ kind: "info", message: "You are live on-chain. Creator is active." });
+          }}
         />
       )}
       {state === "active" && (
@@ -490,11 +494,15 @@ function OnchainPendingGate(args: {
   status: Status;
   setStatus: (s: Status) => void;
   onSubmitted: () => void;
+  /** Invoked when the on-chain reconcile read confirms the creator is registered. */
+  onReconciled: (next: Partial<CreatorProfile>) => void;
 }) {
-  const { current, status, setStatus, onSubmitted } = args;
+  const { current, status, setStatus, onSubmitted, onReconciled } = args;
   const [payout, setPayout] = useState("");
   const [treasury, setTreasury] = useState<string | null | undefined>(undefined);
-  const submittedRef = useRef(false);
+  const [submitted, setSubmitted] = useState(false);
+  const onReconciledRef = useRef(onReconciled);
+  onReconciledRef.current = onReconciled;
 
   // Load the on-chain Treasury once, for the stranded-funds warning (ADR-0004).
   useEffect(() => {
@@ -510,6 +518,90 @@ function OnchainPendingGate(args: {
       alive = false;
     };
   }, []);
+
+  // Reconcile with the on-chain registry. This recovers creators whose
+  // `CreatorRegistered` event was never mirrored by the indexer (e.g. emitted
+  // before the indexer's first poll): it reads `get_creator(sha256(handle))`
+  // directly and flips `onchain_registered` when the entry exists and the owner
+  // matches. Runs once on mount, and again after a successful submission with a
+  // short retry loop so the just-closed ledger is picked up.
+  useEffect(() => {
+    if (!current.handle || !current.owner_address) return;
+    let alive = true;
+    const controller = new AbortController();
+
+    async function reconcile() {
+      try {
+        const res = await fetch("/api/creators/reconcile", {
+          method: "POST",
+          signal: controller.signal,
+        });
+        if (!alive) return;
+        if (res.ok) {
+          const body = (await res.json()) as {
+            onchain_registered?: boolean;
+            payout_address?: string | null;
+          };
+          if (body.onchain_registered) {
+            onReconciledRef.current({
+              payout_address: body.payout_address ?? undefined,
+            });
+          }
+        }
+      } catch {
+        // Network / abort: stay silent; the indexer Realtime path is the
+        // other recovery channel.
+      }
+    }
+
+    void reconcile();
+    return () => {
+      alive = false;
+      controller.abort();
+    };
+  }, [current.handle, current.owner_address]);
+
+  // After a successful on-chain submission, poll reconcile a few times so the
+  // just-closed ledger is picked up even if the indexer event is delayed.
+  useEffect(() => {
+    if (!submitted) return;
+    let alive = true;
+    const controller = new AbortController();
+    let attempt = 0;
+    const id = setInterval(async () => {
+      attempt++;
+      if (attempt > 6 || !alive) {
+        clearInterval(id);
+        return;
+      }
+      try {
+        const res = await fetch("/api/creators/reconcile", {
+          method: "POST",
+          signal: controller.signal,
+        });
+        if (!alive) return;
+        if (res.ok) {
+          const body = (await res.json()) as {
+            onchain_registered?: boolean;
+            payout_address?: string | null;
+          };
+          if (body.onchain_registered) {
+            clearInterval(id);
+            onReconciledRef.current({
+              payout_address: body.payout_address ?? undefined,
+            });
+          }
+        }
+      } catch {
+        // ignore; next interval retries
+      }
+    }, 5000);
+    return () => {
+      alive = false;
+      controller.abort();
+      clearInterval(id);
+    };
+  }, [submitted]);
 
   const warning = useMemo(
     () =>
@@ -528,7 +620,7 @@ function OnchainPendingGate(args: {
         handle: current.handle,
         payoutAddress: payout.trim(),
       });
-      submittedRef.current = true;
+      setSubmitted(true);
       onSubmitted();
     } catch (e) {
       setStatus({ kind: "error", message: errorMessage(e, "On-chain registration failed.") });

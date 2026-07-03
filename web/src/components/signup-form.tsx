@@ -47,6 +47,7 @@ export function SignupForm({
   const [confirm, setConfirm] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [sent, setSent] = useState(false);
+  const [loading, setLoading] = useState(false);
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -55,6 +56,7 @@ export function SignupForm({
       setError("Passwords do not match.");
       return;
     }
+    setLoading(true);
     const supabase = createBrowserClient();
     const emailRedirectTo = `${window.location.origin}/login?confirmed=1`;
     const { data, error } = await supabase.auth.signUp({
@@ -64,6 +66,7 @@ export function SignupForm({
     });
     if (error) {
       setError(error.message);
+      setLoading(false);
       return;
     }
     // When email confirmation is enabled, Supabase returns a user but no
@@ -158,7 +161,7 @@ export function SignupForm({
                 </FieldDescription>
               </Field>
               <Field>
-                <Button type="submit" size="lg" className="w-full">
+                <Button type="submit" size="lg" loading={loading} className="w-full">
                   Sign up
                 </Button>
                 {error && (

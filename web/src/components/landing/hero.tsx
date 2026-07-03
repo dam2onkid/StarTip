@@ -6,6 +6,7 @@ import { motion, useScroll, useTransform, type Variants } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Magnetic } from "@/components/landing/magnetic";
 import { usePrefersReducedMotion } from "@/hooks/use-prefers-reduced-motion";
+import type { NavAuth } from "@/lib/nav/auth";
 
 /**
  * Hero architecture (premium-frontend-ui skill §2.2). Full-bleed `100dvh`
@@ -46,13 +47,18 @@ const fade: Variants = {
   },
 };
 
-export function Hero() {
+export function Hero({ auth }: { auth: NavAuth }) {
   const reduced = usePrefersReducedMotion();
   const ref = React.useRef<HTMLElement>(null);
   const { scrollYProgress } = useScroll({
     target: ref,
     offset: ["start start", "end start"],
   });
+
+  // Auth-aware CTA target: authed users go straight to discovery, unauthed
+  // users land on the login surface.
+  const ctaHref =
+    auth.state === "authenticated" ? "/creator/explore" : "/login";
 
   // Parallax depth: background drifts up slower than foreground (skill §3.1).
   const gridY = useTransform(scrollYProgress, [0, 1], ["0%", "40%"]);
@@ -155,8 +161,8 @@ export function Hero() {
         >
           <Magnetic strength={0.45}>
             <Button asChild size="lg" className="h-12 px-7 text-base">
-              <Link href="/login" data-cursor="hover">
-                Sign in/up
+              <Link href={ctaHref} data-cursor="hover">
+                Get started
               </Link>
             </Button>
           </Magnetic>

@@ -4,20 +4,25 @@ import * as React from "react";
 import { DropdownMenu } from "radix-ui";
 import { Wallet, Copy, ExternalLink, LogOut } from "lucide-react";
 import { stellarExpertAccountUrl } from "@/lib/stellar/client";
-import { useDonateWallet } from "@/components/landing/donate-wallet-context";
+import { useDonateWallet } from "./donate-wallet-context";
 
 /**
  * Nav Donate Wallet connector (PRD: Unified hybrid navigation, issue 02).
  *
  * Always visible in the nav right cluster in both auth states. Surfaces the
- * browser wallet connected via the Stellar Wallets Kit (`lib/wallet/kit.ts`),
- * not the Creator's Owner Address. Never requires login, never reads or writes
+ * browser wallet connected via the Stellar Wallets Kit, not the Creator's
+ * Owner Address. Never requires login, never reads or writes
  * `profiles.owner_address`.
  *
- * Disconnected: a "Connect wallet" button that calls `connectWallet()` and
+ * This component is a pure presentation surface: wallet state (address,
+ * connecting, connect/disconnect) lives in `DonateWalletProvider` so the
+ * navbar connector and the donate form share one source of truth and can no
+ * longer disagree.
+ *
+ * Disconnected: a "Connect wallet" button that calls `connect()` and
  * transitions to the connected pill on success. Connected: a glass pill with
  * the truncated address that opens a dropdown with "Copy address", "View on
- * Stellar", and "Disconnect". Wallet state is tracked client-side via the kit.
+ * Stellar", and "Disconnect".
  */
 
 /** `GABC…WXYZ` — first 4 and last 4 chars joined by a single ellipsis. */
@@ -28,15 +33,6 @@ function truncateAddress(address: string): string {
 export function DonateWalletConnector() {
   const { address, connecting, connect, disconnect } = useDonateWallet();
 
-  async function handleConnect() {
-    try {
-      await connect();
-    } catch {
-      // The kit's authModal closes on rejection; the nav is a presentation
-      // surface and does not surface wallet errors here.
-    }
-  }
-
   async function handleCopy() {
     if (!address) return;
     try {
@@ -44,15 +40,6 @@ export function DonateWalletConnector() {
     } catch {
       // Clipboard API unavailable (e.g. insecure context); the menu closes
       // either way. No nav-level error surface.
-    }
-  }
-
-  async function handleDisconnect() {
-    try {
-      await disconnect();
-    } catch {
-      // The provider drops the local address in a finally block so the pill
-      // reverts to the Connect CTA. The next connect attempt re-initializes.
     }
   }
 
@@ -97,7 +84,7 @@ export function DonateWalletConnector() {
             </DropdownMenu.Item>
             <DropdownMenu.Separator className="my-1 h-px bg-foreground/10" />
             <DropdownMenu.Item
-              onSelect={handleDisconnect}
+              onSelect={disconnect}
               className="flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-foreground outline-none transition-colors hover:bg-foreground/[0.06] focus-visible:bg-foreground/[0.06] data-[highlighted]:bg-foreground/[0.06]"
             >
               <LogOut className="size-3.5 text-muted-foreground" />
@@ -112,7 +99,7 @@ export function DonateWalletConnector() {
   return (
     <button
       type="button"
-      onClick={handleConnect}
+      onClick={connect}
       disabled={connecting}
       aria-label="Connect wallet"
       className="inline-flex items-center gap-2 rounded-xl border border-foreground/10 bg-foreground/[0.03] px-3.5 py-2 text-sm text-foreground transition-all duration-300 hover:border-primary/40 hover:bg-primary/[0.06] hover:shadow-[0_0_24px_-6px_rgba(180,255,57,0.4)] disabled:opacity-60"

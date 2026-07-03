@@ -5,11 +5,6 @@ import {
   sumDonationStats,
   type LeaderboardRow,
 } from "@/lib/creators/leaderboard";
-import {
-  isMockDataEnabled,
-  getMockCreator,
-  getMockDonations,
-} from "@/lib/creators/mock";
 import { ShareButtons } from "@/components/creator/share-buttons";
 import { BackButton } from "@/components/creator/back-button";
 
@@ -36,25 +31,6 @@ export default async function CreatorPage({
 }) {
   const { handle } = await params;
   const normalized = handle.trim().toLowerCase();
-
-  if (isMockDataEnabled()) {
-    const creator = getMockCreator(normalized);
-    if (!creator) notFound();
-    const rows = getMockDonations(normalized) as LeaderboardRow[];
-    const stats = sumDonationStats(rows);
-    return (
-      <CreatorPageShell
-        handle={creator.handle}
-        displayName={creator.display_name}
-        avatarUrl={creator.avatar_url}
-        bannerUrl={creator.banner_url}
-        bio={creator.bio}
-        total={stats.total}
-        count={stats.count}
-        leaderboard={aggregateLeaderboard(rows)}
-      />
-    );
-  }
 
   const service = createServiceClient();
 

@@ -1,6 +1,7 @@
 import * as React from "react"
 import { cva, type VariantProps } from "class-variance-authority"
 import { Slot } from "radix-ui"
+import { Loader2 } from "lucide-react"
 
 import { cn } from "@/lib/utils"
 
@@ -43,21 +44,43 @@ function Button({
   variant = "default",
   size = "default",
   asChild = false,
+  loading = false,
+  disabled,
+  children,
   ...props
 }: React.ComponentProps<"button"> &
   VariantProps<typeof buttonVariants> & {
     asChild?: boolean
+    /**
+     * When true, renders an animated spinner before the label and disables
+     * the button. Use for any button that triggers an API call or async work
+     * so the UI signals the app is still working (see AGENTS.md §Loading
+     * state).
+     */
+    loading?: boolean
   }) {
   const Comp = asChild ? Slot.Root : "button"
+  const sharedProps = {
+    "data-slot": "button",
+    "data-variant": variant,
+    "data-size": size,
+    className: cn(buttonVariants({ variant, size, className })),
+    disabled: loading || disabled,
+    ...props,
+  }
+
+  // When `asChild`, Slot requires exactly one element child, so the spinner
+  // (which would add a second child) is skipped — `loading` has no visual
+  // effect on slotted buttons (they wrap a Link or similar).
+  if (asChild) {
+    return <Comp {...sharedProps}>{children}</Comp>
+  }
 
   return (
-    <Comp
-      data-slot="button"
-      data-variant={variant}
-      data-size={size}
-      className={cn(buttonVariants({ variant, size, className }))}
-      {...props}
-    />
+    <Comp {...sharedProps}>
+      {loading ? <Loader2 className="animate-spin" aria-hidden /> : null}
+      {children}
+    </Comp>
   )
 }
 

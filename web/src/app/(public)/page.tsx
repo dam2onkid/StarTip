@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { LenisProvider } from "@/components/landing/lenis-provider";
 import { LandingShell } from "@/components/landing/landing-shell";
+import { createServerClient } from "@/lib/supabase/server";
+import { resolveNavAuth, type NavAuth } from "@/lib/nav/auth";
 
 export const metadata: Metadata = {
   title: "Fast, global tipping for livestream creators, settled on Stellar",
@@ -22,10 +24,12 @@ export const metadata: Metadata = {
   },
 };
 
-export default function LandingPage() {
+export default async function LandingPage() {
+  const supabase = await createServerClient();
+  const auth: NavAuth = await resolveNavAuth(supabase);
   return (
     <LenisProvider>
-      <LandingShell />
+      <LandingShell auth={auth} />
     </LenisProvider>
   );
 }

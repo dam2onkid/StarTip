@@ -241,6 +241,21 @@ describe("indexer/dispatch processPoll", () => {
     expect(req.cursor).toBeUndefined();
   });
 
+  it("bootstraps from deps.startLedger when provided, skipping getLatestLedger", async () => {
+    const { supabase, setResponder } = createMockSupabase();
+    setResponder("indexer_state:select", () => ({ data: { id: 1, last_ledger: 0, last_cursor: null }, error: null }));
+
+    const rpc = createMockRpc([]);
+    const { processPoll } = await import("@/lib/indexer/dispatch");
+    await processPoll({ supabase: supabase as any, rpc, tokenReader, contractId: CONTRACT_ID, startLedger: 3_000_000 });
+
+    // History is scanned from the configured ledger, not the current one.
+    expect(rpc.getLatestLedger).not.toHaveBeenCalled();
+    const req = rpc.getEvents.mock.calls[0][0] as { cursor?: string; startLedger?: number };
+    expect(req.startLedger).toBe(3_000_000);
+    expect(req.cursor).toBeUndefined();
+  });
+
   it("DonationReceived: updates an existing pending row to indexed", async () => {
     const { supabase, calls, setResponder } = createMockSupabase();
     setResponder("indexer_state:select", () => ({ data: { id: 1, last_ledger: 100, last_cursor: "cur" }, error: null }));

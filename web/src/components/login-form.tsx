@@ -45,10 +45,12 @@ export function LoginForm({
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError(null);
+    setLoading(true);
     const supabase = createBrowserClient();
     const { error } = await supabase.auth.signInWithPassword({
       email,
@@ -56,6 +58,7 @@ export function LoginForm({
     });
     if (error) {
       setError(error.message);
+      setLoading(false);
       return;
     }
     router.push(next);
@@ -119,7 +122,7 @@ export function LoginForm({
                 />
               </Field>
               <Field>
-                <Button type="submit" size="lg" className="w-full">
+                <Button type="submit" size="lg" loading={loading} className="w-full">
                   Sign in
                 </Button>
                 {error && (
