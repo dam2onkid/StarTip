@@ -92,7 +92,16 @@ function profileWithNonce(over: Record<string, unknown> = {}) {
 }
 
 function sign(challenge: string, kp: StellarSdk.Keypair = SIGNER) {
-  return kp.sign(Buffer.from(challenge, "utf8")).toString("hex");
+  // Freighter / SEP-53 wallets sign SHA256("Stellar Signed Message:\n" || msg),
+  // not the raw challenge bytes. Mirror that here so the test exercises the
+  // real verification path the route now uses.
+  const prehash = StellarSdk.hash(
+    Buffer.concat([
+      Buffer.from("Stellar Signed Message:\n"),
+      Buffer.from(challenge, "utf8"),
+    ]),
+  );
+  return kp.sign(prehash).toString("hex");
 }
 
 describe("POST /api/wallet/link", () => {

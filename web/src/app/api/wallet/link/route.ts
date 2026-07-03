@@ -15,9 +15,9 @@ interface LinkBody {
  *
  * Authed. Body `{ address, signedMessage, signerAddress? }`. Reconstructs the
  * challenge from the caller's Profile (handle + handle_hash + stored nonce),
- * verifies `Keypair.fromPublicKey(address).verify(challenge, sig)` (Ed25519
- * detached verify, SEP-53 prefix handled by the SDK), checks the nonce has not
- * expired, and
+ * applies the SEP-53 prehash (`SHA256("Stellar Signed Message:\n" || challenge)`)
+ * and verifies `Keypair.fromPublicKey(address).verify(prehash, sig)` (Ed25519
+ * detached verify), checks the nonce has not expired, and
  * enforces re-link-only-pre-registration. On success writes `owner_address`
  * and nulls the nonce + expiry (service role).
  *
@@ -89,9 +89,18 @@ export async function POST(request: NextRequest) {
   } catch {
     return NextResponse.json({ error: "invalid_address" }, { status: 400 });
   }
+  // Freighter (and any SEP-53 wallet) does not sign the raw challenge bytes.
+  // It signs SHA256("Stellar Signed Message:\n" || message). Keypair.verify is
+  // raw ed25519, so we must apply the SEP-53 prehash ourselves before verifying.
+  const sep53Prehash = StellarSdk.hash(
+    Buffer.concat([
+      Buffer.from("Stellar Signed Message:\n"),
+      Buffer.from(challenge, "utf8"),
+    ]),
+  );
   let valid = false;
   try {
-    valid = keypair.verify(Buffer.from(challenge, "utf8"), Buffer.from(signedMessage, "hex"));
+    valid = keypair.verify(sep53Prehash, Buffer.from(signedMessage, "hex"));
   } catch {
     valid = false;
   }

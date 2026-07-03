@@ -1,4 +1,6 @@
 import { test, expect, type Page } from "@playwright/test";
+import { createHash } from "node:crypto";
+import * as StellarSdk from "@stellar/stellar-sdk";
 
 /**
  * Creator onboarding four-gate state machine E2E.
@@ -7,7 +9,10 @@ import { test, expect, type Page } from "@playwright/test";
  * context before the dashboard loads:
  *
  *   - `window.__STARTIP_WALLET_STUB__`   — stands in for the Stellar Wallets
- *     Kit (connect / signMessage / signTransaction).
+ *     Kit (connect / signMessage / signTransaction). `signMessage` delegates
+ *     to `window.__signStubMessage` (exposed via `page.exposeFunction`) which
+ *     signs with a real Ed25519 keypair using SEP-53 prehash, so the real
+ *     `/api/wallet/link` verification path is exercised end-to-end.
  *   - `window.__STARTIP_REGISTER_STUB__` — stands in for the client-side
  *     `register_creator` build/sign/submit path so the E2E does not have to
  *     mock the full Soroban JSON-RPC surface.
@@ -17,12 +22,19 @@ import { test, expect, type Page } from "@playwright/test";
  *     `onchain_registered = true` update to drive the `onchain_pending →
  *     active` flip without a WebSocket.
  *
- * The API routes (`/api/creators`, `/api/wallet/link/*`) are fulfilled via
- * `page.route` so the browser sees the real HTTP contract without the Next
- * routes having to talk to a real Stellar RPC.
+ * Only `/api/creators` is fulfilled via `page.route` (it needs an on-chain
+ * availability check that would require a real Stellar RPC). The
+ * `/api/wallet/link/challenge` and `/api/wallet/link` routes run for real
+ * against the mock Supabase, and the wallet stub signs with a real keypair
+ * using SEP-53 prehash, so the full signature verification path is covered.
  */
 
-const STUB_ADDRESS = "GDF6CFYOXQTZVSLLK2RTDAUZ6N2E72IL4K2L34HXZK32KBR4NLVPLUVA";
+// Real Ed25519 keypair the wallet stub signs with. The corresponding public
+// key is the "connected" address the dashboard sees.
+const SIGNER = StellarSdk.Keypair.random();
+
+// Mock Supabase port (must match tests/e2e-server.mjs).
+const MOCK_SUPABASE_PORT = 5499;
 
 // Shared holders so the test can drive the Realtime flip after registration.
 let pushActive: ((payout?: string) => void) | null = null;
@@ -36,19 +48,36 @@ async function establishSession(page: Page) {
 }
 
 async function installSeams(page: Page) {
-  await page.addInitScript(() => {
-    const address =
-      "GDF6CFYOXQTZVSLLK2RTDAUZ6N2E72IL4K2L34HXZK32KBR4NLVPLUVA";
+  const publicKey = SIGNER.publicKey();
+
+  // Bridge: the browser stub calls this Node.js function to sign with a real
+  // Ed25519 keypair using SEP-53 prehash (SHA256("Stellar Signed Message:\n"
+  // || message)). This lets the real /api/wallet/link route verify the
+  // signature end-to-end instead of being short-circuited by a page.route mock.
+  await page.exposeFunction("__signStubMessage", async (message: string) => {
+    const prehash = StellarSdk.hash(
+      Buffer.concat([
+        Buffer.from("Stellar Signed Message:\n"),
+        Buffer.from(message, "utf8"),
+      ]),
+    );
+    return {
+      signedMessage: SIGNER.sign(prehash).toString("hex"),
+      signerAddress: publicKey,
+    };
+  });
+
+  await page.addInitScript((pk: string) => {
     (window as unknown as { __STARTIP_WALLET_STUB__?: unknown }).__STARTIP_WALLET_STUB__ = {
-      address,
-      connect: async () => ({ address }),
-      signMessage: async (message: string) => ({
-        signedMessage: "deadbeef",
-        signerAddress: address,
-      }),
+      address: pk,
+      connect: async () => ({ address: pk }),
+      signMessage: async (message: string) =>
+        (window as unknown as {
+          __signStubMessage?: (m: string) => Promise<{ signedMessage: string; signerAddress: string }>;
+        }).__signStubMessage!(message),
       signTransaction: async (xdr: string) => ({
         signedTxXdr: xdr,
-        signerAddress: address,
+        signerAddress: pk,
       }),
       disconnect: async () => undefined,
     };
@@ -66,11 +95,13 @@ async function installSeams(page: Page) {
         return () => undefined;
       },
     };
-  });
+  }, publicKey);
 }
 
 async function routeApi(page: Page) {
   // /api/creators: dryRun availability (200 available) and real claim (200).
+  // The claim also PATCHes the mock Supabase profile so the real
+  // /api/wallet/link/challenge and /api/wallet/link routes can read the handle.
   await page.route("**/api/creators", async (route) => {
     const req = route.request();
     let body: { dryRun?: boolean; handle?: string } = {};
@@ -82,36 +113,58 @@ async function routeApi(page: Page) {
     if (body.dryRun) {
       await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ available: true, handle: body.handle }) });
     } else {
+      // Set the handle on the mock Supabase profile so the real challenge
+      // and link routes (which are NOT mocked) can read it.
+      const handle = body.handle ?? "";
+      const handleHash = createHash("sha256").update(handle).digest("hex");
+      await fetch(`http://127.0.0.1:${MOCK_SUPABASE_PORT}/rest/v1/profiles`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ handle, handle_hash: "\\x" + handleHash }),
+      });
       await route.fulfill({
         status: 200,
         contentType: "application/json",
-        body: JSON.stringify({ handle: body.handle, handle_hash: "ab".repeat(32), owner_address: null, onchain_registered: false }),
+        body: JSON.stringify({ handle: body.handle, handle_hash: handleHash, owner_address: null, onchain_registered: false }),
       });
     }
   });
 
-  // /api/wallet/link/challenge -> human-readable challenge.
-  await page.route("**/api/wallet/link/challenge", async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({ challenge: "StarTip wallet link\nHandle: ada\nProfile: dead\nNonce: beef" }),
-    });
-  });
-
-  // /api/wallet/link -> owner_address written.
-  await page.route("**/api/wallet/link", async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({ owner_address: STUB_ADDRESS }),
-    });
-  });
+  // /api/wallet/link/challenge and /api/wallet/link are NOT mocked — the real
+  // Next.js routes run against the mock Supabase, and the wallet stub signs
+  // with a real keypair using SEP-53 prehash (see installSeams). This
+  // exercises the full challenge → sign → verify → link path end-to-end.
 }
 
-test.describe("Creator onboarding four-gate flow", () => {
+// Serial: the wallet-link flow writes a nonce to the shared mock Supabase
+// profile (challenge) and reads it back (link). If tests run in parallel, one
+// test's nonce overwrites another's, causing invalid_signature. Serial mode
+// ensures only one onboarding test touches the nonce at a time.
+test.describe.serial("Creator onboarding four-gate flow", () => {
   test.beforeEach(async ({ page }) => {
     pushActive = null;
+    // Reset the mock Supabase profile to the default un-onboarded state.
+    // The mock server is shared across all test files, and other tests (or a
+    // previous run of this file) may have mutated the in-memory profile
+    // (handle, owner_address, nonce, etc.). Without this reset the onboarding
+    // gates may render in the wrong state.
+    await fetch(`http://127.0.0.1:${MOCK_SUPABASE_PORT}/rest/v1/profiles`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        handle: null,
+        handle_hash: null,
+        owner_address: null,
+        onchain_registered: false,
+        wallet_link_nonce: null,
+        wallet_link_nonce_expires_at: null,
+        payout_address: null,
+        paused: false,
+        display_name: "Fan",
+        bio: null,
+        avatar_url: null,
+      }),
+    });
     await installSeams(page);
     await routeApi(page);
     await establishSession(page);
