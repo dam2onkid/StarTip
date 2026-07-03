@@ -475,3 +475,226 @@ body {
   text-transform: uppercase;
   color: color-mix(in oklch, var(--muted-foreground) 70%, transparent);
 }
+
+/* Creator tab sections: a session-tab index plus full-width action rows. */
+.dashboard .creator-section + .creator-section {
+  padding-top: 0.5rem;
+}
+.dashboard .creator-command-panel {
+  position: relative;
+  overflow: hidden;
+  border-radius: var(--radius-xl);
+  border: 1px solid color-mix(in oklch, var(--foreground) 9%, transparent);
+  background:
+    linear-gradient(
+      135deg,
+      color-mix(in oklch, var(--foreground) 7%, transparent),
+      color-mix(in oklch, var(--card) 72%, transparent) 46%,
+      color-mix(in oklch, var(--background) 86%, transparent)
+    );
+  -webkit-backdrop-filter: blur(18px) saturate(150%);
+  backdrop-filter: blur(18px) saturate(150%);
+  box-shadow:
+    inset 0 1px 0 0 color-mix(in oklch, var(--foreground) 7%, transparent),
+    0 28px 70px -34px rgba(0, 0, 0, 0.85);
+  padding: clamp(1rem, 3vw, 1.5rem);
+}
+.dashboard .creator-command-panel::after {
+  content: "";
+  position: absolute;
+  inset: auto 0 0 0;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in oklch, var(--primary) 60%, transparent),
+    transparent
+  );
+  opacity: 0.7;
+}
+.dashboard .creator-signal-rail {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  display: grid;
+  gap: 0.35rem;
+  width: 4.5rem;
+  pointer-events: none;
+}
+.dashboard .creator-signal-rail span {
+  display: block;
+  height: 0.18rem;
+  border-radius: 9999px;
+  background: color-mix(in oklch, var(--primary) 65%, transparent);
+  box-shadow: 0 0 22px color-mix(in oklch, var(--primary) 25%, transparent);
+}
+.dashboard .creator-signal-rail span:nth-child(2) {
+  width: 72%;
+  opacity: 0.72;
+}
+.dashboard .creator-signal-rail span:nth-child(3) {
+  width: 44%;
+  opacity: 0.44;
+}
+.dashboard .creator-command-metrics {
+  display: grid;
+  width: min(100%, 34rem);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+.dashboard .creator-metric-tile {
+  min-width: 0;
+  border-radius: var(--radius-md);
+  border: 1px solid color-mix(in oklch, var(--foreground) 7%, transparent);
+  background: color-mix(in oklch, var(--foreground) 4%, transparent);
+  padding: 0.85rem;
+}
+.dashboard .creator-metric-tile span,
+.dashboard .creator-metric-tile dt {
+  display: block;
+  font-family: var(--font-label), monospace;
+  font-size: 0.625rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: color-mix(in oklch, var(--muted-foreground) 78%, transparent);
+}
+.dashboard .creator-metric-tile strong,
+.dashboard .creator-metric-tile dd {
+  margin-top: 0.35rem;
+  display: block;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-family: var(--font-display), var(--font-body), sans-serif;
+  font-size: clamp(1.35rem, 3vw, 2rem);
+  font-weight: 600;
+  line-height: 1;
+  color: var(--foreground);
+  font-variant-numeric: tabular-nums;
+}
+.dashboard .creator-metric-tile .creator-metric-compact {
+  font-family: var(--font-label), monospace;
+  font-size: 0.82rem;
+  letter-spacing: 0;
+  line-height: 1.3;
+}
+.dashboard .creator-address-row {
+  display: grid;
+  grid-template-columns: minmax(5rem, 0.35fr) minmax(0, 1fr);
+  gap: 0.75rem;
+  align-items: start;
+  border-radius: var(--radius-md);
+  border: 1px solid color-mix(in oklch, var(--foreground) 6%, transparent);
+  background: color-mix(in oklch, var(--foreground) 3%, transparent);
+  padding: 0.65rem 0.75rem;
+}
+.dashboard .creator-session-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+.dashboard .creator-session-tab {
+  height: auto;
+  min-width: 0;
+  justify-content: flex-start;
+  border: 1px solid color-mix(in oklch, var(--foreground) 7%, transparent);
+  background: color-mix(in oklch, var(--foreground) 3%, transparent);
+  padding: 0.8rem 0.9rem;
+  text-align: left;
+}
+.dashboard .creator-session-tab span {
+  display: block;
+  min-width: 0;
+}
+.dashboard .creator-session-tab span:first-child {
+  font-family: var(--font-display), var(--font-body), sans-serif;
+  font-weight: 600;
+  color: var(--foreground);
+}
+.dashboard .creator-session-tab span:last-child {
+  margin-top: 0.2rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 0.72rem;
+  line-height: 1.3;
+  color: var(--muted-foreground);
+}
+.dashboard .creator-section {
+  border-radius: var(--radius-xl);
+}
+.dashboard .creator-section-header {
+  display: flex;
+  gap: 1rem;
+  align-items: end;
+  justify-content: space-between;
+}
+.dashboard .creator-section-count {
+  font-family: var(--font-label), monospace;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.dashboard .creator-info-trigger {
+  color: var(--muted-foreground);
+  opacity: 0.78;
+}
+@media (hover: hover) and (pointer: fine) {
+  .dashboard .creator-info-trigger:hover {
+    color: var(--foreground);
+    opacity: 1;
+  }
+}
+.dashboard .creator-section-list {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: minmax(0, 1fr);
+}
+.dashboard .creator-section-list > [data-slot="card"] {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0;
+  min-width: 0;
+  padding: 0;
+  /* Skip rendering for off-screen cards so only the cards in the viewport pay
+   * the backdrop-filter blur cost. `content-visibility: auto`
+   * lets the browser skip paint/layout for cards outside the scrollport and
+   * `contain-intrinsic-size` reserves a stable box so scroll position does not
+   * jump as cards enter/leave. */
+  content-visibility: auto;
+  contain-intrinsic-size: auto 180px;
+}
+.dashboard .creator-section-list > [data-slot="card"] > [data-slot="card-header"] {
+  align-content: center;
+  border-bottom: 1px solid color-mix(in oklch, var(--foreground) 6%, transparent);
+  padding: 1.25rem 1.5rem;
+}
+.dashboard .creator-section-list > [data-slot="card"] > [data-slot="card-content"] {
+  align-content: center;
+  min-width: 0;
+  padding: 1.25rem 1.5rem;
+}
+@media (max-width: 760px) {
+  .dashboard .creator-session-tabs {
+    grid-template-columns: 1fr;
+  }
+
+  .dashboard .creator-command-metrics {
+    grid-template-columns: 1fr;
+  }
+
+  .dashboard .creator-signal-rail {
+    opacity: 0.45;
+  }
+
+  .dashboard .creator-address-row {
+    grid-template-columns: 1fr;
+    gap: 0.35rem;
+  }
+
+  .dashboard .creator-section-header {
+    align-items: start;
+    flex-direction: column;
+  }
+
+  .dashboard .creator-section-list > [data-slot="card"] > [data-slot="card-header"] {
+    border-bottom: 1px solid color-mix(in oklch, var(--foreground) 6%, transparent);
+  }
+}

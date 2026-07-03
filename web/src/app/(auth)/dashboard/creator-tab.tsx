@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { InfoIcon } from "lucide-react";
 import { createBrowserClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import {
@@ -11,6 +12,14 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
+import { Separator } from "@/components/ui/separator";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import {
   deriveOnboardingState,
   type OnboardingProfile,
@@ -111,50 +120,52 @@ export function CreatorTab({ profile, activeData }: CreatorTabProps) {
   });
 
   return (
-    <div className="flex flex-col gap-4">
-      <GateStepper state={state} />
-      {state === "profile_pending" && (
-        <ProfilePendingGate
-          current={current}
-          status={status}
-          setStatus={setStatus}
-          onClaimed={(p) => setCurrent((prev) => ({ ...prev, ...p }))}
-        />
-      )}
-      {state === "wallet_pending" && (
-        <WalletPendingGate
-          current={current}
-          status={status}
-          setStatus={setStatus}
-          onLinked={(ownerAddress) =>
-            setCurrent((prev) => ({ ...prev, owner_address: ownerAddress }))
-          }
-        />
-      )}
-      {state === "onchain_pending" && (
-        <OnchainPendingGate
-          current={current}
-          status={status}
-          setStatus={setStatus}
-          onSubmitted={() =>
-            setStatus({
-              kind: "info",
-              message: "Registration submitted. Waiting for the indexer to mirror it.",
-            })
-          }
-          onReconciled={(next) => {
-            setCurrent((prev) => ({ ...prev, onchain_registered: true, ...next }));
-            setStatus({ kind: "info", message: "You are live on-chain. Creator is active." });
-          }}
-        />
-      )}
-      {state === "active" && (
-        <>
-          <StatusLine status={status} />
-          <ActiveGate current={current} activeData={activeData} onUpdate={setCurrent} />
-        </>
-      )}
-    </div>
+    <TooltipProvider>
+      <div className="creator-dashboard flex flex-col gap-6">
+        <GateStepper state={state} />
+        {state === "profile_pending" && (
+          <ProfilePendingGate
+            current={current}
+            status={status}
+            setStatus={setStatus}
+            onClaimed={(p) => setCurrent((prev) => ({ ...prev, ...p }))}
+          />
+        )}
+        {state === "wallet_pending" && (
+          <WalletPendingGate
+            current={current}
+            status={status}
+            setStatus={setStatus}
+            onLinked={(ownerAddress) =>
+              setCurrent((prev) => ({ ...prev, owner_address: ownerAddress }))
+            }
+          />
+        )}
+        {state === "onchain_pending" && (
+          <OnchainPendingGate
+            current={current}
+            status={status}
+            setStatus={setStatus}
+            onSubmitted={() =>
+              setStatus({
+                kind: "info",
+                message: "Registration submitted. Waiting for the indexer to mirror it.",
+              })
+            }
+            onReconciled={(next) => {
+              setCurrent((prev) => ({ ...prev, onchain_registered: true, ...next }));
+              setStatus({ kind: "info", message: "You are live on-chain. Creator is active." });
+            }}
+          />
+        )}
+        {state === "active" && (
+          <>
+            <StatusLine status={status} />
+            <ActiveGate current={current} activeData={activeData} onUpdate={setCurrent} />
+          </>
+        )}
+      </div>
+    </TooltipProvider>
   );
 }
 
@@ -180,7 +191,7 @@ function GateStepper({ state }: { state: OnboardingState }) {
   const progress = (activeIdx / (order.length - 1)) * 100;
   return (
     <div
-      className="rounded-xl border border-foreground/8 bg-foreground/[0.02] p-4"
+      className="creator-gate-stepper rounded-xl border border-foreground/8 bg-foreground/[0.02] p-4"
       data-testid="gate-stepper"
     >
       <div className="mb-3 flex items-center justify-between">
@@ -201,12 +212,12 @@ function GateStepper({ state }: { state: OnboardingState }) {
           style={{ width: `${progress}%` }}
         />
       </div>
-      <ol className="flex items-center justify-between text-xs text-muted-foreground">
+      <ol className="grid grid-cols-2 gap-3 text-xs text-muted-foreground sm:flex sm:items-center sm:justify-between">
         {order.map((s, i) => {
           const done = i < activeIdx;
           const active = i === activeIdx;
           return (
-            <li key={s} className="flex items-center gap-2">
+            <li key={s} className="flex min-w-0 items-center gap-2">
               <span
                 className={
                   "inline-flex h-6 w-6 items-center justify-center rounded-full border text-[0.65rem] transition-colors " +
@@ -220,7 +231,9 @@ function GateStepper({ state }: { state: OnboardingState }) {
               >
                 {done ? "✓" : i + 1}
               </span>
-              <span className={active ? "text-foreground" : ""}>{labels[s]}</span>
+              <span className={active ? "truncate text-foreground" : "truncate"}>
+                {labels[s]}
+              </span>
             </li>
           );
         })}
@@ -238,7 +251,7 @@ function ProfilePendingGate(args: {
   setStatus: (s: Status) => void;
   onClaimed: (p: Partial<CreatorProfile>) => void;
 }) {
-  const { current, status, setStatus, onClaimed } = args;
+  const { status, setStatus, onClaimed } = args;
   const [open, setOpen] = useState(false);
   const [handle, setHandle] = useState("");
   const [checking, setChecking] = useState(false);
@@ -251,7 +264,6 @@ function ProfilePendingGate(args: {
   // Debounced availability check: query the server (which checks both the
   // profiles table and on-chain get_creator) as the user types a valid handle.
   useEffect(() => {
-    setAvailability({ state: "unknown" });
     if (handle.trim().length < 3) return;
     const id = window.setTimeout(async () => {
       setChecking(true);
@@ -340,9 +352,13 @@ function ProfilePendingGate(args: {
           <div className="flex items-center gap-2">
             <Input
               id="handle-input"
+              name="handle"
               className="flex-1"
               value={handle}
-              onChange={(e) => setHandle(e.target.value)}
+              onChange={(e) => {
+                setHandle(e.target.value);
+                setAvailability({ state: "unknown" });
+              }}
               autoComplete="off"
               spellCheck={false}
               placeholder="ada-lovelace"
@@ -352,6 +368,7 @@ function ProfilePendingGate(args: {
               type="button"
               size="sm"
               onClick={submit}
+              loading={status.kind === "busy"}
               disabled={status.kind === "busy" || availability.state === "taken" || handle.trim().length < 3}
             >
               Claim
@@ -468,13 +485,21 @@ function WalletPendingGate(args: {
           </p>
         ) : null}
         <div className="flex gap-2">
-          <Button type="button" variant="outline" size="sm" onClick={connect} disabled={status.kind === "busy"}>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={connect}
+            loading={status.kind === "busy"}
+            disabled={status.kind === "busy"}
+          >
             {address ? "Reconnect wallet" : "Connect wallet"}
           </Button>
           <Button
             type="button"
             size="sm"
             onClick={link}
+            loading={status.kind === "busy"}
             disabled={!address || status.kind === "busy"}
           >
             Sign challenge & link
@@ -502,7 +527,10 @@ function OnchainPendingGate(args: {
   const [treasury, setTreasury] = useState<string | null | undefined>(undefined);
   const [submitted, setSubmitted] = useState(false);
   const onReconciledRef = useRef(onReconciled);
-  onReconciledRef.current = onReconciled;
+
+  useEffect(() => {
+    onReconciledRef.current = onReconciled;
+  }, [onReconciled]);
 
   // Load the on-chain Treasury once, for the stranded-funds warning (ADR-0004).
   useEffect(() => {
@@ -646,6 +674,7 @@ function OnchainPendingGate(args: {
           </label>
           <Input
             id="payout-input"
+            name="payoutAddress"
             className="flex-1"
             value={payout}
             onChange={(e) => setPayout(e.target.value)}
@@ -665,6 +694,7 @@ function OnchainPendingGate(args: {
           type="button"
           size="sm"
           onClick={register}
+          loading={status.kind === "busy"}
           disabled={status.kind === "busy" || payout.trim().length === 0}
           className="self-start"
         >
@@ -678,7 +708,19 @@ function OnchainPendingGate(args: {
 
 /* ------------------------------------------------------------------ */
 
-/** Gate 4: active. The full Creator active-features panel. */
+/** Gate 4: active. The full Creator active-features panel.
+ *
+ * The active features are grouped into three labeled sections so the panel
+ * reads as a small set of themed areas instead of one long vertical stack:
+ *   1. Status & stats: read-only overview (registration, totals, top donors).
+ *   2. Controls: wallet-signed actions and public identity (payout, pause,
+ *      profile edit, overlay URL).
+ *   3. Moderation: incoming donations and visibility toggles.
+ *
+ * Each section renders full-width rows (see `.creator-section-list` in
+ * `globals.css`): the row title and description stay on the left, while the
+ * controls and data sit on the right, then collapse cleanly on mobile.
+ */
 function ActiveGate(args: {
   current: CreatorProfile;
   activeData?: CreatorActiveData;
@@ -693,16 +735,254 @@ function ActiveGate(args: {
   });
 
   return (
-    <div className="flex flex-col gap-4" data-testid="creator-active">
-      <OnchainStatusCard current={current} />
-      <StatsCard activeData={activeData} />
-      <LeaderboardCard activeData={activeData} />
-      <PayoutUpdateCard current={current} />
-      <PauseCard current={current} />
-      <ProfileEditCard current={current} onUpdate={onUpdate} />
-      <OverlayUrlCard handle={current.handle} />
-      <ModerationCard activeData={activeData} />
+    <div className="flex flex-col gap-10" data-testid="creator-active">
+      <CreatorCommandPanel current={current} activeData={activeData} />
+      <CreatorSessionTabs />
+
+      <CreatorSection
+        id="creator-session-overview"
+        eyebrow="Overview"
+        title="Signal & Supporters"
+        description="Your on-chain identity, current volume, and top donors."
+        count={3}
+      >
+        <OnchainStatusCard current={current} />
+        <StatsCard activeData={activeData} />
+        <LeaderboardCard activeData={activeData} />
+      </CreatorSection>
+
+      <CreatorSection
+        id="creator-session-controls"
+        eyebrow="Controls"
+        title="Payout, status & profile"
+        description="Wallet-signed actions plus your public identity and stream overlay."
+        count={4}
+      >
+        <PayoutUpdateCard current={current} />
+        <PauseCard current={current} />
+        <ProfileEditCard current={current} onUpdate={onUpdate} />
+        <OverlayUrlCard handle={current.handle} />
+      </CreatorSection>
+
+      <CreatorSection
+        id="creator-session-moderation"
+        eyebrow="Moderation"
+        title="Incoming donations"
+        description="Toggle visibility of received donations on the overlay."
+        count={1}
+      >
+        <ModerationCard activeData={activeData} />
+      </CreatorSection>
     </div>
+  );
+}
+
+function CreatorSessionTabs() {
+  const sessions = [
+    {
+      href: "#creator-session-overview",
+      label: "Overview",
+      detail: "Identity, totals, supporters",
+    },
+    {
+      href: "#creator-session-controls",
+      label: "Controls",
+      detail: "Payout, status, profile, overlay",
+    },
+    {
+      href: "#creator-session-moderation",
+      label: "Moderation",
+      detail: "Donation visibility",
+    },
+  ];
+
+  return (
+    <nav className="creator-session-tabs" aria-label="Creator sections">
+      {sessions.map((session) => (
+        <Button key={session.href} asChild variant="ghost" className="creator-session-tab">
+          <a href={session.href}>
+            <span>{session.label}</span>
+            <span>{session.detail}</span>
+          </a>
+        </Button>
+      ))}
+    </nav>
+  );
+}
+
+function CreatorCommandPanel({
+  current,
+  activeData,
+}: {
+  current: CreatorProfile;
+  activeData?: CreatorActiveData;
+}) {
+  const paused = current.paused ?? false;
+  const overlayPath = current.handle ? `/overlay/${current.handle}` : "Not claimed";
+  return (
+    <section className="creator-command-panel" aria-label="Creator command center">
+      <div className="creator-signal-rail" aria-hidden>
+        <span />
+        <span />
+        <span />
+      </div>
+      <div className="flex min-w-0 flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+        <div className="min-w-0">
+          <span className="font-mono text-[0.65rem] uppercase tracking-[0.12em] text-muted-foreground/80">
+            Creator Console
+          </span>
+          <div className="mt-2 flex min-w-0 flex-wrap items-center gap-3">
+            <h2 className="font-display text-3xl font-semibold tracking-tight text-foreground text-pretty sm:text-4xl">
+              {current.display_name}
+            </h2>
+            <span className="status-pill" data-tone={paused ? "paused" : "active"}>
+              <span className="dot" aria-hidden />
+              {paused ? "Paused" : "Active"}
+            </span>
+          </div>
+          <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground text-pretty">
+            @{current.handle} is registered on-chain. Use this panel to keep payout,
+            overlay, and supporter visibility aligned before you go live.
+          </p>
+        </div>
+
+        <div className="creator-command-metrics">
+          <MetricTile
+            label="Received"
+            value={activeData?.stats.total ?? "0"}
+            testId="creator-command-total"
+          />
+          <MetricTile
+            label="Donations"
+            value={String(activeData?.stats.count ?? 0)}
+            testId="creator-command-count"
+          />
+          <MetricTile
+            label="Overlay"
+            value={overlayPath}
+            compact
+            testId="creator-command-overlay"
+          />
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function MetricTile({
+  label,
+  value,
+  compact = false,
+  testId,
+}: {
+  label: string;
+  value: string;
+  compact?: boolean;
+  testId?: string;
+}) {
+  return (
+    <div className="creator-metric-tile">
+      <span>{label}</span>
+      <strong className={compact ? "creator-metric-compact" : undefined} data-testid={testId}>
+        {value}
+      </strong>
+    </div>
+  );
+}
+
+function EmptyState({
+  eyebrow,
+  message,
+}: {
+  eyebrow: string;
+  message: string;
+}) {
+  return (
+    <div className="empty-state">
+      <span className="empty-eyebrow">{eyebrow}</span>
+      <p className="text-sm text-muted-foreground text-pretty">{message}</p>
+    </div>
+  );
+}
+
+function InfoTooltip({
+  label,
+  children,
+}: {
+  label: string;
+  children: ReactNode;
+}) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-xs"
+          className="creator-info-trigger"
+          aria-label={label}
+        >
+          <InfoIcon aria-hidden />
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent>{children}</TooltipContent>
+    </Tooltip>
+  );
+}
+
+function CardTitleWithInfo({
+  title,
+  info,
+}: {
+  title: string;
+  info: ReactNode;
+}) {
+  return (
+    <div className="flex items-center gap-2">
+      <CardTitle>{title}</CardTitle>
+      <InfoTooltip label={`${title} info`}>{info}</InfoTooltip>
+    </div>
+  );
+}
+
+/** A labeled group of creator rows. Section details live behind the info icon
+ * so the dashboard stays dense while remaining explainable on demand. */
+function CreatorSection({
+  id,
+  eyebrow,
+  title,
+  description,
+  count,
+  children,
+}: {
+  id: string;
+  eyebrow: string;
+  title: string;
+  description: string;
+  count: number;
+  children: ReactNode;
+}) {
+  return (
+    <section id={id} className="creator-section flex scroll-mt-28 flex-col gap-4">
+      <header className="creator-section-header">
+        <div className="flex min-w-0 flex-col gap-1">
+          <span className="font-mono text-[0.65rem] uppercase tracking-[0.12em] text-muted-foreground/80">
+            {eyebrow}
+          </span>
+          <div className="flex items-center gap-2">
+            <h2 className="font-display text-lg font-semibold tracking-tight text-foreground">
+              {title}
+            </h2>
+            <InfoTooltip label={`${title} section info`}>{description}</InfoTooltip>
+          </div>
+        </div>
+        <Badge variant="outline" className="creator-section-count">
+          {count} items
+        </Badge>
+      </header>
+      <Separator />
+      <div className="creator-section-list">{children}</div>
+    </section>
   );
 }
 
@@ -712,29 +992,25 @@ function OnchainStatusCard({ current }: { current: CreatorProfile }) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>On-chain status</CardTitle>
-        <CardDescription>
-          Your registration as mirrored by the indexer.
-        </CardDescription>
+        <CardTitleWithInfo
+          title="On-chain status"
+          info="Your registration as mirrored by the indexer."
+        />
       </CardHeader>
       <CardContent className="flex flex-col gap-3 text-xs text-muted-foreground">
-        <p className="flex items-center justify-between gap-3" data-testid="onchain-registered">
+        <p className="creator-address-row" data-testid="onchain-registered">
           <span>Registered</span>
           <span className="font-mono text-foreground">
             {current.onchain_registered ? "yes" : "no"}
           </span>
         </p>
-        <p className="flex items-center justify-between gap-3 break-all" data-testid="onchain-owner">
-          <span>Owner</span>
-          <span className="font-mono text-foreground">{current.owner_address}</span>
-        </p>
-        <p className="flex items-center justify-between gap-3 break-all" data-testid="onchain-payout">
-          <span>Payout</span>
-          <span className="font-mono text-foreground">
-            {current.payout_address ?? "—"}
-          </span>
-        </p>
-        <p className="flex items-center justify-between gap-3" data-testid="onchain-paused">
+        <AddressRow label="Owner" value={current.owner_address} testId="onchain-owner" />
+        <AddressRow
+          label="Payout"
+          value={current.payout_address ?? "Not mirrored yet"}
+          testId="onchain-payout"
+        />
+        <p className="creator-address-row" data-testid="onchain-paused">
           <span>Status</span>
           <span className="status-pill" data-tone={paused ? "paused" : "active"}>
             <span className="dot" aria-hidden />
@@ -746,6 +1022,23 @@ function OnchainStatusCard({ current }: { current: CreatorProfile }) {
   );
 }
 
+function AddressRow({
+  label,
+  value,
+  testId,
+}: {
+  label: string;
+  value: string | null | undefined;
+  testId: string;
+}) {
+  return (
+    <p className="creator-address-row" data-testid={testId}>
+      <span>{label}</span>
+      <span className="min-w-0 break-all font-mono text-foreground">{value || "Not set"}</span>
+    </p>
+  );
+}
+
 /** Stats: total received and donation count (including hidden). */
 function StatsCard({ activeData }: { activeData?: CreatorActiveData }) {
   const total = activeData?.stats.total ?? "0";
@@ -753,14 +1046,14 @@ function StatsCard({ activeData }: { activeData?: CreatorActiveData }) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Stats</CardTitle>
-        <CardDescription>
-          Total received and donation count, including hidden donations.
-        </CardDescription>
+        <CardTitleWithInfo
+          title="Stats"
+          info="Total received and donation count, including hidden donations."
+        />
       </CardHeader>
       <CardContent>
-        <dl className="flex flex-col gap-4 sm:flex-row sm:items-end sm:gap-8">
-          <div className="flex flex-col gap-1">
+        <dl className="grid gap-3 sm:grid-cols-2">
+          <div className="creator-metric-tile">
             <dt className="font-mono text-[0.65rem] uppercase tracking-[0.12em] text-muted-foreground/80">
               Total received
             </dt>
@@ -768,7 +1061,7 @@ function StatsCard({ activeData }: { activeData?: CreatorActiveData }) {
               {total}
             </dd>
           </div>
-          <div className="flex flex-col gap-1">
+          <div className="creator-metric-tile">
             <dt className="font-mono text-[0.65rem] uppercase tracking-[0.12em] text-muted-foreground/80">
               Donations
             </dt>
@@ -791,16 +1084,17 @@ function LeaderboardCard({ activeData }: { activeData?: CreatorActiveData }) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Top Donors</CardTitle>
-        <CardDescription>
-          Your top donors, ranked by total donated. Anonymous donations are excluded.
-        </CardDescription>
+        <CardTitleWithInfo
+          title="Top Donors"
+          info="Your top donors, ranked by total donated. Anonymous donations are excluded."
+        />
       </CardHeader>
       <CardContent>
         {leaderboard.length === 0 ? (
-          <p className="text-sm text-muted-foreground">
-            No tracked donations yet.
-          </p>
+          <EmptyState
+            eyebrow="No Supporters"
+            message="Share your creator page to start building a ranked supporter list."
+          />
         ) : (
           <ol className="flex flex-col gap-2" data-testid="creator-leaderboard">
             {leaderboard.map((entry, i) => (
@@ -869,11 +1163,15 @@ function PayoutUpdateCard({ current }: { current: CreatorProfile }) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Update payout address</CardTitle>
-        <CardDescription>
-          Sign <span className="font-mono">update_creator_payout</span> with your wallet.
-          The indexer will mirror the new address.
-        </CardDescription>
+        <CardTitleWithInfo
+          title="Update payout address"
+          info={
+            <>
+              Sign <span className="font-mono">update_creator_payout</span> with your wallet.
+              The indexer will mirror the new address.
+            </>
+          }
+        />
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
         <div className="flex flex-col gap-1">
@@ -882,6 +1180,7 @@ function PayoutUpdateCard({ current }: { current: CreatorProfile }) {
           </label>
           <Input
             id="payout-update-input"
+            name="newPayoutAddress"
             className="flex-1"
             value={payout}
             onChange={(e) => { setPayout(e.target.value); setStatus({ kind: "idle" }); }}
@@ -902,6 +1201,7 @@ function PayoutUpdateCard({ current }: { current: CreatorProfile }) {
           type="button"
           size="sm"
           onClick={submit}
+          loading={status.kind === "busy"}
           disabled={status.kind === "busy" || payout.trim().length === 0}
           className="self-start"
           data-testid="payout-update-submit"
@@ -942,11 +1242,15 @@ function PauseCard({ current }: { current: CreatorProfile }) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Pause / unpause</CardTitle>
-        <CardDescription>
-          Sign <span className="font-mono">set_creator_active_owner</span> to stop or resume
-          receiving donations.
-        </CardDescription>
+        <CardTitleWithInfo
+          title="Pause / unpause"
+          info={
+            <>
+              Sign <span className="font-mono">set_creator_active_owner</span> to stop or resume
+              receiving donations.
+            </>
+          }
+        />
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
         <p className="text-xs text-muted-foreground" data-testid="pause-status">
@@ -959,6 +1263,7 @@ function PauseCard({ current }: { current: CreatorProfile }) {
           size="sm"
           variant="outline"
           onClick={toggle}
+          loading={status.kind === "busy"}
           disabled={status.kind === "busy"}
           className="self-start"
           data-testid="pause-toggle"
@@ -1040,10 +1345,10 @@ function ProfileEditCard(args: {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Edit your creator profile</CardTitle>
-        <CardDescription>
-          Your display name, avatar, and bio appear on your public creator page.
-        </CardDescription>
+        <CardTitleWithInfo
+          title="Edit your creator profile"
+          info="Your display name, avatar, and bio appear on your public creator page."
+        />
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
         <div className="flex items-center gap-4">
@@ -1070,6 +1375,7 @@ function ProfileEditCard(args: {
             </label>
             <input
               id="creator-avatar-input"
+              name="avatar"
               ref={fileInputRef}
               type="file"
               accept="image/*"
@@ -1084,6 +1390,7 @@ function ProfileEditCard(args: {
           </label>
           <Input
             id="creator-display-name-input"
+            name="displayName"
             className="flex-1"
             value={displayName}
             onChange={(e) => { setDisplayName(e.target.value); setStatus({ kind: "idle" }); }}
@@ -1097,7 +1404,8 @@ function ProfileEditCard(args: {
           </label>
           <textarea
             id="creator-bio-input"
-            className="min-h-20 flex-1 rounded-lg border border-input bg-transparent px-3 py-2 text-sm outline-none transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30"
+            name="bio"
+            className="min-h-20 flex-1 rounded-lg border border-input bg-transparent px-3 py-2 text-sm outline-none transition-[border-color,box-shadow] placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 dark:bg-input/30"
             value={bio}
             onChange={(e) => { setBio(e.target.value); setStatus({ kind: "idle" }); }}
             placeholder="Tell donors about yourself."
@@ -1108,11 +1416,12 @@ function ProfileEditCard(args: {
           type="button"
           size="sm"
           onClick={save}
+          loading={status.kind === "saving"}
           disabled={status.kind === "saving"}
           className="self-start"
           data-testid="creator-profile-save"
         >
-          {status.kind === "saving" ? "Saving…" : "Save profile"}
+          Save profile
         </Button>
         {status.kind === "saved" && (
           <p className="text-xs text-tertiary" aria-live="polite" data-testid="creator-save-status">
@@ -1132,41 +1441,41 @@ function ProfileEditCard(args: {
 /** Overlay URL: show `/overlay/[handle]` with a copy action. */
 function OverlayUrlCard({ handle }: { handle: string | null }) {
   const [copied, setCopied] = useState(false);
-  // Build the URL client-side only to avoid SSR/CSR hydration mismatch
-  // (`window.location.origin` is undefined on the server).
-  const [url, setUrl] = useState("");
-  useEffect(() => {
-    if (handle) {
-      setUrl(`${window.location.origin}/overlay/${handle}`);
-    }
-  }, [handle]);
+  const [copying, setCopying] = useState(false);
+  const path = handle ? `/overlay/${handle}` : "";
   if (!handle) return null;
   async function copy() {
+    setCopying(true);
     try {
-      await navigator.clipboard.writeText(url);
+      const absoluteUrl = new URL(path, window.location.origin).toString();
+      await navigator.clipboard.writeText(absoluteUrl);
       setCopied(true);
       window.setTimeout(() => setCopied(false), 2000);
     } catch {
       setCopied(false);
+    } finally {
+      setCopying(false);
     }
   }
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Overlay URL</CardTitle>
-        <CardDescription>
-          Add this URL as a browser source in OBS to show donation alerts on your stream.
-        </CardDescription>
+        <CardTitleWithInfo
+          title="Overlay URL"
+          info="Add this URL as a browser source in OBS to show donation alerts on your stream."
+        />
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
         <p className="font-mono text-sm text-foreground break-all" data-testid="overlay-url">
-          {url}
+          {path}
         </p>
         <Button
           type="button"
           size="sm"
           variant="outline"
           onClick={copy}
+          loading={copying}
+          disabled={copying || !path}
           className="self-start"
           data-testid="overlay-copy"
         >
@@ -1179,15 +1488,18 @@ function OverlayUrlCard({ handle }: { handle: string | null }) {
 
 /** Moderation: list incoming donations (including hidden), toggle visibility. */
 function ModerationCard({ activeData }: { activeData?: CreatorActiveData }) {
-  const recent = activeData?.recent ?? [];
+  const recent = useMemo(() => activeData?.recent ?? [], [activeData?.recent]);
   const [rows, setRows] = useState<CreatorDonationRow[]>(recent);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   // Keep local rows in sync when the server-provided snapshot changes.
   useEffect(() => {
-    setRows(recent);
-    setError(null);
+    const id = window.setTimeout(() => {
+      setRows(recent);
+      setError(null);
+    }, 0);
+    return () => window.clearTimeout(id);
   }, [recent]);
 
   async function toggle(row: CreatorDonationRow) {
@@ -1212,14 +1524,17 @@ function ModerationCard({ activeData }: { activeData?: CreatorActiveData }) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Moderation</CardTitle>
-        <CardDescription>
-          Toggle a donation&apos;s visibility. Hidden donations do not appear on the Overlay.
-        </CardDescription>
+        <CardTitleWithInfo
+          title="Moderation"
+          info="Toggle a donation's visibility. Hidden donations do not appear on the Overlay."
+        />
       </CardHeader>
       <CardContent>
         {rows.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No donations yet.</p>
+          <EmptyState
+            eyebrow="No Donations"
+            message="New donations will land here with visibility controls for your overlay."
+          />
         ) : (
           <ul className="flex flex-col gap-2" data-testid="moderation-list">
             {rows.map((d) => (
@@ -1233,7 +1548,7 @@ function ModerationCard({ activeData }: { activeData?: CreatorActiveData }) {
                   </span>
                   <span className="text-xs text-muted-foreground">
                     {d.donor_name}
-                    {d.message ? ` — ${d.message}` : ""}
+                    {d.message ? ` · ${d.message}` : ""}
                   </span>
                   <span className="text-xs text-muted-foreground">
                     {d.moderation_status === "hidden" ? "hidden" : "visible"}
@@ -1244,6 +1559,7 @@ function ModerationCard({ activeData }: { activeData?: CreatorActiveData }) {
                   size="sm"
                   variant="outline"
                   onClick={() => toggle(d)}
+                  loading={busyId === d.id}
                   disabled={busyId === d.id}
                   data-testid={`moderation-toggle-${d.id}`}
                   aria-label={`Toggle visibility for donation ${d.id}`}
@@ -1291,7 +1607,10 @@ function useOnchainRegisteredRealtime(
   onActive: (next: Partial<CreatorProfile>) => void,
 ) {
   const onActiveRef = useRef(onActive);
-  onActiveRef.current = onActive;
+  useEffect(() => {
+    onActiveRef.current = onActive;
+  }, [onActive]);
+
   useEffect(() => {
     if (profile.onchain_registered) return; // already active, no need to listen
 
@@ -1346,7 +1665,10 @@ function useCreatorActiveRealtime(
   onUpdate: (next: Partial<CreatorProfile>) => void,
 ) {
   const onUpdateRef = useRef(onUpdate);
-  onUpdateRef.current = onUpdate;
+  useEffect(() => {
+    onUpdateRef.current = onUpdate;
+  }, [onUpdate]);
+
   useEffect(() => {
     if (!profile.onchain_registered) return; // only active Creators need this
 
