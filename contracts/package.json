@@ -1,0 +1,9 @@
+{
+  "name": "@startip/contracts",
+  "private": true,
+  "scripts": {
+    "build": "make build",
+    "test": "make test",
+    "integration-test": "make integration-test"
+  }
+}

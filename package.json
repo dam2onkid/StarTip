@@ -1,4 +1,18 @@
 {
   "name": "startip",
-  "private": true
+  "private": true,
+  "packageManager": "pnpm@11.5.0",
+  "scripts": {
+    "build": "turbo run build",
+    "test": "turbo run test",
+    "typecheck": "turbo run typecheck",
+    "lint": "turbo run lint",
+    "dev": "turbo run dev",
+    "contracts:build": "cd contracts && make build",
+    "contracts:test": "cd contracts && make test",
+    "contracts:integration": "cd contracts && make integration-test"
+  },
+  "devDependencies": {
+    "turbo": "2.10.0"
+  }
 }
