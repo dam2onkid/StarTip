@@ -51,6 +51,25 @@ vi.mock("@/lib/stellar/client", () => ({
   getRpc: vi.fn(),
 }));
 
+// Mock the QR library so the test can assert the QR encodes the donate URL
+// without rendering a real QR matrix in jsdom. The mock exposes the encoded
+// `value` via a data attribute on the <svg>, mirroring how the real
+// `QRCodeSVG` forwards a ref to its <svg> element.
+vi.mock("qrcode.react", async () => {
+  const React = await vi.importActual<typeof import("react")>("react");
+  const QRCodeSVG = React.forwardRef<
+    SVGSVGElement,
+    { value: string } & Record<string, unknown>
+  >((props, ref) =>
+    React.createElement("svg", {
+      ref,
+      "data-testid": "qr-svg",
+      "data-qr-value": props.value,
+    }),
+  );
+  return { QRCodeSVG };
+});
+
 // Realtime: capture the postgres_changes callback so the test can flip
 // onchain_registered, and expose removeChannel for cleanup.
 let realtimeCb: ((payload: { new: Record<string, unknown> }) => void) | null = null;
@@ -451,6 +470,18 @@ describe("CreatorTab — active features", () => {
     render(<CreatorTab profile={activeProfile()} activeData={activeData()} />);
     expect(screen.getByTestId("overlay-url")).toHaveTextContent(/\/overlay\/ada/);
     expect(screen.getByTestId("overlay-copy")).toBeInTheDocument();
+  });
+
+  it("renders a QR card encoding the creator's donate URL with a Download PNG button", async () => {
+    const { CreatorTab } = await import("@/app/(auth)/dashboard/creator-tab");
+    render(<CreatorTab profile={activeProfile()} activeData={activeData()} />);
+    // The QR image is present and encodes the donate URL for the handle.
+    const qr = await screen.findByTestId("qr-svg");
+    expect(qr.getAttribute("data-qr-value")).toMatch(/\/creator\/ada\/donate/);
+    // The donate URL is surfaced as readable text alongside the QR.
+    expect(screen.getByTestId("donate-url")).toHaveTextContent(/\/creator\/ada\/donate/);
+    // The Download PNG button is offered so the creator can save a high-res image.
+    expect(screen.getByTestId("qr-download-png")).toBeInTheDocument();
   });
 
   it("submits update_creator_payout and shows pending", async () => {

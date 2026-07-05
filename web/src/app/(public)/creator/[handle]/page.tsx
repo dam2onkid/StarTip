@@ -7,6 +7,7 @@ import {
 } from "@/lib/creators/leaderboard";
 import { ShareButtons } from "@/components/creator/share-buttons";
 import { BackButton } from "@/components/creator/back-button";
+import { QrCode } from "@/components/creator/qr-code";
 
 /**
  * `/creator/[handle]` — public Creator page. Renders the Creator's public
@@ -268,6 +269,19 @@ export function CreatorPageShell({
             >
               Donate to {handle}
             </a>
+          </div>
+
+          {/* Donate QR card: scannable code for the donate URL, with PNG
+              download so a Creator can save it for OBS or print. Matches the
+              dashboard QR card (same QrCode component, same donate URL). */}
+          <div className="flex flex-col gap-3 rounded-lg bg-card p-5 ring-1 ring-foreground/10">
+            <h2 className="font-mono text-xs uppercase tracking-[0.18em] text-muted-foreground">
+              Donate QR
+            </h2>
+            <p className="text-sm leading-relaxed text-muted-foreground">
+              Scan to tip {displayName} from any phone, or download the PNG for a livestream.
+            </p>
+            <QrCode handle={handle} downloadable showUrl />
           </div>
         </div>
 

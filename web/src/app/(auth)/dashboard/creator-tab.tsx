@@ -42,6 +42,7 @@ import {
 } from "@/lib/creators/active";
 import { updateDonationModerationStatus } from "@/lib/creators/moderation";
 import { contractId } from "@/lib/stellar/client";
+import { QrCode } from "@/components/creator/qr-code";
 
 /**
  * The Creator tab of `/dashboard`: the four-gate onboarding state machine
@@ -755,13 +756,14 @@ function ActiveGate(args: {
         id="creator-session-controls"
         eyebrow="Controls"
         title="Payout, status & profile"
-        description="Wallet-signed actions plus your public identity and stream overlay."
-        count={4}
+        description="Wallet-signed actions plus your public identity, donate QR, and stream overlay."
+        count={5}
       >
         <PayoutUpdateCard current={current} />
         <PauseCard current={current} />
         <ProfileEditCard current={current} onUpdate={onUpdate} />
         <OverlayUrlCard handle={current.handle} />
+        <QrCodeCard handle={current.handle} />
       </CreatorSection>
 
       <CreatorSection
@@ -1481,6 +1483,29 @@ function OverlayUrlCard({ handle }: { handle: string | null }) {
         >
           {copied ? "Copied" : "Copy URL"}
         </Button>
+      </CardContent>
+    </Card>
+  );
+}
+
+/** Donate QR: a scannable QR encoding `/creator/[handle]/donate` + PNG download. */
+function QrCodeCard({ handle }: { handle: string | null }) {
+  if (!handle) return null;
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitleWithInfo
+          title="Donate QR code"
+          info={
+            <>
+              Scan this to land on your donate page. Download the PNG and drop it
+              on a livestream so fans can tip from their phone.
+            </>
+          }
+        />
+      </CardHeader>
+      <CardContent className="flex flex-col gap-3">
+        <QrCode handle={handle} downloadable showUrl />
       </CardContent>
     </Card>
   );

@@ -1,4 +1,4 @@
-Status: ready-for-agent
+Status: done
 
 ## Parent
 
@@ -25,18 +25,18 @@ it, matching the dashboard).
 
 ## Acceptance criteria
 
-- [ ] `buildDonateUrl(handle, origin)` produces the correct absolute
+- [x] `buildDonateUrl(handle, origin)` produces the correct absolute
       `/creator/[handle]/donate` URL for a given handle and origin.
-- [ ] The dashboard active Creator panel renders a QR card with a QR image
+- [x] The dashboard active Creator panel renders a QR card with a QR image
       encoding the Creator's donate URL.
-- [ ] The QR card has a "Download PNG" button that saves a high-resolution
+- [x] The QR card has a "Download PNG" button that saves a high-resolution
       PNG of the QR.
-- [ ] The public Creator profile page renders a QR encoding the Creator's
+- [x] The public Creator profile page renders a QR encoding the Creator's
       donate URL.
-- [ ] vitest covers `buildDonateUrl` as a pure function.
-- [ ] `creator-tab.test.tsx` is extended to assert the QR card renders an
+- [x] vitest covers `buildDonateUrl` as a pure function.
+- [x] `creator-tab.test.tsx` is extended to assert the QR card renders an
       image with the donate URL.
-- [ ] `pnpm build`, `pnpm typecheck`, and `pnpm test` pass.
+- [x] `pnpm build`, `pnpm typecheck`, and `pnpm test` pass.
 
 ## Blocked by
 
