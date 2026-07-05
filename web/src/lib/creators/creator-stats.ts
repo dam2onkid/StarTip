@@ -5,6 +5,7 @@ import {
   sumDonationStats,
   type LeaderboardRow,
 } from "@/lib/creators/leaderboard";
+import { goalProgress, type GoalDonationRow } from "@/lib/creators/goal";
 
 /**
  * Creator dashboard stats loader for the `/dashboard` Creator tab active
@@ -48,6 +49,8 @@ export interface CreatorDashboardData {
   stats: CreatorStats;
   leaderboard: { donor_name: string; total_amount: string }[];
   recent: CreatorDonationRow[];
+  /** Precomputed donation-goal progress snapshot, or `null` when no goal is set. */
+  goal: { current: string; target: string; pct: number; token: string } | null;
 }
 
 const CONFIRMED_STATUSES = ["confirmed", "indexed"];
@@ -90,5 +93,38 @@ export async function loadCreatorDashboardData(
     }));
   const leaderboard = aggregateLeaderboard(leaderboardRows);
 
-  return { stats, leaderboard, recent: rows };
+  // Donation goal: read the Creator's `donation_goals` row (public SELECT,
+  // so the session client works) and compute progress from the visible
+  // confirmed/indexed donations in the goal's token. No row = no goal.
+  const { data: goalRow } = await supabase
+    .from("donation_goals")
+    .select("target_amount,token")
+    .eq("creator_profile_id", creatorProfileId)
+    .maybeSingle();
+  const g = goalRow as { target_amount: string; token: string } | null;
+  let goal: { current: string; target: string; pct: number; token: string } | null = null;
+  if (g) {
+    // Rebuild the goal-token donation set from the raw rows (the leaderboard
+    // rows dropped `token`). Only visible confirmed/indexed rows contribute.
+    const goalTokenRows: GoalDonationRow[] = rows
+      .filter(
+        (r) =>
+          CONFIRMED_STATUSES.includes(r.status) &&
+          r.moderation_status === "visible" &&
+          r.token === g.token,
+      )
+      .map((r) => ({ token: r.token, amount: r.amount }));
+    const progress = goalProgress(goalTokenRows, {
+      token: g.token,
+      targetAmount: g.target_amount,
+    });
+    goal = {
+      current: progress.current,
+      target: progress.target,
+      pct: progress.pct,
+      token: g.token,
+    };
+  }
+
+  return { stats, leaderboard, recent: rows, goal };
 }

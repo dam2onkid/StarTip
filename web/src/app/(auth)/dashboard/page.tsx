@@ -182,6 +182,7 @@ export default async function DashboardPage() {
       stats: loaded.stats,
       leaderboard: loaded.leaderboard,
       recent: loaded.recent as CreatorDonationRow[],
+      goal: loaded.goal,
     };
   }
 

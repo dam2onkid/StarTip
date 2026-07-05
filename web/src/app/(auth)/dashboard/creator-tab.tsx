@@ -42,6 +42,8 @@ import {
 } from "@/lib/creators/active";
 import { updateDonationModerationStatus } from "@/lib/creators/moderation";
 import { contractId } from "@/lib/stellar/client";
+import { displayToRawAmount, rawToDisplayAmount } from "@/lib/stellar/amount";
+import type { TokenAllowlistEntry } from "@/lib/donations/prepare";
 import { QrCode } from "@/components/creator/qr-code";
 
 /**
@@ -96,6 +98,8 @@ export interface CreatorActiveData {
   stats: { total: string; count: number };
   leaderboard: { donor_name: string; total_amount: string }[];
   recent: CreatorDonationRow[];
+  /** Precomputed donation-goal progress snapshot, or `null` when no goal is set. */
+  goal?: { current: string; target: string; pct: number; token: string } | null;
 }
 
 export interface CreatorTabProps {
@@ -756,8 +760,8 @@ function ActiveGate(args: {
         id="creator-session-controls"
         eyebrow="Controls"
         title="Payout, status & profile"
-        description="Wallet-signed actions plus your public identity, donate QR, and stream overlay."
-        count={6}
+        description="Wallet-signed actions plus your public identity, donate QR, stream overlay, and donation goal."
+        count={7}
       >
         <PayoutUpdateCard current={current} />
         <PauseCard current={current} />
@@ -765,6 +769,7 @@ function ActiveGate(args: {
         <OverlayUrlCard handle={current.handle} />
         <OverlaySettingsCard handle={current.handle} />
         <QrCodeCard handle={current.handle} />
+        <DonationGoalCard handle={current.handle} goal={activeData?.goal ?? null} />
       </CreatorSection>
 
       <CreatorSection
@@ -1691,6 +1696,320 @@ function QrCodeCard({ handle }: { handle: string | null }) {
       </CardContent>
     </Card>
   );
+}
+
+/**
+ * Donation Goal card: set a target amount + token, see progress toward it,
+ * and clear the goal. The progress snapshot (`current`, `target`, `pct`,
+ * `token`) is computed server-side from confirmed/indexed visible donations
+ * in the goal's token and passed in via `goal`. The editable target + token
+ * are fetched on mount from the public goal API; the token picker is fed from
+ * the public `tokens` allowlist (browser client, public SELECT).
+ *
+ * `target_amount` is stored in raw i128 units (matching `donations.amount`).
+ * The card converts the Creator's display input to raw via the selected
+ * token's `decimals` before PUTting, and converts the raw `current`/`target`
+ * back to display units for the progress readout. `target_amount = 0` deletes
+ * the row (clears the goal).
+ */
+function DonationGoalCard({
+  handle,
+  goal,
+}: {
+  handle: string | null;
+  goal: { current: string; target: string; pct: number; token: string } | null;
+}) {
+  const [tokens, setTokens] = useState<TokenAllowlistEntry[]>([]);
+  const [tokenContract, setTokenContract] = useState<string>("");
+  const [targetDisplay, setTargetDisplay] = useState<string>("");
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [status, setStatus] = useState<Status>({ kind: "idle" });
+  // Live progress: the server-provided `current` (raw) is the source of truth
+  // for the sum; the target tracks the edited input so the bar updates as the
+  // Creator types. `pct` is recomputed locally with BigInt.
+  const [liveTargetRaw, setLiveTargetRaw] = useState<string>(goal?.target ?? "0");
+
+  // Load the token allowlist (public SELECT) and the current goal on mount.
+  useEffect(() => {
+    if (!handle) return;
+    let alive = true;
+
+    const supabase = createBrowserClient();
+    const tokensPromise = supabase
+      .from("tokens")
+      .select("contract_address,symbol,name,issuer,decimals,icon_url")
+      .then(({ data, error: fetchErr }) => {
+        if (fetchErr || !data) return [] as TokenAllowlistEntry[];
+        return data as TokenAllowlistEntry[];
+      });
+
+    const goalPromise = fetch(
+      `/api/creators/${encodeURIComponent(handle)}/goal`,
+    ).then(async (res) => {
+      if (!res.ok) return null;
+      return (await res.json()) as { target_amount: string; token: string } | null;
+    });
+
+    Promise.all([tokensPromise, goalPromise])
+      .then(([toks, g]) => {
+        if (!alive) return;
+        setTokens(toks);
+        if (g) {
+          setTokenContract(g.token);
+          const tk = toks.find((t) => t.contract_address === g.token);
+          setTargetDisplay(tk ? rawToDisplayAmount(g.target_amount, tk.decimals) : g.target_amount);
+          setLiveTargetRaw(g.target_amount);
+        } else {
+          setTokenContract(toks[0]?.contract_address ?? "");
+          setTargetDisplay("");
+          setLiveTargetRaw("0");
+        }
+      })
+      .catch(() => {
+        // Network error: keep defaults; the user can still save.
+      })
+      .finally(() => {
+        if (alive) setLoading(false);
+      });
+
+    return () => {
+      alive = false;
+    };
+  }, [handle]);
+
+  if (!handle) return null;
+
+  const selectedToken = tokens.find((t) => t.contract_address === tokenContract) ?? null;
+  const decimals = selectedToken?.decimals ?? 0;
+
+  // Live pct from the server-provided raw `current` and the edited raw target.
+  const currentRaw = goal?.current ?? "0";
+  const pct = computePct(currentRaw, liveTargetRaw);
+
+  async function save() {
+    if (!handle) return;
+    setSaving(true);
+    setStatus({ kind: "idle" });
+    try {
+      const raw = displayToRawAmount(targetDisplay, decimals);
+      const res = await fetch(
+        `/api/creators/${encodeURIComponent(handle)}/goal`,
+        {
+          method: "PUT",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ target_amount: Number(raw), token: tokenContract }),
+        },
+      );
+      if (res.status === 200) {
+        const body = (await res.json()) as { target_amount: number | string; token: string };
+        const rawTarget = String(body.target_amount);
+        setLiveTargetRaw(rawTarget);
+        const tk = tokens.find((t) => t.contract_address === body.token);
+        setTargetDisplay(tk ? rawToDisplayAmount(rawTarget, tk.decimals) : rawTarget);
+        setStatus({
+          kind: "info",
+          message: Number(rawTarget) === 0 ? "Donation goal cleared." : "Donation goal saved.",
+        });
+      } else {
+        const body = (await res.json()) as { error: string };
+        setStatus({
+          kind: "error",
+          message:
+            body.error === "unauthorized"
+              ? "Sign in again to save your goal."
+              : body.error === "not_creator"
+                ? "Claim a handle first."
+                : body.error === "forbidden"
+                  ? "You can only set your own goal."
+                  : body.error === "token_not_allowed"
+                    ? "That token is not on the allowlist."
+                    : humanError(body.error),
+        });
+      }
+    } catch {
+      setStatus({ kind: "error", message: "Could not save the donation goal." });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function clearGoal() {
+    if (!handle) return;
+    setSaving(true);
+    setStatus({ kind: "idle" });
+    try {
+      const res = await fetch(
+        `/api/creators/${encodeURIComponent(handle)}/goal`,
+        {
+          method: "PUT",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ target_amount: 0, token: tokenContract }),
+        },
+      );
+      if (res.status === 200) {
+        setTargetDisplay("");
+        setLiveTargetRaw("0");
+        setStatus({ kind: "info", message: "Donation goal cleared." });
+      } else {
+        const body = (await res.json()) as { error: string };
+        setStatus({ kind: "error", message: humanError(body.error) });
+      }
+    } catch {
+      setStatus({ kind: "error", message: "Could not clear the donation goal." });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitleWithInfo
+          title="Donation goal"
+          info={
+            <>
+              Set a target amount for your supporters to see on your public
+              profile. Progress reflects only confirmed donations in the
+              goal&apos;s token. Set the target to 0 or use Clear to remove the
+              goal.
+            </>
+          }
+        />
+      </CardHeader>
+      <CardContent className="flex flex-col gap-4" data-testid="donation-goal-card">
+        {/* Progress readout. Hidden until a goal is set (no row = no goal). */}
+        {goal ? (
+          <div className="flex flex-col gap-2" data-testid="donation-goal-progress">
+            <div className="flex items-baseline justify-between gap-3">
+              <span className="text-sm text-muted-foreground">Progress</span>
+              <span
+                className="font-mono text-sm text-foreground"
+                data-testid="donation-goal-pct"
+              >
+                {pct}%
+              </span>
+            </div>
+            <div
+              aria-hidden
+              className="relative h-2 w-full overflow-hidden rounded-full bg-foreground/8"
+            >
+              <div
+                className="absolute inset-y-0 left-0 rounded-full bg-primary/70 transition-[width] duration-500 ease-out"
+                style={{ width: `${pct}%` }}
+                data-testid="donation-goal-bar"
+              />
+            </div>
+            <div className="flex items-baseline justify-between gap-3 text-xs text-muted-foreground">
+              <span data-testid="donation-goal-current">
+                {rawToDisplayAmount(currentRaw, decimals)}
+              </span>
+              <span data-testid="donation-goal-target">
+                of {rawToDisplayAmount(liveTargetRaw, decimals)} {selectedToken?.symbol ?? ""}
+              </span>
+            </div>
+          </div>
+        ) : (
+          <p className="text-xs text-muted-foreground" data-testid="donation-goal-empty">
+            No goal set. Pick a token and a target below to show progress on your profile.
+          </p>
+        )}
+
+        <div className="flex flex-col gap-1">
+          <label
+            className="text-xs text-muted-foreground"
+            htmlFor="donation-goal-target-input"
+          >
+            Target amount
+          </label>
+          <Input
+            id="donation-goal-target-input"
+            type="number"
+            min={0}
+            step="0.01"
+            className="max-w-[12rem]"
+            value={targetDisplay}
+            disabled={loading || saving}
+            onChange={(e) => {
+              setTargetDisplay(e.target.value);
+              setLiveTargetRaw(displayToRawAmount(e.target.value, decimals));
+            }}
+            data-testid="donation-goal-target-input"
+          />
+        </div>
+
+        <div className="flex flex-col gap-1">
+          <label
+            className="text-xs text-muted-foreground"
+            htmlFor="donation-goal-token-select"
+          >
+            Token
+          </label>
+          <select
+            id="donation-goal-token-select"
+            className="max-w-[12rem] rounded-md border border-foreground/10 bg-background px-3 py-2 text-sm"
+            value={tokenContract}
+            disabled={loading || saving || tokens.length === 0}
+            onChange={(e) => {
+              setTokenContract(e.target.value);
+              const tk = tokens.find((t) => t.contract_address === e.target.value);
+              setLiveTargetRaw(displayToRawAmount(targetDisplay, tk?.decimals ?? 0));
+            }}
+            data-testid="donation-goal-token-select"
+          >
+            {tokens.length === 0 && <option value="">No tokens</option>}
+            {tokens.map((t) => (
+              <option key={t.contract_address} value={t.contract_address}>
+                {t.symbol}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div className="flex gap-2">
+          <Button
+            type="button"
+            size="sm"
+            onClick={save}
+            loading={saving}
+            disabled={loading || saving || !tokenContract}
+            data-testid="donation-goal-save"
+          >
+            Save
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={clearGoal}
+            loading={saving}
+            disabled={loading || saving || !goal}
+            data-testid="donation-goal-clear"
+          >
+            Clear
+          </Button>
+        </div>
+        <StatusLine status={status} />
+      </CardContent>
+    </Card>
+  );
+}
+
+/** Compute a clamped 0-100 integer percentage from two raw numeric strings. */
+function computePct(currentRaw: string, targetRaw: string): number {
+  let current: bigint;
+  let target: bigint;
+  try {
+    current = BigInt(currentRaw);
+    target = BigInt(targetRaw);
+  } catch {
+    return 0;
+  }
+  if (target <= BigInt(0)) return 0;
+  const ratio = (current * BigInt(100)) / target;
+  if (ratio > BigInt(100)) return 100;
+  if (ratio < BigInt(0)) return 0;
+  return Number(ratio);
 }
 
 /** Moderation: list incoming donations (including hidden), toggle visibility. */

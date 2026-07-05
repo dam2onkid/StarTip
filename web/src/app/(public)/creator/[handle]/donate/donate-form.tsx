@@ -54,16 +54,16 @@ function hexToBuffer(hex: string): Buffer {
   return Buffer.from(hex, "hex");
 }
 
-/** Convert a display amount (e.g. "1.5") to a raw i128 string using decimals. */
-export function displayToRawAmount(display: string, decimals: number): string {
-  const trimmed = display.trim();
-  if (!trimmed) return "0";
-  // Split into integer and fractional parts.
-  const [intPart, fracPart = ""] = trimmed.split(".");
-  const padded = (fracPart + "0".repeat(decimals)).slice(0, decimals);
-  const raw = `${intPart}${padded}`.replace(/^0+/, "") || "0";
-  return raw;
-}
+/**
+ * Convert a display amount (e.g. "1.5") to a raw i128 string using decimals.
+ *
+ * Re-exported from the shared `lib/stellar/amount` util so the donate form,
+ * the dashboard Donation Goal card, and the public Creator profile all use one
+ * source of truth for display/raw conversion. The local export is kept so the
+ * existing `donate-form.test.tsx` import (`from "./donate-form"`) keeps working.
+ */
+import { displayToRawAmount } from "@/lib/stellar/amount";
+export { displayToRawAmount };
 
 function creatorInitial(displayName: string): string {
   return displayName.trim().charAt(0).toUpperCase() || "?";

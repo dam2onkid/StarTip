@@ -27,7 +27,7 @@ interface RecordedCall {
   order: { column: string; ascending: boolean } | null;
 }
 
-function createMockSupabase(rows: Record<string, unknown>[]) {
+function createMockSupabase(rows: Record<string, unknown>[], goalRow: unknown = null) {
   const calls: RecordedCall[] = [];
   function query(table: string) {
     const state = {
@@ -37,6 +37,9 @@ function createMockSupabase(rows: Record<string, unknown>[]) {
       order: null as { column: string; ascending: boolean } | null,
       committed: false,
     };
+    // The goal read returns a single row (or null) via maybeSingle; the
+    // donations read returns the `rows` array via the thenable.
+    const tableData = table === "donation_goals" ? goalRow : rows;
     const self = {
       select(cols: string) { state.method = "select"; state.selectCols = cols; return self; },
       insert() { state.method = "insert"; return self; },
@@ -46,6 +49,19 @@ function createMockSupabase(rows: Record<string, unknown>[]) {
       order(column: string, opts?: { ascending?: boolean }) {
         state.order = { column, ascending: opts?.ascending ?? true };
         return self;
+      },
+      maybeSingle() {
+        if (state.committed) return Promise.resolve({ data: null, error: null });
+        state.committed = true;
+        const call: RecordedCall = {
+          table,
+          method: (state.method ?? "select") as Method,
+          filters: { ...state.filters },
+          selectCols: state.selectCols,
+          order: state.order,
+        };
+        calls.push(call);
+        return Promise.resolve({ data: tableData, error: null });
       },
       then(onFulfilled?: (v: { data: unknown; error: unknown }) => unknown,
            onRejected?: (e: unknown) => unknown) {
@@ -62,7 +78,7 @@ function createMockSupabase(rows: Record<string, unknown>[]) {
           order: state.order,
         };
         calls.push(call);
-        return Promise.resolve({ data: rows, error: null }).then(
+        return Promise.resolve({ data: tableData, error: null }).then(
           onFulfilled as ((v: unknown) => unknown) | null,
           onRejected as ((e: unknown) => unknown) | null,
         );
@@ -134,7 +150,8 @@ describe("loadCreatorDashboardData", () => {
     const { supabase, calls } = createMockSupabase(ROWS);
     const { loadCreatorDashboardData } = await import("@/lib/creators/creator-stats");
     await loadCreatorDashboardData(supabase, CREATOR_PROFILE_ID);
-    expect(calls).toHaveLength(1);
+    // Two reads: donations (creator RLS path) + donation_goals (public SELECT).
+    expect(calls).toHaveLength(2);
     const call = calls[0];
     expect(call.table).toBe("donations");
     expect(call.method).toBe("select");
@@ -144,6 +161,9 @@ describe("loadCreatorDashboardData", () => {
     expect(call.selectCols).toContain("moderation_status");
     expect(call.selectCols).toContain("donor_address");
     expect(call.selectCols).toContain("user_id");
+    // The second read is the donation_goals row (maybeSingle).
+    expect(calls[1].table).toBe("donation_goals");
+    expect(calls[1].filters.creator_profile_id).toBe(CREATOR_PROFILE_ID);
   });
 
   it("stats total + count aggregate confirmed/indexed donations including hidden", async () => {
@@ -179,5 +199,44 @@ describe("loadCreatorDashboardData", () => {
     expect(data.stats).toEqual({ total: "0", count: 0 });
     expect(data.leaderboard).toEqual([]);
     expect(data.recent).toEqual([]);
+    expect(data.goal).toBeNull();
+  });
+
+  it("goal is null when no donation_goals row exists", async () => {
+    const { supabase } = createMockSupabase(ROWS, null);
+    const { loadCreatorDashboardData } = await import("@/lib/creators/creator-stats");
+    const data = await loadCreatorDashboardData(supabase, CREATOR_PROFILE_ID);
+    expect(data.goal).toBeNull();
+  });
+
+  it("goal progress sums only visible confirmed/indexed donations in the goal's token", async () => {
+    // Goal: 1000 raw, token USDC. Visible confirmed USDC rows in ROWS:
+    // d1 (Ada, 100, visible, confirmed) + d3 (Anonymous, 9999, visible,
+    // confirmed). d2 is hidden, d4 is pending. Sum = 10099. pct = 10099/1000
+    // * 100 = 1009 -> clamped to 100.
+    const { supabase } = createMockSupabase(ROWS, {
+      target_amount: "1000",
+      token: "USDC",
+    });
+    const { loadCreatorDashboardData } = await import("@/lib/creators/creator-stats");
+    const data = await loadCreatorDashboardData(supabase, CREATOR_PROFILE_ID);
+    expect(data.goal).not.toBeNull();
+    expect(data.goal?.current).toBe("10099");
+    expect(data.goal?.target).toBe("1000");
+    expect(data.goal?.pct).toBe(100);
+    expect(data.goal?.token).toBe("USDC");
+  });
+
+  it("goal progress ignores donations in other tokens", async () => {
+    // Goal token is XLM; all ROWS are USDC, so current = 0, pct = 0.
+    const { supabase } = createMockSupabase(ROWS, {
+      target_amount: "1000",
+      token: "XLM",
+    });
+    const { loadCreatorDashboardData } = await import("@/lib/creators/creator-stats");
+    const data = await loadCreatorDashboardData(supabase, CREATOR_PROFILE_ID);
+    expect(data.goal?.current).toBe("0");
+    expect(data.goal?.pct).toBe(0);
+    expect(data.goal?.token).toBe("XLM");
   });
 });

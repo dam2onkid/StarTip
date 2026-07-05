@@ -5,6 +5,8 @@ import {
   sumDonationStats,
   type LeaderboardRow,
 } from "@/lib/creators/leaderboard";
+import { goalProgress, type GoalDonationRow } from "@/lib/creators/goal";
+import { rawToDisplayAmount } from "@/lib/stellar/amount";
 import { ShareButtons } from "@/components/creator/share-buttons";
 import { BackButton } from "@/components/creator/back-button";
 import { QrCode } from "@/components/creator/qr-code";
@@ -58,14 +60,63 @@ export default async function CreatorPage({
 
   const { data: donations } = await service
     .from("donations")
-    .select("donor_name,amount,user_id")
+    .select("donor_name,amount,user_id,token")
     .eq("creator_profile_id", p.id)
     .in("status", ["confirmed", "indexed"])
     .eq("moderation_status", "visible");
 
-  const rows = (donations ?? []) as LeaderboardRow[];
+  const rowsWithToken = (donations ?? []) as (LeaderboardRow & { token: string })[];
+  const rows: LeaderboardRow[] = rowsWithToken.map(({ donor_name, amount, user_id }) => ({
+    donor_name,
+    amount,
+    user_id,
+  }));
   const stats = sumDonationStats(rows);
   const leaderboard = aggregateLeaderboard(rows);
+
+  // Donation goal: read the Creator's `donation_goals` row (public SELECT,
+  // service role bypasses RLS) and compute progress from the visible
+  // confirmed/indexed donations in the goal's token. No row = no goal bar.
+  const { data: goalRow } = await service
+    .from("donation_goals")
+    .select("target_amount,token")
+    .eq("creator_profile_id", p.id)
+    .maybeSingle();
+  const g = goalRow as { target_amount: string; token: string } | null;
+  let goal: {
+    current: string;
+    target: string;
+    pct: number;
+    token: string;
+    symbol: string;
+    decimals: number;
+  } | null = null;
+  if (g) {
+    // Read the goal token's metadata (decimals, symbol) for display conversion.
+    const { data: tokenRow } = await service
+      .from("tokens")
+      .select("symbol,decimals")
+      .eq("contract_address", g.token)
+      .maybeSingle();
+    const tk = tokenRow as { symbol: string; decimals: number } | null;
+    const decimals = tk?.decimals ?? 0;
+    const symbol = tk?.symbol ?? "";
+    const goalDonations: GoalDonationRow[] = rowsWithToken
+      .filter((r) => r.token === g.token)
+      .map((r) => ({ token: r.token, amount: r.amount }));
+    const progress = goalProgress(goalDonations, {
+      token: g.token,
+      targetAmount: g.target_amount,
+    });
+    goal = {
+      current: progress.current,
+      target: progress.target,
+      pct: progress.pct,
+      token: g.token,
+      symbol,
+      decimals,
+    };
+  }
 
   return (
     <CreatorPageShell
@@ -77,6 +128,7 @@ export default async function CreatorPage({
       total={stats.total}
       count={stats.count}
       leaderboard={leaderboard}
+      goal={goal}
     />
   );
 }
@@ -94,6 +146,7 @@ export function CreatorPageShell({
   total,
   count,
   leaderboard,
+  goal = null,
 }: {
   handle: string;
   displayName: string;
@@ -104,6 +157,15 @@ export function CreatorPageShell({
   total: string;
   count: number;
   leaderboard: { donor_name: string; total_amount: string }[];
+  /** Donation goal progress snapshot, or `null` when no goal is set. */
+  goal?: {
+    current: string;
+    target: string;
+    pct: number;
+    token: string;
+    symbol: string;
+    decimals: number;
+  } | null;
 }) {
   return (
     <section className="relative w-full">
@@ -253,6 +315,48 @@ export function CreatorPageShell({
               </div>
             </dl>
           </div>
+
+          {/* Donation goal progress card. Only rendered when the Creator has
+              set a goal (no row = no goal displayed). The progress reflects
+              only confirmed/indexed visible donations in the goal's token. */}
+          {goal && (
+            <div
+              className="flex flex-col gap-3 rounded-lg bg-card p-5 ring-1 ring-foreground/10"
+              data-testid="creator-goal"
+            >
+              <h2 className="font-mono text-xs uppercase tracking-[0.18em] text-muted-foreground">
+                Donation goal
+              </h2>
+              <div className="flex items-baseline justify-between gap-3">
+                <span
+                  className="font-mono text-lg text-foreground"
+                  data-testid="creator-goal-pct"
+                >
+                  {goal.pct}%
+                </span>
+                <span className="text-xs text-muted-foreground">
+                  <span data-testid="creator-goal-current">
+                    {rawToDisplayAmount(goal.current, goal.decimals)}
+                  </span>
+                  {" / "}
+                  <span data-testid="creator-goal-target">
+                    {rawToDisplayAmount(goal.target, goal.decimals)}
+                  </span>
+                  {goal.symbol && ` ${goal.symbol}`}
+                </span>
+              </div>
+              <div
+                aria-hidden
+                className="relative h-2 w-full overflow-hidden rounded-full bg-foreground/8"
+              >
+                <div
+                  className="absolute inset-y-0 left-0 rounded-full bg-primary/70 transition-[width] duration-500 ease-out"
+                  style={{ width: `${goal.pct}%` }}
+                  data-testid="creator-goal-bar"
+                />
+              </div>
+            </div>
+          )}
 
           {/* Donate CTA card, the single lime accent at rest */}
           <div className="flex flex-col gap-3 rounded-lg bg-card p-5 ring-1 ring-foreground/10">

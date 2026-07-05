@@ -99,6 +99,29 @@ vi.mock("@/lib/supabase/client", () => ({
     removeChannel,
     from: vi.fn((table: string) => {
       const state = { payload: null as unknown, filters: {} as Record<string, unknown> };
+      // The DonationGoalCard reads the public `tokens` allowlist via a select
+      // chain. Return a single USDC test token so the picker renders and the
+      // display/raw conversion has a decimals value.
+      if (table === "tokens") {
+        const tokensChain = {
+          select: vi.fn(() => tokensChain),
+          then: (onFulfilled?: (v: { data: unknown; error: unknown }) => unknown) =>
+            Promise.resolve({
+              data: [
+                {
+                  contract_address: "CDUMMY-USDC-CONTRACT",
+                  symbol: "USDC",
+                  name: "USD Coin",
+                  issuer: null,
+                  decimals: 6,
+                  icon_url: null,
+                },
+              ],
+              error: null,
+            }).then(onFulfilled as ((v: unknown) => unknown) | null),
+        };
+        return tokensChain;
+      }
       const self = {
         update(payload: unknown) { state.payload = payload; return self; },
         eq(col: string, value: unknown) { state.filters[col] = value; return self; },
@@ -147,14 +170,22 @@ function mockFetch(responses: Array<(url: string, init?: RequestInit) => Respons
   const calls = responses.slice();
   global.fetch = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
     const u = url.toString();
-    // The active OverlaySettingsCard GETs /api/overlay-settings on mount.
-    // Serve defaults from the fallback so a queued-only test does not throw.
-    if (u.includes("/api/overlay-settings") && calls.length === 0) {
+    const method = init?.method ?? "GET";
+    // The active panel mounts OverlaySettingsCard and DonationGoalCard which
+    // GET /api/overlay-settings and /api/creators/[handle]/goal on mount.
+    // The DonationGoalCard mount GET always serves the default (null = no
+    // goal) so it never consumes a queued action response. The
+    // OverlaySettingsCard mount GET consumes the queue if present (so a test
+    // can stage a custom settings row) and falls back to defaults otherwise.
+    if (u.includes("/api/overlay-settings") && method === "GET" && calls.length === 0) {
       return jsonRes(200, {
         alert_duration_ms: 6000,
         min_amount: "0",
         sound_enabled: true,
       });
+    }
+    if (u.includes("/goal") && method === "GET") {
+      return jsonRes(200, null);
     }
     const next = calls.shift();
     if (!next) throw new Error(`unexpected fetch ${u}`);
@@ -186,9 +217,10 @@ beforeEach(() => {
   supabaseUpdateResult.error = null;
   supabaseUploadResult.error = null;
   // Default fetch mock: the active-features panel mounts OverlaySettingsCard
-  // which GETs /api/overlay-settings on mount. Return defaults so the card
-  // settles without spurious act() warnings. Tests that need a different
-  // fetch queue call mockFetch() to override this.
+  // and DonationGoalCard which GET /api/overlay-settings and
+  // /api/creators/[handle]/goal on mount. Return defaults so the cards settle
+  // without spurious act() warnings. Tests that need a different fetch queue
+  // call mockFetch() to override this.
   global.fetch = vi.fn(async (url: string | URL | Request) => {
     const u = url.toString();
     if (u.includes("/api/overlay-settings")) {
@@ -197,6 +229,9 @@ beforeEach(() => {
         min_amount: "0",
         sound_enabled: true,
       });
+    }
+    if (u.includes("/goal")) {
+      return jsonRes(200, null);
     }
     throw new Error(`unexpected fetch ${u}`);
   }) as unknown as typeof fetch;
@@ -704,5 +739,139 @@ describe("CreatorTab — active features", () => {
     await waitFor(() => {
       expect(screen.getByText(/claim a handle first/i)).toBeInTheDocument();
     });
+  });
+
+  it("renders the Donation Goal card empty state when no goal is set", async () => {
+    const { CreatorTab } = await import("@/app/(auth)/dashboard/creator-tab");
+    render(<CreatorTab profile={activeProfile()} activeData={activeData({ goal: null })} />);
+    const card = await screen.findByTestId("donation-goal-card");
+    expect(card).toBeInTheDocument();
+    expect(screen.getByTestId("donation-goal-empty")).toBeInTheDocument();
+    // No progress readout when there is no goal.
+    expect(screen.queryByTestId("donation-goal-progress")).not.toBeInTheDocument();
+  });
+
+  it("renders the Donation Goal card progress (current/target/pct) from activeData", async () => {
+    const { CreatorTab } = await import("@/app/(auth)/dashboard/creator-tab");
+    // Serve the goal row via the mount GET so the editable form matches the
+    // server snapshot. The token allowlist comes from the supabase mock
+    // (USDC, 6 decimals); target 1000 display = 1000000000 raw.
+    global.fetch = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      const u = url.toString();
+      const method = init?.method ?? "GET";
+      if (u.includes("/api/overlay-settings") && method === "GET") {
+        return jsonRes(200, { alert_duration_ms: 6000, min_amount: "0", sound_enabled: true });
+      }
+      if (u.includes("/goal") && method === "GET") {
+        return jsonRes(200, { target_amount: "1000000000", token: "CDUMMY-USDC-CONTRACT" });
+      }
+      throw new Error(`unexpected fetch ${u}`);
+    }) as unknown as typeof fetch;
+    render(
+      <CreatorTab
+        profile={activeProfile()}
+        activeData={activeData({
+          goal: {
+            current: "350000000", // 350 display at 6 decimals
+            target: "1000000000", // 1000 display
+            pct: 35,
+            token: "CDUMMY-USDC-CONTRACT",
+          },
+        })}
+      />,
+    );
+    await screen.findByTestId("donation-goal-card");
+    // The progress readout renders with the server snapshot's current (350)
+    // and the target (1000), and the live pct (35%).
+    await waitFor(() => {
+      expect(screen.getByTestId("donation-goal-pct")).toHaveTextContent("35%");
+    });
+    expect(screen.getByTestId("donation-goal-current")).toHaveTextContent("350");
+    expect(screen.getByTestId("donation-goal-target")).toHaveTextContent(/1000/);
+    // The bar fill width tracks the pct.
+    expect(screen.getByTestId("donation-goal-bar")).toHaveStyle({ width: "35%" });
+  });
+
+  it("PUTs the edited donation goal and shows a saved status", async () => {
+    const { CreatorTab } = await import("@/app/(auth)/dashboard/creator-tab");
+    const puts: { url: string; method: string; body: unknown }[] = [];
+    global.fetch = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      const u = url.toString();
+      const method = init?.method ?? "GET";
+      if (u.includes("/api/overlay-settings") && method === "GET") {
+        return jsonRes(200, { alert_duration_ms: 6000, min_amount: "0", sound_enabled: true });
+      }
+      if (u.includes("/goal") && method === "GET") {
+        return jsonRes(200, null);
+      }
+      if (u.includes("/goal") && method === "PUT") {
+        puts.push({ url: u, method, body: JSON.parse(init?.body as string) });
+        return jsonRes(200, { target_amount: 5000000000, token: "CDUMMY-USDC-CONTRACT" });
+      }
+      throw new Error(`unexpected fetch ${u}`);
+    }) as unknown as typeof fetch;
+    render(<CreatorTab profile={activeProfile()} activeData={activeData({ goal: null })} />);
+    const targetInput = await screen.findByTestId("donation-goal-target-input");
+    await act(async () => {
+      fireEvent.change(targetInput, { target: { value: "5000" } });
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("donation-goal-save"));
+    });
+    await waitFor(() => {
+      expect(screen.getByText(/Donation goal saved/i)).toBeInTheDocument();
+    });
+    // The PUT hit the goal URL with the raw target (5000 display * 10^6).
+    const put = puts.find((p) => p.method === "PUT");
+    expect(put).toBeDefined();
+    expect(put?.url).toContain("/api/creators/ada/goal");
+    expect(put?.body).toEqual({
+      target_amount: 5000000000,
+      token: "CDUMMY-USDC-CONTRACT",
+    });
+  });
+
+  it("clears the donation goal via the Clear button (PUT target_amount = 0)", async () => {
+    const { CreatorTab } = await import("@/app/(auth)/dashboard/creator-tab");
+    const puts: { url: string; method: string; body: unknown }[] = [];
+    global.fetch = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      const u = url.toString();
+      const method = init?.method ?? "GET";
+      if (u.includes("/api/overlay-settings") && method === "GET") {
+        return jsonRes(200, { alert_duration_ms: 6000, min_amount: "0", sound_enabled: true });
+      }
+      if (u.includes("/goal") && method === "GET") {
+        return jsonRes(200, { target_amount: "1000000000", token: "CDUMMY-USDC-CONTRACT" });
+      }
+      if (u.includes("/goal") && method === "PUT") {
+        puts.push({ url: u, method, body: JSON.parse(init?.body as string) });
+        return jsonRes(200, { target_amount: 0, token: "CDUMMY-USDC-CONTRACT" });
+      }
+      throw new Error(`unexpected fetch ${u}`);
+    }) as unknown as typeof fetch;
+    render(
+      <CreatorTab
+        profile={activeProfile()}
+        activeData={activeData({
+          goal: {
+            current: "100000000",
+            target: "1000000000",
+            pct: 10,
+            token: "CDUMMY-USDC-CONTRACT",
+          },
+        })}
+      />,
+    );
+    await screen.findByTestId("donation-goal-progress");
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("donation-goal-clear"));
+    });
+    await waitFor(() => {
+      expect(screen.getByText(/Donation goal cleared/i)).toBeInTheDocument();
+    });
+    // The clear PUT sent target_amount = 0.
+    const put = puts.find((p) => p.method === "PUT");
+    expect(put).toBeDefined();
+    expect(put?.body).toMatchObject({ target_amount: 0 });
   });
 });
