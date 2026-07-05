@@ -1,8 +1,7 @@
-import "server-only";
 import * as StellarSdk from "@stellar/stellar-sdk";
 import { createHash } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { classifyMessage } from "@/lib/donations/moderation";
+import { classifyMessage } from "./moderation";
 
 /**
  * `POST /api/donations/confirm` core logic, extracted so it can be tested as a

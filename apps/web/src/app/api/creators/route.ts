@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createServerClient } from "@/lib/supabase/server";
-import { createServiceClient } from "@/lib/supabase/service";
-import { rpc } from "@/lib/stellar/server";
+import { createServiceClient } from "@startip/shared/supabase/service";
+import { rpc } from "@startip/shared/stellar/server";
 import { contractId } from "@/lib/stellar/client";
 import {
   normalizeHandle,

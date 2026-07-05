@@ -342,7 +342,7 @@ describe("prepareDonation", () => {
     profilesRespond(activeCreator());
     tokensRespond([tokenRow()]);
     const { prepareDonation } = await import("@/lib/donations/prepare");
-    const { MESSAGE_MAX_LENGTH } = await import("@/lib/donations/validation");
+    const { MESSAGE_MAX_LENGTH } = await import("@startip/shared/donations/validation");
     const res = await prepareDonation(
       { service: service.supabase as any, session: makeSessionClient(), contractId },
       { handle: HANDLE, token: TOKEN, amount: "1000000", message: "a".repeat(MESSAGE_MAX_LENGTH + 1) },
@@ -356,7 +356,7 @@ describe("prepareDonation", () => {
     profilesRespond(activeCreator());
     tokensRespond([tokenRow()]);
     const { prepareDonation } = await import("@/lib/donations/prepare");
-    const { DONOR_NAME_MAX_LENGTH } = await import("@/lib/donations/validation");
+    const { DONOR_NAME_MAX_LENGTH } = await import("@startip/shared/donations/validation");
     const res = await prepareDonation(
       { service: service.supabase as any, session: makeSessionClient(), contractId },
       { handle: HANDLE, token: TOKEN, amount: "1000000", donor_name: "a".repeat(DONOR_NAME_MAX_LENGTH + 1) },
@@ -370,7 +370,7 @@ describe("prepareDonation", () => {
     profilesRespond(activeCreator());
     tokensRespond([tokenRow()]);
     const { prepareDonation } = await import("@/lib/donations/prepare");
-    const { BANNED_KEYWORDS } = await import("@/lib/donations/moderation");
+    const { BANNED_KEYWORDS } = await import("@startip/shared/donations/moderation");
     const res = await prepareDonation(
       { service: service.supabase as any, session: makeSessionClient(), contractId },
       { handle: HANDLE, token: TOKEN, amount: "1000000", message: `hey ${BANNED_KEYWORDS[0]}` },
@@ -384,7 +384,7 @@ describe("prepareDonation", () => {
     profilesRespond(activeCreator());
     tokensRespond([tokenRow()]);
     const { prepareDonation } = await import("@/lib/donations/prepare");
-    const { BANNED_KEYWORDS } = await import("@/lib/donations/moderation");
+    const { BANNED_KEYWORDS } = await import("@startip/shared/donations/moderation");
     const res = await prepareDonation(
       { service: service.supabase as any, session: makeSessionClient(), contractId },
       { handle: HANDLE, token: TOKEN, amount: "1000000", donor_name: BANNED_KEYWORDS[0] },

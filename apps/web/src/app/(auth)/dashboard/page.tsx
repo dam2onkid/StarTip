@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { createServerClient } from "@/lib/supabase/server";
-import { createServiceClient } from "@/lib/supabase/service";
+import { createServiceClient } from "@startip/shared/supabase/service";
 import {
   DashboardTabs,
   type DashboardTabsProps,

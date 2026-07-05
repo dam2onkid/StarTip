@@ -206,13 +206,13 @@ describe("confirmDonation", () => {
   function deps() {
     return {
       service: supabaseMock.supabase as unknown as SupabaseClient,
-      rpc: { getTransaction } as unknown as import("@/lib/donations/confirm").ConfirmDeps["rpc"],
+      rpc: { getTransaction } as unknown as import("./confirm").ConfirmDeps["rpc"],
       contractId: CONTRACT_ID,
     };
   }
 
   it("returns 400 invalid_body when tx_hash or donation_id is missing", async () => {
-    const { confirmDonation } = await import("@/lib/donations/confirm");
+    const { confirmDonation } = await import("./confirm");
     const res = await confirmDonation(deps(), { tx_hash: "", donation_id: "" });
     expect(res.status).toBe(400);
     expect(res.body).toMatchObject({ error: "invalid_body" });
@@ -227,7 +227,7 @@ describe("confirmDonation", () => {
       oldestLedger: 0,
       oldestLedgerCloseTime: 0,
     });
-    const { confirmDonation } = await import("@/lib/donations/confirm");
+    const { confirmDonation } = await import("./confirm");
     const res = await confirmDonation(deps(), { tx_hash: TX_HASH, donation_id: DONATION_ID });
     expect(res.status).toBe(404);
     expect(res.body).toMatchObject({ error: "tx_not_found" });
@@ -235,7 +235,7 @@ describe("confirmDonation", () => {
 
   it("returns 409 tx_failed when the tx status is FAILED", async () => {
     getTransaction.mockResolvedValue(makeFailedTxResponse());
-    const { confirmDonation } = await import("@/lib/donations/confirm");
+    const { confirmDonation } = await import("./confirm");
     const res = await confirmDonation(deps(), { tx_hash: TX_HASH, donation_id: DONATION_ID });
     expect(res.status).toBe(409);
     expect(res.body).toMatchObject({ error: "tx_failed" });
@@ -256,7 +256,7 @@ describe("confirmDonation", () => {
       ),
     });
     getTransaction.mockResolvedValue(makeSuccessTxResponse(otherEvent, DONOR));
-    const { confirmDonation } = await import("@/lib/donations/confirm");
+    const { confirmDonation } = await import("./confirm");
     const res = await confirmDonation(deps(), { tx_hash: TX_HASH, donation_id: DONATION_ID });
     expect(res.status).toBe(409);
     expect(res.body).toMatchObject({ error: "donation_event_not_found" });
@@ -265,7 +265,7 @@ describe("confirmDonation", () => {
   it("returns 409 donation_id_hash_mismatch when the event hash does not match sha256(donation_id)", async () => {
     const wrongHash = createHash("sha256").update("other", "utf8").digest();
     getTransaction.mockResolvedValue(makeSuccessTxResponse(makeDonationReceivedEvent(wrongHash, "USDC"), DONOR));
-    const { confirmDonation } = await import("@/lib/donations/confirm");
+    const { confirmDonation } = await import("./confirm");
     const res = await confirmDonation(deps(), { tx_hash: TX_HASH, donation_id: DONATION_ID });
     expect(res.status).toBe(409);
     expect(res.body).toMatchObject({ error: "donation_id_hash_mismatch" });
@@ -276,7 +276,7 @@ describe("confirmDonation", () => {
     getTransaction.mockResolvedValue(
       makeSuccessTxResponse(makeDonationReceivedEvent(DONATION_ID_HASH, "USDC"), DONOR),
     );
-    const { confirmDonation } = await import("@/lib/donations/confirm");
+    const { confirmDonation } = await import("./confirm");
     const res = await confirmDonation(deps(), { tx_hash: TX_HASH, donation_id: DONATION_ID });
     expect(res.status).toBe(200);
     expect(res.body).toMatchObject({ status: "confirmed" });
@@ -297,7 +297,7 @@ describe("confirmDonation", () => {
     getTransaction.mockResolvedValue(
       makeSuccessTxResponse(makeDonationReceivedEvent(DONATION_ID_HASH, "USDC"), DONOR),
     );
-    const { confirmDonation } = await import("@/lib/donations/confirm");
+    const { confirmDonation } = await import("./confirm");
     const res = await confirmDonation(deps(), { tx_hash: TX_HASH, donation_id: DONATION_ID });
     expect(res.status).toBe(200);
     const update = findCall(supabaseMock.calls, "donations", "update");
@@ -311,7 +311,7 @@ describe("confirmDonation", () => {
     getTransaction.mockResolvedValue(
       makeSuccessTxResponse(makeDonationReceivedEvent(DONATION_ID_HASH, "USDC"), DONOR),
     );
-    const { confirmDonation } = await import("@/lib/donations/confirm");
+    const { confirmDonation } = await import("./confirm");
     const res = await confirmDonation(deps(), { tx_hash: TX_HASH, donation_id: DONATION_ID });
     expect(res.status).toBe(200);
     const insert = findCall(supabaseMock.calls, "donations", "insert");
@@ -332,7 +332,7 @@ describe("confirmDonation", () => {
     getTransaction.mockResolvedValue(
       makeSuccessTxResponse(makeDonationReceivedEvent(DONATION_ID_HASH, "USDC"), DONOR),
     );
-    const { confirmDonation } = await import("@/lib/donations/confirm");
+    const { confirmDonation } = await import("./confirm");
     const res = await confirmDonation(deps(), { tx_hash: TX_HASH, donation_id: DONATION_ID });
     expect(res.status).toBe(409);
     expect(res.body).toMatchObject({ error: "creator_not_found" });
@@ -344,7 +344,7 @@ describe("confirmDonation", () => {
     getTransaction.mockResolvedValue(
       makeSuccessTxResponse(makeDonationReceivedEvent(DONATION_ID_HASH, "USDC"), DONOR),
     );
-    const { confirmDonation } = await import("@/lib/donations/confirm");
+    const { confirmDonation } = await import("./confirm");
     const res = await confirmDonation(deps(), { tx_hash: TX_HASH, donation_id: DONATION_ID });
     expect(res.status).toBe(500);
     expect(res.body).toMatchObject({ error: "db_error" });
@@ -356,7 +356,7 @@ describe("confirmDonation", () => {
     getTransaction.mockResolvedValue(
       makeSuccessTxResponse(makeDonationReceivedEvent(DONATION_ID_HASH, "USDC"), DONOR),
     );
-    const { confirmDonation } = await import("@/lib/donations/confirm");
+    const { confirmDonation } = await import("./confirm");
     const res = await confirmDonation(deps(), { tx_hash: TX_HASH, donation_id: DONATION_ID });
     expect(res.status).toBe(200);
     const insert = findCall(supabaseMock.calls, "donations", "insert");
@@ -364,7 +364,7 @@ describe("confirmDonation", () => {
   });
 
   it("re-runs classifyMessage on the promote path when the existing row is pending, setting auto_hidden for a banned keyword", async () => {
-    const { BANNED_KEYWORDS } = await import("@/lib/donations/moderation");
+    const { BANNED_KEYWORDS } = await import("./moderation");
     supabaseMock.setResponder("donations:select", () => ({
       data: { id: "d1", status: "pending", message: `hey ${BANNED_KEYWORDS[0]}`, donor_name: "Pat" },
       error: null,
@@ -372,7 +372,7 @@ describe("confirmDonation", () => {
     getTransaction.mockResolvedValue(
       makeSuccessTxResponse(makeDonationReceivedEvent(DONATION_ID_HASH, "USDC"), DONOR),
     );
-    const { confirmDonation } = await import("@/lib/donations/confirm");
+    const { confirmDonation } = await import("./confirm");
     const res = await confirmDonation(deps(), { tx_hash: TX_HASH, donation_id: DONATION_ID });
     expect(res.status).toBe(200);
     const update = findCall(supabaseMock.calls, "donations", "update");
@@ -387,7 +387,7 @@ describe("confirmDonation", () => {
     getTransaction.mockResolvedValue(
       makeSuccessTxResponse(makeDonationReceivedEvent(DONATION_ID_HASH, "USDC"), DONOR),
     );
-    const { confirmDonation } = await import("@/lib/donations/confirm");
+    const { confirmDonation } = await import("./confirm");
     const res = await confirmDonation(deps(), { tx_hash: TX_HASH, donation_id: DONATION_ID });
     expect(res.status).toBe(200);
     const update = findCall(supabaseMock.calls, "donations", "update");

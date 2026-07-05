@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createServerClient } from "@/lib/supabase/server";
-import { createServiceClient } from "@/lib/supabase/service";
+import { createServiceClient } from "@startip/shared/supabase/service";
 import {
   DEFAULT_ALERT_DURATION_MS,
   MIN_ALERT_DURATION_MS,

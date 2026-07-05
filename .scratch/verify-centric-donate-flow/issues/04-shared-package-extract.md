@@ -1,6 +1,6 @@
 # 04 - Extract packages/shared/ from apps/web/src/lib/
 
-Status: Untriaged
+Status: done
 Role: backend
 
 ## Task

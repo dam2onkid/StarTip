@@ -1,8 +1,12 @@
-import "server-only";
 import * as StellarSdk from "@stellar/stellar-sdk";
-import { env } from "@/lib/env";
 
-const isPubnet = env.NEXT_PUBLIC_STELLAR_NETWORK === "pubnet";
+/**
+ * Network selection. Read from `process.env.NEXT_PUBLIC_STELLAR_NETWORK` so the
+ * Next.js app's validated env (which populates `process.env` at boot) drives
+ * the choice. Defaults to `"testnet"`. The worker does not import this module;
+ * it builds its own RPC client from `STELLAR_RPC_URL` (issue 05).
+ */
+const isPubnet = process.env.NEXT_PUBLIC_STELLAR_NETWORK === "pubnet";
 
 const rpcUrl = isPubnet
   ? "https://soroban-rpc.stellar.org"
@@ -14,8 +18,8 @@ const horizonUrl = isPubnet
 
 /**
  * Soroban RPC client for server-side use (route handlers, RSC data fetching).
- * Server-only: the `server-only` import above prevents this module from being
- * bundled into a client component.
+ * The caller (Next.js route or worker) is responsible for not importing this
+ * into a client bundle.
  */
 export const rpc = new StellarSdk.rpc.Server(rpcUrl);
 

@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { createServiceClient } from "@/lib/supabase/service";
+import { createServiceClient } from "@startip/shared/supabase/service";
 import { DonateForm } from "./donate-form";
 
 interface DonateCreatorIdentity {

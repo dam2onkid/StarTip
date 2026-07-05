@@ -1,5 +1,3 @@
-import "server-only";
-
 /**
  * MVP moderation policy: a small, fixed list of obvious banned words. The list
  * is intentionally short to avoid false positives; the Creator can always

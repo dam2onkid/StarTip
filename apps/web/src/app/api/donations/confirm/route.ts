@@ -1,8 +1,8 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { createServiceClient } from "@/lib/supabase/service";
-import { rpc } from "@/lib/stellar/server";
+import { createServiceClient } from "@startip/shared/supabase/service";
+import { rpc } from "@startip/shared/stellar/server";
 import { contractId } from "@/lib/stellar/client";
-import { confirmDonation, type ConfirmInput } from "@/lib/donations/confirm";
+import { confirmDonation, type ConfirmInput } from "@startip/shared/donations/confirm";
 
 /**
  * POST /api/donations/confirm — verify the on-chain tx + `DonationReceived`

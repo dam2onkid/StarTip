@@ -1,6 +1,4 @@
-import "server-only";
 import * as StellarSdk from "@stellar/stellar-sdk";
-import { networkPassphrase } from "@/lib/stellar/client";
 
 /**
  * Cached metadata for a SAC token on the DonationRouter allowlist, mirrored
@@ -34,6 +32,7 @@ async function simulateCall(
   rpc: RpcServer,
   contractAddress: string,
   method: string,
+  networkPassphrase: string,
 ): Promise<StellarSdk.xdr.ScVal> {
   const contract = new StellarSdk.Contract(contractAddress);
   const account = new StellarSdk.Account(SIM_SOURCE_PUBLIC_KEY, "0");
@@ -59,15 +58,20 @@ async function simulateCall(
  * a SAC contract via read-only simulation. Called once per token at indexer
  * insert time; subsequent reads come from the `tokens` table. `issuer` is
  * best-effort: if the contract does not expose `issuer()`, it is left null.
+ *
+ * `networkPassphrase` is passed in (rather than read from a shared env module)
+ * so this code stays runtime-agnostic: the Next.js app derives it from
+ * `NEXT_PUBLIC_STELLAR_NETWORK`, the worker from `STELLAR_NETWORK_PASSPHRASE`.
  */
 export async function readTokenMetadata(
   rpc: RpcServer,
   contractAddress: string,
+  networkPassphrase: string,
 ): Promise<TokenMetadata> {
   const [symbolVal, nameVal, decimalsVal] = await Promise.all([
-    simulateCall(rpc, contractAddress, "symbol"),
-    simulateCall(rpc, contractAddress, "name"),
-    simulateCall(rpc, contractAddress, "decimals"),
+    simulateCall(rpc, contractAddress, "symbol", networkPassphrase),
+    simulateCall(rpc, contractAddress, "name", networkPassphrase),
+    simulateCall(rpc, contractAddress, "decimals", networkPassphrase),
   ]);
 
   const symbol = StellarSdk.scValToNative(symbolVal) as string;
@@ -76,7 +80,7 @@ export async function readTokenMetadata(
 
   let issuer: string | null = null;
   try {
-    const issuerVal = await simulateCall(rpc, contractAddress, "issuer");
+    const issuerVal = await simulateCall(rpc, contractAddress, "issuer", networkPassphrase);
     issuer = StellarSdk.scValToNative(issuerVal) as string;
   } catch {
     // issuer() is not present on every SAC token interface; leave null.

@@ -11,7 +11,7 @@ import { NextRequest } from "next/server";
 
 const serviceFrom = vi.fn();
 
-vi.mock("@/lib/supabase/service", () => ({
+vi.mock("@startip/shared/supabase/service", () => ({
   createServiceClient: vi.fn(() => ({ from: serviceFrom })),
 }));
 

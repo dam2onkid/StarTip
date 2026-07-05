@@ -1,8 +1,8 @@
 // @vitest-environment node
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import * as StellarSdk from "@stellar/stellar-sdk";
-import type { RpcLike } from "@/lib/indexer/dispatch";
-import type { TokenMetadata } from "@/lib/stellar/token";
+import type { RpcLike } from "./dispatch";
+import type { TokenMetadata } from "../stellar/token";
 
 const CONTRACT_ID = "CCV2XK5LVOV2XK5LVOV2XK5LVOV2XK5LVOV2XK5LVOV2XK5LVOV2XMCW";
 const CREATOR_G = "GDF6CFYOXQTZVSLLK2RTDAUZ6N2E72IL4K2L34HXZK32KBR4NLVPLUVA";
@@ -206,7 +206,7 @@ describe("indexer/dispatch processPoll", () => {
     setResponder("indexer_state:select", () => ({ data: { id: 1, last_ledger: 100, last_cursor: "cur" }, error: null }));
 
     const rpc = createMockRpc([]);
-    const { processPoll } = await import("@/lib/indexer/dispatch");
+    const { processPoll } = await import("./dispatch");
     await processPoll({ supabase: supabase as any, rpc, tokenReader, contractId: CONTRACT_ID });
 
     expect(rpc.getEvents).toHaveBeenCalledTimes(1);
@@ -219,7 +219,7 @@ describe("indexer/dispatch processPoll", () => {
     setResponder("indexer_state:select", () => ({ data: { id: 1, last_ledger: 100, last_cursor: "cur" }, error: null }));
 
     const rpc = createMockRpc([]);
-    const { processPoll } = await import("@/lib/indexer/dispatch");
+    const { processPoll } = await import("./dispatch");
     await processPoll({ supabase: supabase as any, rpc, tokenReader, contractId: CONTRACT_ID });
 
     const req = rpc.getEvents.mock.calls[0][0] as { cursor?: string; startLedger?: number };
@@ -232,7 +232,7 @@ describe("indexer/dispatch processPoll", () => {
     setResponder("indexer_state:select", () => ({ data: { id: 1, last_ledger: 0, last_cursor: null }, error: null }));
 
     const rpc = createMockRpc([]);
-    const { processPoll } = await import("@/lib/indexer/dispatch");
+    const { processPoll } = await import("./dispatch");
     await processPoll({ supabase: supabase as any, rpc, tokenReader, contractId: CONTRACT_ID });
 
     expect(rpc.getLatestLedger).toHaveBeenCalled();
@@ -246,7 +246,7 @@ describe("indexer/dispatch processPoll", () => {
     setResponder("indexer_state:select", () => ({ data: { id: 1, last_ledger: 0, last_cursor: null }, error: null }));
 
     const rpc = createMockRpc([]);
-    const { processPoll } = await import("@/lib/indexer/dispatch");
+    const { processPoll } = await import("./dispatch");
     await processPoll({ supabase: supabase as any, rpc, tokenReader, contractId: CONTRACT_ID, startLedger: 3_000_000 });
 
     // History is scanned from the configured ledger, not the current one.
@@ -272,7 +272,7 @@ describe("indexer/dispatch processPoll", () => {
       donation_id_hash: DONATION_ID_HASH,
     });
     const rpc = createMockRpc([event]);
-    const { processPoll } = await import("@/lib/indexer/dispatch");
+    const { processPoll } = await import("./dispatch");
     await processPoll({ supabase: supabase as any, rpc, tokenReader, contractId: CONTRACT_ID });
 
     const update = findCall(calls, "donations", "update");
@@ -303,7 +303,7 @@ describe("indexer/dispatch processPoll", () => {
       donation_id_hash: DONATION_ID_HASH,
     });
     const rpc = createMockRpc([event]);
-    const { processPoll } = await import("@/lib/indexer/dispatch");
+    const { processPoll } = await import("./dispatch");
     await processPoll({ supabase: supabase as any, rpc, tokenReader, contractId: CONTRACT_ID });
 
     const insert = findCall(calls, "donations", "insert");
@@ -341,7 +341,7 @@ describe("indexer/dispatch processPoll", () => {
       donation_id_hash: DONATION_ID_HASH,
     });
     const rpc = createMockRpc([event]);
-    const { processPoll } = await import("@/lib/indexer/dispatch");
+    const { processPoll } = await import("./dispatch");
     await processPoll({ supabase: supabase as any, rpc, tokenReader, contractId: CONTRACT_ID });
 
     expect(findCall(calls, "donations", "insert")).toBeUndefined();
@@ -364,7 +364,7 @@ describe("indexer/dispatch processPoll", () => {
       donation_id_hash: DONATION_ID_HASH,
     });
     const rpc = createMockRpc([event]);
-    const { processPoll } = await import("@/lib/indexer/dispatch");
+    const { processPoll } = await import("./dispatch");
     await processPoll({ supabase: supabase as any, rpc, tokenReader, contractId: CONTRACT_ID });
 
     const update = findCall(calls, "donations", "update");
@@ -389,7 +389,7 @@ describe("indexer/dispatch processPoll", () => {
       donation_id_hash: DONATION_ID_HASH,
     });
     const rpc = createMockRpc([event]);
-    const { processPoll } = await import("@/lib/indexer/dispatch");
+    const { processPoll } = await import("./dispatch");
     await processPoll({ supabase: supabase as any, rpc, tokenReader, contractId: CONTRACT_ID });
 
     expect(findCall(calls, "donations", "insert")).toBeUndefined();
@@ -411,7 +411,7 @@ describe("indexer/dispatch processPoll", () => {
       payout_address: CREATOR_G,
     });
     const rpc = createMockRpc([event]);
-    const { processPoll } = await import("@/lib/indexer/dispatch");
+    const { processPoll } = await import("./dispatch");
     await processPoll({ supabase: supabase as any, rpc, tokenReader, contractId: CONTRACT_ID });
 
     const update = findCall(calls, "profiles", "update");
@@ -435,7 +435,7 @@ describe("indexer/dispatch processPoll", () => {
       payout_address: CREATOR_G,
     });
     const rpc = createMockRpc([event]);
-    const { processPoll } = await import("@/lib/indexer/dispatch");
+    const { processPoll } = await import("./dispatch");
     await processPoll({ supabase: supabase as any, rpc, tokenReader, contractId: CONTRACT_ID });
 
     expect(findCall(calls, "profiles", "update")).toBeUndefined();
@@ -452,7 +452,7 @@ describe("indexer/dispatch processPoll", () => {
       payout_address: CREATOR_G,
     });
     const rpc = createMockRpc([event]);
-    const { processPoll } = await import("@/lib/indexer/dispatch");
+    const { processPoll } = await import("./dispatch");
     await processPoll({ supabase: supabase as any, rpc, tokenReader, contractId: CONTRACT_ID });
 
     expect(findCall(calls, "profiles", "update")).toBeUndefined();
@@ -469,7 +469,7 @@ describe("indexer/dispatch processPoll", () => {
       new_payout_address: CREATOR_G,
     });
     const rpc = createMockRpc([event]);
-    const { processPoll } = await import("@/lib/indexer/dispatch");
+    const { processPoll } = await import("./dispatch");
     await processPoll({ supabase: supabase as any, rpc, tokenReader, contractId: CONTRACT_ID });
 
     const update = findCall(calls, "profiles", "update");
@@ -487,7 +487,7 @@ describe("indexer/dispatch processPoll", () => {
       active: false,
     });
     const rpc = createMockRpc([pauseEvent]);
-    const { processPoll } = await import("@/lib/indexer/dispatch");
+    const { processPoll } = await import("./dispatch");
     await processPoll({ supabase: supabase as any, rpc, tokenReader, contractId: CONTRACT_ID });
 
     const update = findCall(calls, "profiles", "update");
@@ -505,7 +505,7 @@ describe("indexer/dispatch processPoll", () => {
       active: true,
     });
     const rpc = createMockRpc([event]);
-    const { processPoll } = await import("@/lib/indexer/dispatch");
+    const { processPoll } = await import("./dispatch");
     await processPoll({ supabase: supabase as any, rpc, tokenReader, contractId: CONTRACT_ID });
 
     const update = findCall(calls, "profiles", "update");
@@ -522,7 +522,7 @@ describe("indexer/dispatch processPoll", () => {
       added: true,
     });
     const rpc = createMockRpc([event]);
-    const { processPoll } = await import("@/lib/indexer/dispatch");
+    const { processPoll } = await import("./dispatch");
     await processPoll({ supabase: supabase as any, rpc, tokenReader, contractId: CONTRACT_ID });
 
     expect(tokenReader).toHaveBeenCalledTimes(1);
@@ -548,7 +548,7 @@ describe("indexer/dispatch processPoll", () => {
       added: false,
     });
     const rpc = createMockRpc([event]);
-    const { processPoll } = await import("@/lib/indexer/dispatch");
+    const { processPoll } = await import("./dispatch");
     await processPoll({ supabase: supabase as any, rpc, tokenReader, contractId: CONTRACT_ID });
 
     expect(tokenReader).not.toHaveBeenCalled();
@@ -565,7 +565,7 @@ describe("indexer/dispatch processPoll", () => {
     const e1 = makeEvent("CreatorActiveChanged", { creator_id_hash: HANDLE_HASH, active: true }, { ledger: 110, id: "e1" });
     const e2 = makeEvent("CreatorActiveChanged", { creator_id_hash: HANDLE_HASH, active: false }, { ledger: 120, id: "e2" });
     const rpc = createMockRpc([e1, e2], "next-cursor");
-    const { processPoll } = await import("@/lib/indexer/dispatch");
+    const { processPoll } = await import("./dispatch");
     const result = await processPoll({ supabase: supabase as any, rpc, tokenReader, contractId: CONTRACT_ID });
 
     expect(result.processed).toBe(2);
@@ -584,7 +584,7 @@ describe("indexer/dispatch processPoll", () => {
     setResponder("indexer_state:select", () => ({ data: { id: 1, last_ledger: 100, last_cursor: "cur" }, error: null }));
 
     const rpc = createMockRpc([]);
-    const { processPoll } = await import("@/lib/indexer/dispatch");
+    const { processPoll } = await import("./dispatch");
     const result = await processPoll({ supabase: supabase as any, rpc, tokenReader, contractId: CONTRACT_ID });
 
     expect(result.processed).toBe(0);
@@ -601,7 +601,7 @@ describe("indexer/dispatch processPoll", () => {
       StellarSdk.xdr.ScVal.scvSymbol("TreasuryUpdated"),
     ];
     const rpc = createMockRpc([event]);
-    const { processPoll } = await import("@/lib/indexer/dispatch");
+    const { processPoll } = await import("./dispatch");
     const result = await processPoll({ supabase: supabase as any, rpc, tokenReader, contractId: CONTRACT_ID });
 
     expect(result.processed).toBe(0);

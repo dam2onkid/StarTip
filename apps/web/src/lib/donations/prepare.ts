@@ -1,8 +1,8 @@
 import "server-only";
 import { randomUUID, createHash } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { classifyMessage } from "@/lib/donations/moderation";
-import { validateMessage, validateDonorName } from "@/lib/donations/validation";
+import { classifyMessage } from "@startip/shared/donations/moderation";
+import { validateMessage, validateDonorName } from "@startip/shared/donations/validation";
 
 /**
  * `POST /api/donations/prepare` core logic, extracted so it can be tested as a

@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server";
-import { createServiceClient } from "@/lib/supabase/service";
-import { rpc } from "@/lib/stellar/server";
-import { readTokenMetadata } from "@/lib/stellar/token";
-import { contractId } from "@/lib/stellar/client";
+import { createServiceClient } from "@startip/shared/supabase/service";
+import { rpc } from "@startip/shared/stellar/server";
+import { readTokenMetadata } from "@startip/shared/stellar/token";
+import { contractId, networkPassphrase } from "@/lib/stellar/client";
 import { env } from "@/lib/env";
-import { processPoll } from "@/lib/indexer/dispatch";
+import { processPoll } from "@startip/shared/indexer/dispatch";
 
 /**
  * POST /api/indexer/poll — cron-driven reconcile job. Scans every
@@ -26,7 +26,11 @@ export async function POST(request?: Request) {
       {
         supabase,
         rpc,
-        tokenReader: readTokenMetadata,
+        // `readTokenMetadata` needs the network passphrase to build its
+        // simulation tx; bind it here so the shared `tokenReader` signature
+        // stays `(rpc, contractAddress)`.
+        tokenReader: (rpcClient, contractAddress) =>
+          readTokenMetadata(rpcClient, contractAddress, networkPassphrase),
         contractId,
         startLedger: env.INDEXER_START_LEDGER,
       },

@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { createServiceClient } from "@/lib/supabase/service";
+import { createServiceClient } from "@startip/shared/supabase/service";
 import { getPublicProfile } from "@/lib/creators/public-profile";
 
 /**

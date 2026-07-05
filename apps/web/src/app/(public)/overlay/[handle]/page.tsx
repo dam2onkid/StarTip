@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { createServiceClient } from "@/lib/supabase/service";
+import { createServiceClient } from "@startip/shared/supabase/service";
 import { OverlayAlerts, type OverlayDonation, type OverlayToken } from "./overlay-alerts";
 import type { OverlaySettings } from "@/lib/overlay/settings";
 

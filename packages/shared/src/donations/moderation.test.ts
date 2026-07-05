@@ -17,35 +17,35 @@ import { describe, it, expect } from "vitest";
 
 describe("classifyMessage", () => {
   it("returns 'visible' for a clean message and donor name", async () => {
-    const { classifyMessage } = await import("@/lib/donations/moderation");
+    const { classifyMessage } = await import("./moderation");
     expect(classifyMessage("Great stream!", "Pat")).toBe("visible");
   });
 
   it("returns 'visible' for an empty message", async () => {
-    const { classifyMessage } = await import("@/lib/donations/moderation");
+    const { classifyMessage } = await import("./moderation");
     expect(classifyMessage("", "Pat")).toBe("visible");
   });
 
   it("returns 'visible' for null/undefined message and donor name", async () => {
-    const { classifyMessage } = await import("@/lib/donations/moderation");
+    const { classifyMessage } = await import("./moderation");
     expect(classifyMessage(null, null)).toBe("visible");
     expect(classifyMessage(undefined, undefined)).toBe("visible");
   });
 
   it("returns 'auto_hidden' when the message contains a banned keyword (case-insensitive substring)", async () => {
-    const { classifyMessage, BANNED_KEYWORDS } = await import("@/lib/donations/moderation");
+    const { classifyMessage, BANNED_KEYWORDS } = await import("./moderation");
     const keyword = BANNED_KEYWORDS[0];
     expect(classifyMessage(`hey ${keyword.toUpperCase()} friend`, "Pat")).toBe("auto_hidden");
   });
 
   it("returns 'auto_hidden' when the donor name contains a banned keyword", async () => {
-    const { classifyMessage, BANNED_KEYWORDS } = await import("@/lib/donations/moderation");
+    const { classifyMessage, BANNED_KEYWORDS } = await import("./moderation");
     const keyword = BANNED_KEYWORDS[0];
     expect(classifyMessage("clean message", keyword)).toBe("auto_hidden");
   });
 
   it("matches banned keywords as substrings, not whole words", async () => {
-    const { classifyMessage, BANNED_KEYWORDS } = await import("@/lib/donations/moderation");
+    const { classifyMessage, BANNED_KEYWORDS } = await import("./moderation");
     const keyword = BANNED_KEYWORDS[0];
     expect(classifyMessage(`xxx${keyword}xxx`, "Pat")).toBe("auto_hidden");
   });

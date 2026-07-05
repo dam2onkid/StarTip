@@ -1,5 +1,3 @@
-import "server-only";
-
 /**
  * MVP input-length policy for the donation prepare boundary. Limits: `message`
  * <= 280 chars, `donor_name` <= 32 chars (matching the Handle max for

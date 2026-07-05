@@ -1,17 +1,17 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const processPoll = vi.fn();
-vi.mock("@/lib/indexer/dispatch", () => ({ processPoll }));
+vi.mock("@startip/shared/indexer/dispatch", () => ({ processPoll }));
 
-vi.mock("@/lib/supabase/service", () => ({
+vi.mock("@startip/shared/supabase/service", () => ({
   createServiceClient: () => ({ from: () => ({}) }),
 }));
 
-vi.mock("@/lib/stellar/server", () => ({
+vi.mock("@startip/shared/stellar/server", () => ({
   rpc: {},
 }));
 
-vi.mock("@/lib/stellar/token", () => ({
+vi.mock("@startip/shared/stellar/token", () => ({
   readTokenMetadata: vi.fn(),
 }));
 

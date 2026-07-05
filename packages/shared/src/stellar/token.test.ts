@@ -2,6 +2,8 @@
 import { describe, it, expect, vi } from "vitest";
 import * as StellarSdk from "@stellar/stellar-sdk";
 
+const NETWORK_PASSPHRASE = StellarSdk.Networks.TESTNET;
+
 /**
  * Extract the contract method name from a simulated transaction built by
  * `Contract.call(method)`. The first operation is an `invokeHostFunction` whose
@@ -61,10 +63,11 @@ describe("stellar/token", () => {
       }),
     };
 
-    const { readTokenMetadata } = await import("@/lib/stellar/token");
+    const { readTokenMetadata } = await import("./token");
     const meta = await readTokenMetadata(
       rpc as unknown as StellarSdk.rpc.Server,
       "CCV2XK5LVOV2XK5LVOV2XK5LVOV2XK5LVOV2XK5LVOV2XK5LVOV2XMCW",
+      NETWORK_PASSPHRASE,
     );
 
     expect(meta).toEqual({
@@ -96,10 +99,11 @@ describe("stellar/token", () => {
       }),
     };
 
-    const { readTokenMetadata } = await import("@/lib/stellar/token");
+    const { readTokenMetadata } = await import("./token");
     const meta = await readTokenMetadata(
       rpc as unknown as StellarSdk.rpc.Server,
       "CCV2XK5LVOV2XK5LVOV2XK5LVOV2XK5LVOV2XK5LVOV2XK5LVOV2XMCW",
+      NETWORK_PASSPHRASE,
     );
 
     expect(meta).toMatchObject({ symbol: "FOO", name: "Foo Token", decimals: 7, issuer: null });
@@ -113,11 +117,12 @@ describe("stellar/token", () => {
       }),
     };
 
-    const { readTokenMetadata } = await import("@/lib/stellar/token");
+    const { readTokenMetadata } = await import("./token");
     await expect(
       readTokenMetadata(
         rpc as unknown as StellarSdk.rpc.Server,
         "CCV2XK5LVOV2XK5LVOV2XK5LVOV2XK5LVOV2XK5LVOV2XK5LVOV2XMCW",
+        NETWORK_PASSPHRASE,
       ),
     ).rejects.toThrow(/symbol/);
   });

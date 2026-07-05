@@ -1,8 +1,7 @@
-import "server-only";
 import * as StellarSdk from "@stellar/stellar-sdk";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { TokenMetadata } from "@/lib/stellar/token";
-import { classifyMessage } from "@/lib/donations/moderation";
+import type { TokenMetadata } from "../stellar/token";
+import { classifyMessage } from "../donations/moderation";
 
 /**
  * bytea values travel over the PostgREST API as hex strings with the `\x`

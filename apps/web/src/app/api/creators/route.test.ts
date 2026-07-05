@@ -24,11 +24,11 @@ vi.mock("@/lib/supabase/server", () => ({
   })),
 }));
 
-vi.mock("@/lib/supabase/service", () => ({
+vi.mock("@startip/shared/supabase/service", () => ({
   createServiceClient: vi.fn(() => ({ from: serviceFrom })),
 }));
 
-vi.mock("@/lib/stellar/server", () => ({
+vi.mock("@startip/shared/stellar/server", () => ({
   rpc: { simulateTransaction: vi.fn() },
 }));
 
