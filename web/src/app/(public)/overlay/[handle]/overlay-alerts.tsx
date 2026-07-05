@@ -3,12 +3,29 @@
 import * as React from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { createBrowserClient } from "@/lib/supabase/client";
+import {
+  shouldShowAlert,
+  alertDurationMs,
+  type OverlaySettings,
+} from "@/lib/overlay/settings";
 
 /**
  * Overlay client component. Renders donation alerts (Donor Name, amount +
  * token symbol, message) with enter animation and subscribes to Supabase
  * Realtime on `donations` so new confirmed/indexed visible donations appear
  * live without a page reload.
+ *
+ * Overlay settings (spec §11.3) are passed from the server component:
+ *   * `alert_duration_ms` — each alert auto-dismisses after this many ms
+ *     (default 6000). The `MAX_ALERTS = 5` cap remains as a safety bound.
+ *   * `min_amount` (in raw units, resolved by the server using the token
+ *     decimals) — donations below this threshold are silently recorded but
+ *     not shown. {@link shouldShowAlert} applies the filter to both the
+ *     initial donations and Realtime inserts.
+ *   * `sound_enabled` — a short alert sound plays on Realtime insert when
+ *     true (no sound on the initial server-rendered donations). The browser
+ *     may block autoplay until a user interaction; the Overlay is a browser
+ *     source so OBS provides the interaction context.
  *
  * Realtime subscription: the anon-key browser client opens a
  * `postgres_changes` channel filtered by `creator_profile_id`. The
@@ -43,6 +60,8 @@ export interface OverlayDonation {
 export interface OverlayToken {
   contract_address: string;
   symbol: string;
+  /** Token decimals (used by the server to convert min_amount to raw units). */
+  decimals?: number;
 }
 
 export interface OverlayRealtimeStub {
@@ -58,16 +77,41 @@ declare global {
 /** Maximum number of alerts kept on screen at once (oldest dropped first). */
 const MAX_ALERTS = 5;
 
+/** Path to the bundled alert sound in /public. */
+const ALERT_SOUND_URL = "/alert.mp3";
+
+/** Stable default settings so `settings ?? DEFAULTS_SETTINGS` is referentially stable. */
+const DEFAULT_SETTINGS: OverlaySettings = {};
+
 export function OverlayAlerts({
   creatorProfileId,
   initialDonations,
   tokenAllowlist,
+  settings,
 }: {
   creatorProfileId: string;
   initialDonations: OverlayDonation[];
   tokenAllowlist: OverlayToken[];
+  /** Overlay settings from the server. Defaults apply when omitted. */
+  settings?: OverlaySettings;
 }) {
-  const [alerts, setAlerts] = React.useState<OverlayDonation[]>(initialDonations);
+  const resolvedSettings = settings ?? DEFAULT_SETTINGS;
+  const durationMs = React.useMemo(() => alertDurationMs(resolvedSettings), [resolvedSettings]);
+  const soundEnabled = resolvedSettings.soundEnabled !== false;
+
+  // Apply the min_amount filter to the initial server-rendered donations.
+  const seeded = React.useMemo(
+    () => initialDonations.filter((d) => shouldShowAlert(d, resolvedSettings)),
+    [initialDonations, resolvedSettings],
+  );
+  const [alerts, setAlerts] = React.useState<OverlayDonation[]>(seeded);
+
+  // Re-seed when the server snapshot changes (e.g. settings updated). The
+  // dependency is the memoized `seeded` array, which only changes when the
+  // initial donations or settings actually change.
+  React.useEffect(() => {
+    setAlerts(seeded);
+  }, [seeded]);
 
   const symbolByContract = React.useMemo(() => {
     const map = new Map<string, string>();
@@ -75,16 +119,28 @@ export function OverlayAlerts({
     return map;
   }, [tokenAllowlist]);
 
-  const appendAlert = React.useCallback((row: OverlayDonation) => {
-    setAlerts((prev) => {
-      // Drop the oldest when the cap is reached, then append the new alert.
-      const next = prev.length >= MAX_ALERTS ? prev.slice(prev.length - MAX_ALERTS + 1) : prev.slice();
-      // De-duplicate by id (Realtime may re-deliver).
-      if (next.some((d) => d.id === row.id)) return prev;
-      next.push(row);
-      return next;
-    });
+  const removeAlert = React.useCallback((id: string) => {
+    setAlerts((prev) => prev.filter((d) => d.id !== id));
   }, []);
+
+  const appendAlert = React.useCallback(
+    (row: OverlayDonation) => {
+      // Suppress donations below min_amount (in raw units).
+      if (!shouldShowAlert(row, resolvedSettings)) return;
+      setAlerts((prev) => {
+        // Drop the oldest when the cap is reached, then append the new alert.
+        const next = prev.length >= MAX_ALERTS ? prev.slice(prev.length - MAX_ALERTS + 1) : prev.slice();
+        // De-duplicate by id (Realtime may re-deliver).
+        if (next.some((d) => d.id === row.id)) return prev;
+        next.push(row);
+        return next;
+      });
+      // Play the alert sound on Realtime insert when enabled. No sound on the
+      // initial server-rendered donations (those are not "inserts").
+      if (soundEnabled) playAlertSound();
+    },
+    [resolvedSettings, soundEnabled],
+  );
 
   useOverlayRealtime(creatorProfileId, appendAlert);
 
@@ -97,7 +153,13 @@ export function OverlayAlerts({
     >
       <AnimatePresence initial={false}>
         {alerts.map((d) => (
-          <AlertCard key={d.id} donation={d} symbol={symbolByContract.get(d.token) ?? d.token} />
+          <AlertCard
+            key={d.id}
+            donation={d}
+            symbol={symbolByContract.get(d.token) ?? d.token}
+            durationMs={durationMs}
+            onExpire={removeAlert}
+          />
         ))}
       </AnimatePresence>
     </div>
@@ -107,15 +169,28 @@ export function OverlayAlerts({
 function AlertCard({
   donation,
   symbol,
+  durationMs,
+  onExpire,
 }: {
   donation: OverlayDonation;
   symbol: string;
+  durationMs: number;
+  onExpire: (id: string) => void;
 }) {
   // Honor prefers-reduced-motion: collapse the slide to a pure fade so the
   // overlay still signals new donations without lateral motion.
   const reduceMotion = useReducedMotion();
   const enter = reduceMotion ? { opacity: 0 } : { opacity: 0, x: -48 };
   const rest = reduceMotion ? { opacity: 1 } : { opacity: 1, x: 0 };
+
+  // Auto-dismiss: start a timer on mount, remove the alert on expiry. Cleared
+  // on unmount so a dropped alert (cap reached, parent re-seed) does not fire
+  // a stale removal. `prefers-reduced-motion` does not disable the timer (it
+  // only affects the animation).
+  React.useEffect(() => {
+    const id = window.setTimeout(() => onExpire(donation.id), durationMs);
+    return () => window.clearTimeout(id);
+  }, [donation.id, durationMs, onExpire]);
 
   return (
     <motion.div
@@ -153,6 +228,25 @@ function AlertCard({
       ) : null}
     </motion.div>
   );
+}
+
+/**
+ * Play the bundled alert sound. Swallows autoplay errors: the Overlay is a
+ * browser source and the browser may block `play()` until a user interaction
+ * (OBS provides the interaction context in production). Exposed for test
+ * spying via the `Audio` global.
+ */
+function playAlertSound(): void {
+  if (typeof Audio === "undefined") return;
+  try {
+    const audio = new Audio(ALERT_SOUND_URL);
+    audio.volume = 0.8;
+    void audio.play().catch(() => {
+      // Autoplay blocked or decode error: silent. The alert still renders.
+    });
+  } catch {
+    // `new Audio` or `play` threw: silent.
+  }
 }
 
 /**

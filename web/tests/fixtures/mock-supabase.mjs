@@ -218,6 +218,9 @@ const CREATOR_MODE_DONATIONS = [
 // Mutable copies so moderation PATCHes persist for the duration of the run.
 let creatorModeDonations = CREATOR_MODE_DONATIONS.map((d) => ({ ...d }));
 let creatorMode = false;
+// Mutable overlay_settings row for creator-mode (null = no row, API returns
+// defaults). Reset on creator-mode toggle so PUT state does not leak.
+let overlaySettingsRow = null;
 function creatorModeProfile() {
   return {
     ...profile,
@@ -323,6 +326,7 @@ export function startMockSupabase(port) {
       try { body = raw ? JSON.parse(raw) : {}; } catch { body = {}; }
       creatorMode = !!body.enabled;
       creatorModeDonations = CREATOR_MODE_DONATIONS.map((d) => ({ ...d }));
+      overlaySettingsRow = null;
       // Seed or reset the base profile fields so creator-mode PATCHes do not
       // leak into the donor-only profile when creator-mode is disabled.
       if (creatorMode) {
@@ -485,6 +489,35 @@ export function startMockSupabase(port) {
         },
       ]);
       return;
+    }
+
+    // PostgREST: overlay_settings (the dashboard OverlaySettingsCard reads
+    // and writes the creator's overlay config). In creator-mode, return the
+    // creator's row (or an empty array when none exists) so the API route
+    // returns defaults. PUT/PATCH upserts the row in memory.
+    if (path === "/rest/v1/overlay_settings") {
+      if (req.method === "GET") {
+        if (creatorMode) {
+          json(res, 200, overlaySettingsRow ? [overlaySettingsRow] : []);
+        } else {
+          json(res, 200, []);
+        }
+        return;
+      }
+      if (req.method === "POST" || req.method === "PATCH") {
+        const raw = await readBody(req);
+        let patch = {};
+        try { patch = raw ? JSON.parse(raw) : {}; } catch { patch = {}; }
+        overlaySettingsRow = {
+          creator_profile_id: patch.creator_profile_id ?? CREATOR_MODE_PROFILE_ID,
+          alert_duration_ms: patch.alert_duration_ms ?? 6000,
+          min_amount: patch.min_amount ?? "0",
+          sound_enabled: patch.sound_enabled ?? true,
+          theme: "default",
+        };
+        json(res, 200, overlaySettingsRow);
+        return;
+      }
     }
 
     // Anything else: return an empty 200 so unrelated SDK pings do not fail.

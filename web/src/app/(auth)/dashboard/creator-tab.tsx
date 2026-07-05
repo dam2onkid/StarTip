@@ -757,12 +757,13 @@ function ActiveGate(args: {
         eyebrow="Controls"
         title="Payout, status & profile"
         description="Wallet-signed actions plus your public identity, donate QR, and stream overlay."
-        count={5}
+        count={6}
       >
         <PayoutUpdateCard current={current} />
         <PauseCard current={current} />
         <ProfileEditCard current={current} onUpdate={onUpdate} />
         <OverlayUrlCard handle={current.handle} />
+        <OverlaySettingsCard handle={current.handle} />
         <QrCodeCard handle={current.handle} />
       </CreatorSection>
 
@@ -1483,6 +1484,187 @@ function OverlayUrlCard({ handle }: { handle: string | null }) {
         >
           {copied ? "Copied" : "Copy URL"}
         </Button>
+      </CardContent>
+    </Card>
+  );
+}
+
+/**
+ * Overlay Settings card: configure alert duration, min amount, and sound.
+ *
+ * Loads the Creator's `overlay_settings` row on mount (GET
+ * `/api/overlay-settings?handle=...`), renders editable fields, and PUTs the
+ * validated payload back. The PUT goes through the authed API route which
+ * upserts via the session client so the owner-write RLS policies apply.
+ *
+ * `min_amount` is a display-amount numeric (the same units the Creator sees
+ * on the donate form); the server converts it to raw units (multiplied by
+ * 10^decimals) before handing it to the Overlay client.
+ */
+function OverlaySettingsCard({ handle }: { handle: string | null }) {
+  const [durationMs, setDurationMs] = useState<number>(6000);
+  const [minAmount, setMinAmount] = useState<string>("0");
+  const [soundEnabled, setSoundEnabled] = useState<boolean>(true);
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [status, setStatus] = useState<Status>({ kind: "idle" });
+
+  // Load the current settings on mount (and when the handle changes).
+  useEffect(() => {
+    if (!handle) return;
+    let alive = true;
+    setLoading(true);
+    fetch(`/api/overlay-settings?handle=${encodeURIComponent(handle)}`)
+      .then(async (res) => {
+        if (!res.ok) return;
+        const body = (await res.json()) as {
+          alert_duration_ms?: number;
+          min_amount?: string | number;
+          sound_enabled?: boolean;
+        };
+        if (!alive) return;
+        setDurationMs(body.alert_duration_ms ?? 6000);
+        setMinAmount(String(body.min_amount ?? "0"));
+        setSoundEnabled(body.sound_enabled !== false);
+      })
+      .catch(() => {
+        // Network error: keep defaults; the user can still save.
+      })
+      .finally(() => {
+        if (alive) setLoading(false);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [handle]);
+
+  if (!handle) return null;
+
+  async function save() {
+    setSaving(true);
+    setStatus({ kind: "idle" });
+    try {
+      const res = await fetch("/api/overlay-settings", {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          alert_duration_ms: durationMs,
+          min_amount: Number(minAmount),
+          sound_enabled: soundEnabled,
+        }),
+      });
+      if (res.status === 200) {
+        const body = (await res.json()) as {
+          min_amount: string | number;
+        };
+        setMinAmount(String(body.min_amount));
+        setStatus({ kind: "info", message: "Overlay settings saved." });
+      } else {
+        const body = (await res.json()) as { error: string };
+        setStatus({
+          kind: "error",
+          message:
+            body.error === "unauthorized"
+              ? "Sign in again to save overlay settings."
+              : body.error === "not_creator"
+                ? "Claim a handle first."
+                : humanError(body.error),
+        });
+      }
+    } catch {
+      setStatus({ kind: "error", message: "Could not save overlay settings." });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitleWithInfo
+          title="Overlay settings"
+          info="Control how donation alerts behave on your stream overlay: how long each alert stays on screen, the minimum donation amount that triggers an alert, and whether a sound plays on new donations."
+        />
+      </CardHeader>
+      <CardContent className="flex flex-col gap-4" data-testid="overlay-settings-card">
+        <div className="flex flex-col gap-1">
+          <label
+            className="text-xs text-muted-foreground"
+            htmlFor="overlay-duration-input"
+          >
+            Alert duration (ms)
+          </label>
+          <Input
+            id="overlay-duration-input"
+            type="number"
+            min={1000}
+            max={60000}
+            step={500}
+            className="max-w-[10rem]"
+            value={durationMs}
+            disabled={loading || saving}
+            onChange={(e) => setDurationMs(Number(e.target.value))}
+            data-testid="overlay-duration-input"
+          />
+          <p className="text-[0.65rem] text-muted-foreground/70">
+            1000–60000ms. Default 6000ms (6 seconds).
+          </p>
+        </div>
+
+        <div className="flex flex-col gap-1">
+          <label
+            className="text-xs text-muted-foreground"
+            htmlFor="overlay-min-amount-input"
+          >
+            Minimum amount
+          </label>
+          <Input
+            id="overlay-min-amount-input"
+            type="number"
+            min={0}
+            step="0.01"
+            className="max-w-[10rem]"
+            value={minAmount}
+            disabled={loading || saving}
+            onChange={(e) => setMinAmount(e.target.value)}
+            data-testid="overlay-min-amount-input"
+          />
+          <p className="text-[0.65rem] text-muted-foreground/70">
+            Donations below this amount are silently recorded but not shown.
+            0 shows every donation.
+          </p>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <input
+            id="overlay-sound-toggle"
+            type="checkbox"
+            className="h-4 w-4 rounded border-foreground/20 accent-primary"
+            checked={soundEnabled}
+            disabled={loading || saving}
+            onChange={(e) => setSoundEnabled(e.target.checked)}
+            data-testid="overlay-sound-toggle"
+          />
+          <label
+            className="text-xs text-muted-foreground"
+            htmlFor="overlay-sound-toggle"
+          >
+            Play a sound on new donations
+          </label>
+        </div>
+
+        <Button
+          type="button"
+          size="sm"
+          onClick={save}
+          loading={saving}
+          disabled={loading || saving}
+          className="self-start"
+          data-testid="overlay-settings-save"
+        >
+          Save
+        </Button>
+        <StatusLine status={status} />
       </CardContent>
     </Card>
   );

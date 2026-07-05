@@ -146,9 +146,19 @@ function profile(over: Partial<CreatorProfile> = {}): CreatorProfile {
 function mockFetch(responses: Array<(url: string, init?: RequestInit) => Response>) {
   const calls = responses.slice();
   global.fetch = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+    const u = url.toString();
+    // The active OverlaySettingsCard GETs /api/overlay-settings on mount.
+    // Serve defaults from the fallback so a queued-only test does not throw.
+    if (u.includes("/api/overlay-settings") && calls.length === 0) {
+      return jsonRes(200, {
+        alert_duration_ms: 6000,
+        min_amount: "0",
+        sound_enabled: true,
+      });
+    }
     const next = calls.shift();
-    if (!next) throw new Error(`unexpected fetch ${url.toString()}`);
-    return next(url.toString(), init);
+    if (!next) throw new Error(`unexpected fetch ${u}`);
+    return next(u, init);
   }) as unknown as typeof fetch;
 }
 
@@ -175,6 +185,21 @@ beforeEach(() => {
   supabaseStorageCalls.length = 0;
   supabaseUpdateResult.error = null;
   supabaseUploadResult.error = null;
+  // Default fetch mock: the active-features panel mounts OverlaySettingsCard
+  // which GETs /api/overlay-settings on mount. Return defaults so the card
+  // settles without spurious act() warnings. Tests that need a different
+  // fetch queue call mockFetch() to override this.
+  global.fetch = vi.fn(async (url: string | URL | Request) => {
+    const u = url.toString();
+    if (u.includes("/api/overlay-settings")) {
+      return jsonRes(200, {
+        alert_duration_ms: 6000,
+        min_amount: "0",
+        sound_enabled: true,
+      });
+    }
+    throw new Error(`unexpected fetch ${u}`);
+  }) as unknown as typeof fetch;
 });
 
 afterEach(() => {
@@ -593,5 +618,91 @@ describe("CreatorTab — active features", () => {
     const call = updateDonationModerationStatus.mock.calls[0];
     expect(call[1]).toBe("d1");
     expect(call[2]).toBe("hidden");
+  });
+
+  it("renders the Overlay Settings card with fields loaded from the API", async () => {
+    const { CreatorTab } = await import("@/app/(auth)/dashboard/creator-tab");
+    mockFetch([
+      () => jsonRes(200, {
+        alert_duration_ms: 4000,
+        min_amount: "5",
+        sound_enabled: false,
+      }),
+    ]);
+    render(<CreatorTab profile={activeProfile()} activeData={activeData()} />);
+    const card = await screen.findByTestId("overlay-settings-card");
+    expect(card).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByTestId("overlay-duration-input")).toHaveValue(4000);
+    });
+    expect(screen.getByTestId("overlay-min-amount-input")).toHaveValue(5);
+    expect(screen.getByTestId("overlay-sound-toggle")).not.toBeChecked();
+  });
+
+  it("renders the Overlay Settings card with default values when the API returns defaults", async () => {
+    const { CreatorTab } = await import("@/app/(auth)/dashboard/creator-tab");
+    render(<CreatorTab profile={activeProfile()} activeData={activeData()} />);
+    await screen.findByTestId("overlay-settings-card");
+    await waitFor(() => {
+      expect(screen.getByTestId("overlay-duration-input")).toHaveValue(6000);
+    });
+    expect(screen.getByTestId("overlay-min-amount-input")).toHaveValue(0);
+    expect(screen.getByTestId("overlay-sound-toggle")).toBeChecked();
+  });
+
+  it("PUTs the edited overlay settings and shows a saved status", async () => {
+    const { CreatorTab } = await import("@/app/(auth)/dashboard/creator-tab");
+    const puts: { url: string; method: string; body: unknown }[] = [];
+    mockFetch([
+      // GET on mount
+      () => jsonRes(200, { alert_duration_ms: 6000, min_amount: "0", sound_enabled: true }),
+      // PUT on save
+      (url, init) => {
+        puts.push({ url, method: init?.method ?? "GET", body: JSON.parse(init?.body as string) });
+        return jsonRes(200, { alert_duration_ms: 3000, min_amount: 2, sound_enabled: false });
+      },
+    ]);
+    render(<CreatorTab profile={activeProfile()} activeData={activeData()} />);
+    const durationInput = await screen.findByTestId("overlay-duration-input");
+    await act(async () => {
+      fireEvent.change(durationInput, { target: { value: "3000" } });
+    });
+    await act(async () => {
+      fireEvent.change(screen.getByTestId("overlay-min-amount-input"), { target: { value: "2" } });
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("overlay-sound-toggle"));
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("overlay-settings-save"));
+    });
+    await waitFor(() => {
+      expect(screen.getByText(/Overlay settings saved/i)).toBeInTheDocument();
+    });
+    // The PUT hit the right URL with the validated payload.
+    const put = puts.find((p) => p.method === "PUT");
+    expect(put).toBeDefined();
+    expect(put?.url).toContain("/api/overlay-settings");
+    expect(put?.body).toEqual({
+      alert_duration_ms: 3000,
+      min_amount: 2,
+      sound_enabled: false,
+    });
+  });
+
+  it("shows a not_creator error when the PUT returns 400 not_creator", async () => {
+    const { CreatorTab } = await import("@/app/(auth)/dashboard/creator-tab");
+    mockFetch([
+      () => jsonRes(200, { alert_duration_ms: 6000, min_amount: "0", sound_enabled: true }),
+      () => jsonRes(400, { error: "not_creator" }),
+    ]);
+    render(<CreatorTab profile={activeProfile()} activeData={activeData()} />);
+    await screen.findByTestId("overlay-settings-card");
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("overlay-settings-save"));
+    });
+    await waitFor(() => {
+      expect(screen.getByText(/claim a handle first/i)).toBeInTheDocument();
+    });
   });
 });
