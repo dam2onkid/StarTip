@@ -1,6 +1,8 @@
 import "server-only";
 import { randomUUID, createHash } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { classifyMessage } from "@/lib/donations/moderation";
+import { validateMessage, validateDonorName } from "@/lib/donations/validation";
 
 /**
  * `POST /api/donations/prepare` core logic, extracted so it can be tested as a
@@ -120,6 +122,14 @@ export async function prepareDonation(
     return { status: 400, body: { error: "invalid_amount" } };
   }
 
+  // Validate message / donor_name length at the prepare boundary so an
+  // over-limit input is rejected with a clear 400 before any pending row is
+  // inserted or any on-chain transaction is built.
+  const msgCheck = validateMessage(input.message);
+  if (!msgCheck.ok) return { status: 400, body: { error: msgCheck.error } };
+  const nameCheck = validateDonorName(input.donor_name);
+  if (!nameCheck.ok) return { status: 400, body: { error: nameCheck.error } };
+
   // 1. Creator: registered + not paused.
   const { data: creator, error: creatorErr } = await service
     .from("profiles")
@@ -165,10 +175,13 @@ export async function prepareDonation(
 
   // 4. Insert the pending row. id + donation_id_hash are minted here so the
   //    hash is sha256(id::text) exactly, matching what the confirm path will
-  //    recompute from the donation_id the client posts back.
+  //    recompute from the donation_id the client posts back. The moderation
+  //    classifier runs at insert time so a flagged donation is `auto_hidden`
+  //    from the moment it is created and never briefly visible on the Overlay.
   const id = randomUUID();
   const donationIdHashBytea = sha256ByteaHex(id);
   const handleHashBytea = c.handle_hash ?? sha256ByteaHex(handle);
+  const moderationStatus = classifyMessage(input.message, donorName);
 
   const insertPayload = {
     id,
@@ -181,6 +194,7 @@ export async function prepareDonation(
     donor_name: donorName,
     user_id: userId,
     status: "pending",
+    moderation_status: moderationStatus,
   };
   const { error: insertErr } = await service
     .from("donations")

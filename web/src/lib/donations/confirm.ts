@@ -2,6 +2,7 @@ import "server-only";
 import * as StellarSdk from "@stellar/stellar-sdk";
 import { createHash } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { classifyMessage } from "@/lib/donations/moderation";
 
 /**
  * `POST /api/donations/confirm` core logic, extracted so it can be tested as a
@@ -52,6 +53,8 @@ export interface ConfirmResult {
 interface DonationRow {
   id: string;
   status: string;
+  message?: string | null;
+  donor_name?: string | null;
 }
 
 interface ProfileRow {
@@ -183,7 +186,7 @@ export async function confirmDonation(
   // 1. Match the pending/confirmed row by donation_id_hash.
   const { data: existing, error: selErr } = await service
     .from("donations")
-    .select("id,status")
+    .select("id,status,message,donor_name")
     .eq("donation_id_hash", donationIdHashBytea)
     .maybeSingle();
   if (selErr) return { status: 500, body: { error: "db_error" } };
@@ -191,14 +194,24 @@ export async function confirmDonation(
 
   if (existingRow) {
     // Promote to confirmed (covers pending -> confirmed AND indexed -> confirmed).
+    // Re-run classifyMessage only when the row is still `pending`, so a
+    // prepare-time `auto_hidden` is not overwritten. For an `indexed` row the
+    // indexer already set moderation_status and we preserve it.
+    const update: Record<string, unknown> = {
+      status: "confirmed",
+      tx_hash: txHash,
+      donor_address: donorAddress,
+      confirmed_at: nowIso(),
+    };
+    if (existingRow.status === "pending") {
+      update.moderation_status = classifyMessage(
+        existingRow.message,
+        existingRow.donor_name,
+      );
+    }
     const { error: updErr } = await service
       .from("donations")
-      .update({
-        status: "confirmed",
-        tx_hash: txHash,
-        donor_address: donorAddress,
-        confirmed_at: nowIso(),
-      })
+      .update(update)
       .eq("id", existingRow.id);
     if (updErr) return { status: 500, body: { error: "db_error" } };
     return { status: 200, body: { status: "confirmed" } };
@@ -225,6 +238,9 @@ export async function confirmDonation(
     donor_name: "Anonymous",
     donor_address: donorAddress,
     status: "confirmed",
+    // No message is available from the on-chain event, so classifyMessage
+    // sees (null, "Anonymous") and returns 'visible'.
+    moderation_status: classifyMessage(null, "Anonymous"),
     confirmed_at: nowIso(),
   });
   if (insErr) return { status: 500, body: { error: "db_error" } };

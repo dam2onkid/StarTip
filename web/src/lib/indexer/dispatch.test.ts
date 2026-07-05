@@ -319,6 +319,9 @@ describe("indexer/dispatch processPoll", () => {
       status: "indexed",
       indexed_at: expect.any(String),
     });
+    // The indexer has no message, so classifyMessage sees (null, "Anonymous")
+    // and the orphan insert is `visible` (ADR-0003).
+    expect((insert!.payload as Record<string, unknown>).moderation_status).toBe("visible");
   });
 
   it("DonationReceived: skips when no pending row and no matching creator profile (orphan)", async () => {

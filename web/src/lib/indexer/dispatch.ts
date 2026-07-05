@@ -2,6 +2,7 @@ import "server-only";
 import * as StellarSdk from "@stellar/stellar-sdk";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { TokenMetadata } from "@/lib/stellar/token";
+import { classifyMessage } from "@/lib/donations/moderation";
 
 /**
  * bytea values travel over the PostgREST API as hex strings with the `\x`
@@ -173,6 +174,9 @@ async function dispatchDonationReceived(
     amount,
     donor_name: "Anonymous",
     status: "indexed",
+    // No message is available from the on-chain event, so classifyMessage
+    // sees (null, "Anonymous") and the orphan insert is `visible`.
+    moderation_status: classifyMessage(null, "Anonymous"),
     indexed_at: nowIso(),
   });
 }

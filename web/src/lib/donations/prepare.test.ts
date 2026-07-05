@@ -338,5 +338,74 @@ describe("prepareDonation", () => {
     expect(res.body).toMatchObject({ error: "invalid_amount" });
   });
 
+  it("returns 400 invalid_message when the message exceeds 280 chars, before any insert", async () => {
+    profilesRespond(activeCreator());
+    tokensRespond([tokenRow()]);
+    const { prepareDonation } = await import("@/lib/donations/prepare");
+    const { MESSAGE_MAX_LENGTH } = await import("@/lib/donations/validation");
+    const res = await prepareDonation(
+      { service: service.supabase as any, session: makeSessionClient(), contractId },
+      { handle: HANDLE, token: TOKEN, amount: "1000000", message: "a".repeat(MESSAGE_MAX_LENGTH + 1) },
+    );
+    expect(res.status).toBe(400);
+    expect(res.body).toMatchObject({ error: "invalid_message" });
+    expect(findCall(service.calls, "donations", "insert")).toBeUndefined();
+  });
+
+  it("returns 400 invalid_donor_name when donor_name exceeds 32 chars, before any insert", async () => {
+    profilesRespond(activeCreator());
+    tokensRespond([tokenRow()]);
+    const { prepareDonation } = await import("@/lib/donations/prepare");
+    const { DONOR_NAME_MAX_LENGTH } = await import("@/lib/donations/validation");
+    const res = await prepareDonation(
+      { service: service.supabase as any, session: makeSessionClient(), contractId },
+      { handle: HANDLE, token: TOKEN, amount: "1000000", donor_name: "a".repeat(DONOR_NAME_MAX_LENGTH + 1) },
+    );
+    expect(res.status).toBe(400);
+    expect(res.body).toMatchObject({ error: "invalid_donor_name" });
+    expect(findCall(service.calls, "donations", "insert")).toBeUndefined();
+  });
+
+  it("inserts a pending row with moderation_status = 'auto_hidden' when the message contains a banned keyword", async () => {
+    profilesRespond(activeCreator());
+    tokensRespond([tokenRow()]);
+    const { prepareDonation } = await import("@/lib/donations/prepare");
+    const { BANNED_KEYWORDS } = await import("@/lib/donations/moderation");
+    const res = await prepareDonation(
+      { service: service.supabase as any, session: makeSessionClient(), contractId },
+      { handle: HANDLE, token: TOKEN, amount: "1000000", message: `hey ${BANNED_KEYWORDS[0]}` },
+    );
+    expect(res.status).toBe(200);
+    const insert = findCall(service.calls, "donations", "insert");
+    expect((insert!.payload as Record<string, unknown>).moderation_status).toBe("auto_hidden");
+  });
+
+  it("inserts a pending row with moderation_status = 'auto_hidden' when the donor_name contains a banned keyword", async () => {
+    profilesRespond(activeCreator());
+    tokensRespond([tokenRow()]);
+    const { prepareDonation } = await import("@/lib/donations/prepare");
+    const { BANNED_KEYWORDS } = await import("@/lib/donations/moderation");
+    const res = await prepareDonation(
+      { service: service.supabase as any, session: makeSessionClient(), contractId },
+      { handle: HANDLE, token: TOKEN, amount: "1000000", donor_name: BANNED_KEYWORDS[0] },
+    );
+    expect(res.status).toBe(200);
+    const insert = findCall(service.calls, "donations", "insert");
+    expect((insert!.payload as Record<string, unknown>).moderation_status).toBe("auto_hidden");
+  });
+
+  it("inserts a pending row with moderation_status = 'visible' for clean input", async () => {
+    profilesRespond(activeCreator());
+    tokensRespond([tokenRow()]);
+    const { prepareDonation } = await import("@/lib/donations/prepare");
+    const res = await prepareDonation(
+      { service: service.supabase as any, session: makeSessionClient(), contractId },
+      { handle: HANDLE, token: TOKEN, amount: "1000000", message: "clean message" },
+    );
+    expect(res.status).toBe(200);
+    const insert = findCall(service.calls, "donations", "insert");
+    expect((insert!.payload as Record<string, unknown>).moderation_status).toBe("visible");
+  });
+
   void randomUUID;
 });
