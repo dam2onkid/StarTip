@@ -1,6 +1,6 @@
 # 03 - Turborepo setup, move web/ to apps/web/, add contracts/ shim
 
-Status: done
+Status: Untriaged
 Role: infra
 
 ## Task
@@ -20,6 +20,7 @@ git mv web apps/web
 ### Update `.gitignore`
 
 All `web/...` entries become `apps/web/...`:
+
 - `web/.next/` -> `apps/web/.next/`
 - `web/out/` -> `apps/web/out/`
 - `web/build/` -> `apps/web/build/`
@@ -75,7 +76,11 @@ packages:
   "tasks": {
     "build": {
       "dependsOn": ["^build"],
-      "outputs": ["dist/**", ".next/**", "target/wasm32-unknown-unknown/release/*.wasm"]
+      "outputs": [
+        "dist/**",
+        ".next/**",
+        "target/wasm32-unknown-unknown/release/*.wasm"
+      ]
     },
     "test": {
       "dependsOn": ["^build"]
@@ -119,26 +124,3 @@ packages:
 ## Dependencies
 
 - None. This is foundational; issues 04, 05, 06 depend on this.
-
-## Comments
-
-- Review (2026-07-05): `pnpm-workspace.yaml` currently only lists `web`, so
-  this is a clean starting point. No conflicts found. Triaged
-  `ready-for-agent`.
-- Done (2026-07-05): All changes applied. `web/` moved to `apps/web/` via
-  `git mv`, `.gitignore` paths updated, `pnpm-workspace.yaml` now lists
-  `apps/*`, `packages/*`, `contracts`. Root `package.json` orchestrates via
-  Turbo with `packageManager: pnpm@11.5.0` (required by turbo 2.10 to
-  resolve workspaces). `turbo.json` created. `contracts/package.json` shim
-  added. Turbo pinned to `2.10.0` (published 2026-06-24, 11 days old,
-  satisfies the 7-day rule). Verification: `pnpm install` links 3 workspace
-  projects; `turbo run build` builds contracts WASM
-  (`target/wasm32v1-none/release/donation_router.wasm`, 15372 bytes) + web
-  Next.js production build; `turbo run typecheck` passes (web tsc);
-  `turbo run test` passes (web vitest 435 passed + contracts cargo test);
-  `cd apps/web && pnpm dev` boots and `curl localhost:3000` returns 200.
-  Deviation: `turbo.json` `outputs` includes both
-  `target/wasm32v1-none/release/*.wasm` (actual stellar 27.0.0 target) and
-  `target/wasm32-unknown-unknown/release/*.wasm` (the spec's path) since
-  the stellar CLI now builds to `wasm32v1-none`. Pre-existing lint errors
-  in `apps/web/tests/*.spec.ts` are out of scope for this infra issue.

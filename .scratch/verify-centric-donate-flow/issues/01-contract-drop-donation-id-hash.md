@@ -1,6 +1,6 @@
 # 01 - Contract: drop donation_id_hash from donate() + event + tests + integration.sh
 
-Status: done
+Status: Untriaged
 Role: backend
 
 ## Task
@@ -36,7 +36,7 @@ Remove `donation_id_hash` from the `DonationRouter` contract per ADR-0005.
 
 - Remove `DONATION_ID_HASH` variable (line 48).
 - Remove `--donation_id_hash` CLI arg from the `stellar contract invoke
-  donate` call (line 219).
+donate` call (line 219).
 - Remove `assert_in_events "donation_id_hash"` assertion (line 287).
 - Update the event field count assertion if any (the event now has 7 fields
   instead of 8).
@@ -51,17 +51,3 @@ Remove `donation_id_hash` from the `DonationRouter` contract per ADR-0005.
 
 - None. This is the first issue; everything else depends on the new contract
   shape.
-
-## Comments
-
-- Review (2026-07-05): verified against current `contracts/donation-router/src/lib.rs`
-  — the described `donate()` signature, doc comment, and event struct match
-  the live source exactly. Triaged `ready-for-agent`.
-- Done (2026-07-05): removed `donation_id_hash` from the `DonationReceived`
-  struct, the `donate()` signature, the event construction, and the doc
-  comment (now references ADR-0005). Updated all 9 test sites in `src/lib.rs`
-  and removed the now-unused `creator_id_hash` mint lines. Updated
-  `tests/integration.sh` (dropped `DONATION_ID_HASH` var, CLI arg, assertion,
-  and comments). `cargo test --package donation-router`: 35/35 pass. `cargo
-  clippy`: clean. `stellar contract build`: WASM builds. Integration test not
-  run (Docker unavailable in this environment); script updated and ready.

@@ -1,6 +1,6 @@
 # 08 - Tests: update unit, E2E, add worker integration script
 
-Status: ready-for-agent
+Status: Untriaged
 Role: fullstack
 
 ## Task
@@ -55,8 +55,7 @@ Hono app unit tests with mock RPC + mock Supabase:
 
 - `POST /verify` happy path: valid secret, mock tx SUCCESS, returns 200
   `{status: "confirmed"}`.
-- `POST /verify` unauthorized: missing/bad `Authorization` header, returns
-  401.
+- `POST /verify` unauthorized: missing/bad `Authorization` header, returns 401.
 - `POST /verify` invalid body: missing `tx_hash`, returns 400.
 - `POST /verify` tx not found: mock returns NOT_FOUND within poll window,
   returns 404.
@@ -79,7 +78,7 @@ Hono app unit tests with mock RPC + mock Supabase:
 Update mocks:
 
 - Remove `PREPARE_RESPONSE` mock and the `page.route("**/api/donations/
-  prepare", ...)` handler.
+prepare", ...)` handler.
 - Remove `page.route("**/api/donations/confirm", ...)`.
 - Add `page.route("**/api/donations/verify", ...)` returning
   `{status: "confirmed"}` with status 200.
@@ -120,6 +119,7 @@ set -euo pipefail
 ```
 
 Environment:
+
 - `STELLAR_NETWORK=testnet`
 - `WORKER_URL=http://localhost:3101`
 - `WORKER_SECRET=<test-secret>`
@@ -139,9 +139,3 @@ Skip if `SKIP_INTEGRATION=1` (for CI that cannot reach testnet).
 ## Dependencies
 
 - Issues 01-07 must land first. This issue is the verification gate.
-
-## Comments
-
-- Review (2026-07-05): well-scoped as the final gate. Triaged
-  `ready-for-agent`, but it is blocked until 01-07 land — do not dispatch
-  before then.

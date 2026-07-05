@@ -3,20 +3,18 @@ node_modules/
 .pnpm-store/
 
 # next.js
-apps/web/.next/
-apps/web/out/
-apps/web/build/
-apps/web/dist/
+.next/
+out/
+build/
+dist/
 
 # env
 .env
 .env*.local
-apps/web/.env
-apps/web/.env*.local
 
 # typescript
 *.tsbuildinfo
-apps/web/next-env.d.ts
+next-env.d.ts
 
 # misc
 .DS_Store
@@ -32,14 +30,15 @@ pnpm-debug.log*
 .vercel
 
 # playwright
-apps/web/test-results/
-apps/web/playwright-report/
-apps/web/playwright/.cache/
+test-results/
+playwright-report/
+playwright/.cache/
+.playwright-cli/
 
 # Local E2E test credentials (never commit)
-apps/web/.e2e-local-creds.md
+.e2e-local-creds.md
 
-# contracts shim: pnpm workspace scan creates an empty node_modules
+# contracts: pnpm workspace scan creates an empty node_modules
 contracts/node_modules/
 
 # Turborepo local cache

@@ -1,6 +1,6 @@
 # 06 - Web: verify proxy route, update donate-form, remove prepare route, refactor shared confirm
 
-Status: ready-for-agent
+Status: Untriaged
 Role: fullstack
 
 ## Task
@@ -33,6 +33,7 @@ interface VerifyInput {
 ```
 
 Logic changes:
+
 - Remove `donation_id` parameter and the `sha256(donation_id)` match logic.
 - Match existing row by `tx_hash` only (not `donation_id_hash`).
 - On insert (no existing row): use `message` and `donor_name` from the input
@@ -111,18 +112,16 @@ async function handleSubmit(e: React.FormEvent) {
   try {
     // 1. Build + sign + submit donate() on-chain.
     //    handle_hash = sha256(handle), contract_id from env, no donation_id_hash.
-    //    Use the existing browser-safe helper (StellarSdk.hash under the
-    //    hood) instead of node:crypto — see @/lib/creators/handle-shared.
-    const handleHash = handleHashBuffer(handle); // Buffer
+    const handleHash = sha256(handle); // hex string
     const result = await donateOnChain(
       {
         donorAddress: walletAddress,
-        handleHash,
+        handleHash: Buffer.from(handleHash, "hex"),
         token: selectedToken,
         amount: BigInt(rawAmount),
         // donationIdHash removed per ADR-0005
       },
-      { rpc: getRpc(), signWalletTransaction, networkPassphrase, contractId },
+      { rpc: getRpc(), signWalletTransaction, networkPassphrase, contractId }
     );
     setTxHash(result.hash);
 
@@ -154,11 +153,10 @@ async function handleSubmit(e: React.FormEvent) {
 ```
 
 Key changes:
+
 - Remove the `fetch("/api/donations/prepare", ...)` block.
 - Remove `prepared.donation_id_hash` from `donateOnChain` args.
-- Compute `handleHash` locally via `handleHashBuffer(handle)` from
-  `@/lib/creators/handle-shared` (no server round-trip). Do not reach for
-  `node:crypto` — that helper already exists and is browser-safe.
+- Compute `handleHash = sha256(handle)` locally (no server round-trip).
 - Replace `fetch("/api/donations/confirm", ...)` with
   `fetch("/api/donations/verify", ...)`.
 - Body: `{ tx_hash, message, donor_name }` (no `donation_id`).
@@ -176,7 +174,7 @@ interface DonateArgs {
   handleHash: Buffer;
   token: string;
   amount: bigint;
-  donationIdHash: Buffer;  // remove
+  donationIdHash: Buffer; // remove
 }
 
 // After
@@ -199,6 +197,7 @@ Delete `prepare.ts` and `prepare.test.ts`. The prepare logic is gone.
 ### Update `apps/web/src/lib/indexer/dispatch.ts` (in shared after issue 04)
 
 In `dispatchDonationReceived`:
+
 - Remove `donationIdHash` extraction and the match-by-`donation_id_hash`
   block (lines 118-130).
 - Match by `tx_hash` only (the existing fallback at lines 133-140 becomes
@@ -226,14 +225,3 @@ endpoint.
 - Issue 04 (shared package) must land first.
 - Issue 05 (worker) must be running for the proxy to have a target.
 - Issue 01 (contract change) must land so `donate()` signature matches.
-
-## Comments
-
-- Review (2026-07-05): the original pseudocode called an undefined
-  `sha256(handle)` for the client-side handle hash. Fixed to reference the
-  existing `handleHashBuffer` / `handleHashHex` helpers in
-  `@/lib/creators/handle-shared.ts`, which were already built to be
-  browser-safe (`StellarSdk.hash`, byte-identical to `node:crypto`'s
-  sha256) for this exact purpose in the onboarding register flow. Tightly
-  coupled to issue 05 (worker calls the same refactored `confirm.ts` ->
-  `verify` function) — recommend landing together. Triaged `ready-for-agent`.

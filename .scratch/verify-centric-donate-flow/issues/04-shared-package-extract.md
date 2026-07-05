@@ -1,6 +1,6 @@
 # 04 - Extract packages/shared/ from apps/web/src/lib/
 
-Status: ready-for-agent
+Status: Untriaged
 Role: backend
 
 ## Task
@@ -63,15 +63,15 @@ Extend the root or a shared base. `moduleResolution: "bundler"` or
 
 Move these from `apps/web/src/lib/` to `packages/shared/src/`:
 
-| From | To |
-|---|---|
-| `donations/confirm.ts` | `donations/confirm.ts` |
+| From                      | To                        |
+| ------------------------- | ------------------------- |
+| `donations/confirm.ts`    | `donations/confirm.ts`    |
 | `donations/moderation.ts` | `donations/moderation.ts` |
 | `donations/validation.ts` | `donations/validation.ts` |
-| `indexer/dispatch.ts` | `indexer/dispatch.ts` |
-| `stellar/server.ts` | `stellar/server.ts` |
-| `stellar/token.ts` | `stellar/token.ts` |
-| `supabase/service.ts` | `supabase/service.ts` |
+| `indexer/dispatch.ts`     | `indexer/dispatch.ts`     |
+| `stellar/server.ts`       | `stellar/server.ts`       |
+| `stellar/token.ts`        | `stellar/token.ts`        |
+| `supabase/service.ts`     | `supabase/service.ts`     |
 
 Move the corresponding `.test.ts` files too (they test the moved code).
 
@@ -119,6 +119,7 @@ Files to update (grep `@/lib/donations/confirm`, `@/lib/donations/moderation`,
 ## What stays in `apps/web/src/lib/`
 
 Browser-only or Next.js-context-dependent code:
+
 - `donations/donate.ts` (wallet sign, browser stubs)
 - `donations/trustline-check.ts`, `donations/trustline.ts`
 - `stellar/client.ts` (browser RPC, env-derived)
@@ -135,15 +136,3 @@ Browser-only or Next.js-context-dependent code:
 ## Dependencies
 
 - Issue 03 (Turborepo setup) must land first.
-
-## Comments
-
-- Review (2026-07-05): the "Files to update" list under `## Update apps/web/
-  imports` is not exhaustive. Grepping the current `web/src` for imports of
-  `@/lib/donations/confirm`, `@/lib/indexer/dispatch`, `@/lib/stellar/server`,
-  `@/lib/stellar/token`, and `@/lib/supabase/service` turns up ~20 call sites
-  (dashboard, overlay-settings route, creators routes, wallet/link routes,
-  goal route, reconcile route, etc.), not just the 2 named files. The issue's
-  own instruction to grep before updating is correct and sufficient — flagging
-  this so whoever picks it up actually runs the grep rather than trusting the
-  short bullet list. Triaged `ready-for-agent` on that basis.

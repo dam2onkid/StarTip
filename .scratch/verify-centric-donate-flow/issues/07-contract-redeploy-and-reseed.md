@@ -1,6 +1,6 @@
 # 07 - Contract redeploy and re-seed
 
-Status: ready-for-human
+Status: Untriaged
 Role: backend
 
 ## Task
@@ -129,13 +129,3 @@ the new `donate()` signature (4 args) and 7-field event shape.
 - Issue 02 (DB migration) should land before or alongside, so the DB
   schema matches the new contract.
 - Issue 05 + 06 (worker + web) should be ready for the smoke test.
-
-## Comments
-
-- Review (2026-07-05): unlike issues 01-06 and 08, this issue is mostly a
-  sequence of side-effecting, credential-bearing CLI operations against
-  testnet (deploy with an admin identity, invoke `__constructor` /
-  `add_token` / `register_creator`, capture and hand-propagate a new
-  contract ID into two `.env` files) rather than a code diff with a
-  deterministic verification step. Triaged `ready-for-human`: a human
-  should drive or closely review this one rather than an unattended agent.

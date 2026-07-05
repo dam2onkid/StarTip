@@ -1,6 +1,6 @@
 # 05 - Create apps/worker/ with Hono verify endpoint + indexer loop
 
-Status: ready-for-agent
+Status: Untriaged
 Role: backend
 
 ## Task
@@ -62,19 +62,21 @@ apps/worker/
 ```ts
 import { z } from "zod";
 
-export const env = z.object({
-  WORKER_PORT: z.coerce.number().int().default(3101),
-  WORKER_SECRET: z.string().min(1),
-  SUPABASE_URL: z.string().url(),
-  SUPABASE_SERVICE_ROLE_KEY: z.string().min(1),
-  STELLAR_RPC_URL: z.string().url(),
-  STELLAR_NETWORK_PASSPHRASE: z.string().min(1),
-  DONATION_ROUTER_CONTRACT_ID: z.string().min(1),
-  INDEXER_POLL_MS: z.coerce.number().int().default(10_000),
-  INDEXER_START_LEDGER: z.coerce.number().int().min(0).default(0),
-  VERIFY_POLL_MAX_MS: z.coerce.number().int().default(30_000),
-  VERIFY_POLL_INTERVAL_MS: z.coerce.number().int().default(1_000),
-}).parse(process.env);
+export const env = z
+  .object({
+    WORKER_PORT: z.coerce.number().int().default(3101),
+    WORKER_SECRET: z.string().min(1),
+    SUPABASE_URL: z.string().url(),
+    SUPABASE_SERVICE_ROLE_KEY: z.string().min(1),
+    STELLAR_RPC_URL: z.string().url(),
+    STELLAR_NETWORK_PASSPHRASE: z.string().min(1),
+    DONATION_ROUTER_CONTRACT_ID: z.string().min(1),
+    INDEXER_POLL_MS: z.coerce.number().int().default(10_000),
+    INDEXER_START_LEDGER: z.coerce.number().int().min(0).default(0),
+    VERIFY_POLL_MAX_MS: z.coerce.number().int().default(30_000),
+    VERIFY_POLL_INTERVAL_MS: z.coerce.number().int().default(1_000),
+  })
+  .parse(process.env);
 ```
 
 ### `apps/worker/src/server.ts`
@@ -127,7 +129,9 @@ export function startIndexerLoop(deps, pollMs) {
     if (running) setTimeout(tick, pollMs);
   }
   tick();
-  return () => { running = false; };
+  return () => {
+    running = false;
+  };
 }
 ```
 
@@ -169,10 +173,3 @@ process.on("SIGINT", () => { stopIndexer(); process.exit(0); });
   worker calls. Coordinate: the worker should call the new verify function
   signature from the start, so issue 06's shared-side refactor and issue 05
   land together or 06 first.
-
-## Comments
-
-- Review (2026-07-05): tightly coupled to issue 06's `confirm.ts` ->
-  `verify` signature refactor as noted above — recommend running both in
-  the same agent session rather than as independent parallel tasks, to
-  avoid a broken intermediate state. Triaged `ready-for-agent`.
