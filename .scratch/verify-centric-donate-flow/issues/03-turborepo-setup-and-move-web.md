@@ -1,6 +1,6 @@
 # 03 - Turborepo setup, move web/ to apps/web/, add contracts/ shim
 
-Status: Untriaged
+Status: done
 Role: infra
 
 ## Task

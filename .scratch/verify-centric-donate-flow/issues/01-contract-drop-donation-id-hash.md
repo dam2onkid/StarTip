@@ -1,6 +1,6 @@
 # 01 - Contract: drop donation_id_hash from donate() + event + tests + integration.sh
 
-Status: Untriaged
+Status: done
 Role: backend
 
 ## Task

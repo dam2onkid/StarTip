@@ -1,6 +1,6 @@
 # 02 - DB migration: drop donation_id_hash, add status CHECK
 
-Status: Untriaged
+Status: done
 Role: backend
 
 ## Task
