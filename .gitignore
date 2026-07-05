@@ -41,3 +41,13 @@ web/.e2e-local-creds.md
 
 # CodeGraph runtime index (local-only)
 .codegraph/
+
+# IDE filename-composition shadow artifacts: truncated-name duplicates with no
+# extension. Real files are .md; re-include .md and directories.
+docs/adr/*
+!docs/adr/*.md
+!docs/adr/*/
+.scratch/*/PR*
+!.scratch/*/PR*.md
+.scratch/*/issues/*
+!.scratch/*/issues/*.md

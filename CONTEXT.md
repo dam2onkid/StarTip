@@ -41,6 +41,7 @@ and who may update the Payout Address. A Profile with
 **Onboarding State**:
 The lifecycle of a Profile from Supabase login to on-chain registration.
 Four gates, each blocking the next:
+
 1. `profile_pending` — Supabase login done, Handle claimed off-chain, no
    `owner_address` yet. Redirected to `/onboarding`.
 2. `wallet_pending` — Handle claimed, wallet not linked. Can enter `/dashboard`
@@ -48,7 +49,7 @@ Four gates, each blocking the next:
 3. `onchain_pending` — `owner_address` linked, not yet registered on-chain.
    Can build and sign `register_creator(handle_hash, payout_address)`.
 4. `active` — `onchain_registered = true`. All dashboard routes unlocked.
-_Avoid_: onboarding step (a state, not a step).
+   _Avoid_: onboarding step (a state, not a step).
 
 **Donor**:
 A person who sends a Donation to a Creator. The on-chain role bound to the
@@ -71,6 +72,7 @@ _Avoid_: fan name, supporter name.
 The unique human-readable slug identifying a Creator. Used in URLs
 (`/donate/[handle]`, `/overlay/[handle]`) and hashed to form the Creator ID Hash.
 Has two ownership states:
+
 - **Reserved**: a Profile row exists with this Handle but
   `onchain_registered = false`. Known only to the claiming Creator and the
   backend; not publicly listed. Held by a 7-day TTL: a Reserved Handle whose
@@ -78,9 +80,9 @@ Has two ownership states:
   is deleted by a Supabase cron job, releasing the Handle.
 - **Registered**: DonationRouter has an entry for `sha256(handle)`. The
   public source of truth; only a Registered Handle can receive Donations.
-Claiming a Handle checks both sources: no existing Profile with that
-Handle, and no on-chain entry for `sha256(handle)` (via `get_creator`).
-_Avoid_: username, slug, channel name.
+  Claiming a Handle checks both sources: no existing Profile with that
+  Handle, and no on-chain entry for `sha256(handle)` (via `get_creator`).
+  _Avoid_: username, slug, channel name.
 
 **Creator ID Hash**:
 `sha256(handle)`. The on-chain key that identifies a Creator in the
@@ -93,11 +95,6 @@ A single act of sending an asset from a Donor to a Creator through the
 DonationRouter. Settled on-chain (fee + net transfer, event emitted), recorded
 off-chain (full message, donor name, moderation status).
 _Avoid_: tip, payment, transaction (use "transaction" only for the Stellar tx).
-
-**Donation ID Hash**:
-`sha256(donation_id)`. The on-chain link between a Donation event and its
-off-chain record. The only hash committed on-chain for a Donation.
-_Avoid_: donation hash, message hash (message hash is not on-chain).
 
 **Payout Address**:
 The Stellar address that receives the net amount of a Donation. Controlled by
@@ -133,12 +130,12 @@ A single-use nonce + expiry stored on the Profile row
 (`wallet_link_nonce`, `wallet_link_nonce_expires_at`) that the Creator signs
 with their wallet to prove ownership of an address. Backend generates the
 nonce (RLS: only the profile's `user_id` may write it), the Creator signs a
-human-readable UTF-8 string containing Handle, handle_hash, and the nonce via
+human-readable UTF-8 string containing Handle, handle*hash, and the nonce via
 `signMessage`, the backend verifies the signature and expiry, writes
 `owner_address`, and nulls the nonce. One row, no separate table, no join.
 State is bound to the exact Profile and cannot be replayed against
 another profile.
-_Avoid_: auth challenge, signMessage payload.
+\_Avoid*: auth challenge, signMessage payload.
 
 **Treasury**:
 The Stellar address that receives the Platform Fee portion of each Donation.
@@ -193,14 +190,15 @@ _Avoid_: flag, filter state.
 
 **Leaderboard**:
 A public ranking of Donors by total donated amount. Two scopes:
+
 - **Global Leaderboard**: across all Creators. Top Donors by aggregate amount.
 - **Creator Leaderboard**: scoped to a single Creator (`/donate/[handle]` or
   dashboard). Top Donors to that Creator.
-Both are public and show Donor Name + total amount. Only Donations with a
-`user_id` (logged-in Donors) contribute; anonymous Donations are excluded from
-leaderboards. Computed from the `donations` table, not stored as a separate
-aggregate.
-_Avoid_: ranking, top donors (be specific about scope).
+  Both are public and show Donor Name + total amount. Only Donations with a
+  `user_id` (logged-in Donors) contribute; anonymous Donations are excluded from
+  leaderboards. Computed from the `donations` table, not stored as a separate
+  aggregate.
+  _Avoid_: ranking, top donors (be specific about scope).
 
 ## Boundaries
 
