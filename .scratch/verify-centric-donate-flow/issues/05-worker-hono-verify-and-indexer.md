@@ -1,6 +1,6 @@
 # 05 - Create apps/worker/ with Hono verify endpoint + indexer loop
 
-Status: Untriaged
+Status: done
 Role: backend
 
 ## Task

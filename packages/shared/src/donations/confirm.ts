@@ -1,29 +1,28 @@
 import * as StellarSdk from "@stellar/stellar-sdk";
-import { createHash } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { classifyMessage } from "./moderation";
 
 /**
- * `POST /api/donations/confirm` core logic, extracted so it can be tested as a
- * pure function of `(deps, input) -> { status, body }` without a Next.js
- * request context. The route handler in `app/api/donations/confirm/route.ts`
- * is a thin wrapper.
+ * `POST /verify` core logic, extracted so it can be tested as a pure function
+ * of `(deps, input) -> { status, body }` without an HTTP context. The Hono
+ * worker (`apps/worker/src/server.ts`) is a thin wrapper that polls this
+ * function until the tx is visible or the poll window expires.
  *
  * Fetches the tx from RPC by `tx_hash`, verifies it succeeded, extracts the
- * `DonationReceived` event, checks `event.donation_id_hash == sha256(donation_id)`,
- * extracts `donor_address` from the tx source account, upserts by `tx_hash` as
- * `confirmed`, and promotes an `indexed` row to `confirmed` (ADR-0003: confirm
- * is the fast path, the indexer is the reconcile path; both upsert by tx_hash).
+ * `DonationReceived` event, extracts `donor_address` from the tx source
+ * account, upserts by `tx_hash` as `confirmed`, and promotes an `indexed` row
+ * to `confirmed` (ADR-0005: verify is the fast path, the indexer is the
+ * reconcile path; both upsert by tx_hash).
  */
 
-/** RPC surface the confirm path depends on. */
+/** RPC surface the verify path depends on. */
 export interface RpcLike {
   getTransaction(
     hash: string,
   ): Promise<StellarSdk.rpc.Api.GetTransactionResponse>;
 }
 
-export interface ConfirmDeps {
+export interface VerifyDeps {
   /** Service-role client (bypasses RLS). Reads donations/profiles, upserts. */
   service: SupabaseClient;
   rpc: RpcLike;
@@ -31,22 +30,27 @@ export interface ConfirmDeps {
   contractId: string;
 }
 
-export interface ConfirmInput {
+export interface VerifyInput {
   tx_hash: string;
-  donation_id: string;
+  message?: string | null;
+  donor_name?: string;
 }
 
-export interface ConfirmSuccessBody {
+export interface VerifySuccessBody {
   status: "confirmed";
 }
 
-export interface ConfirmErrorBody {
+export interface VerifyPendingBody {
+  status: "pending";
+}
+
+export interface VerifyErrorBody {
   error: string;
 }
 
-export interface ConfirmResult {
+export interface VerifyResult {
   status: number;
-  body: ConfirmSuccessBody | ConfirmErrorBody;
+  body: VerifySuccessBody | VerifyPendingBody | VerifyErrorBody;
 }
 
 interface DonationRow {
@@ -58,11 +62,6 @@ interface DonationRow {
 
 interface ProfileRow {
   id: string;
-}
-
-/** sha256(text) as a `\x`-prefixed hex string (the bytea wire format). */
-function sha256ByteaHex(text: string): string {
-  return "\\x" + createHash("sha256").update(text, "utf8").digest("hex");
 }
 
 function nowIso(): string {
@@ -114,20 +113,24 @@ export function decodeDonationReceivedEvent(
  * Verify + confirm a donation. Errors:
  *   400 `invalid_body`
  *   404 `tx_not_found`
- *   409 `tx_failed` / `donation_event_not_found` / `donation_id_hash_mismatch`
- *        / `creator_not_found`
+ *   409 `tx_failed` / `donation_event_not_found` / `creator_not_found`
  *   500 `db_error` / `rpc_error`
+ *
+ * The caller (worker) is expected to poll this function on 404 until the poll
+ * window expires, then return 202 to the client.
  */
-export async function confirmDonation(
-  deps: ConfirmDeps,
-  input: ConfirmInput,
-): Promise<ConfirmResult> {
+export async function verifyDonation(
+  deps: VerifyDeps,
+  input: VerifyInput,
+): Promise<VerifyResult> {
   const { service, rpc } = deps;
   const txHash = typeof input.tx_hash === "string" ? input.tx_hash.trim() : "";
-  const donationId = typeof input.donation_id === "string" ? input.donation_id.trim() : "";
-  if (!txHash || !donationId) {
+  if (!txHash) {
     return { status: 400, body: { error: "invalid_body" } };
   }
+
+  const message = input.message ?? null;
+  const donorName = input.donor_name ?? null;
 
   let tx: StellarSdk.rpc.Api.GetTransactionResponse;
   try {
@@ -160,13 +163,6 @@ export async function confirmDonation(
     return { status: 409, body: { error: "donation_event_not_found" } };
   }
 
-  // Verify event.donation_id_hash == sha256(donation_id).
-  const eventHashBuf = Buffer.from(donationEvent.donation_id_hash as Uint8Array);
-  const expectedHash = createHash("sha256").update(donationId, "utf8").digest();
-  if (!eventHashBuf.equals(expectedHash)) {
-    return { status: 409, body: { error: "donation_id_hash_mismatch" } };
-  }
-
   // Extract donor_address from the tx source account.
   let donorAddress: string;
   try {
@@ -175,39 +171,54 @@ export async function confirmDonation(
     return { status: 409, body: { error: "donation_event_not_found" } };
   }
 
-  const donationIdHashBytea = sha256ByteaHex(donationId);
   const handleHashBytea =
     "\\x" +
     Buffer.from(donationEvent.creator_id_hash as Uint8Array).toString("hex");
   const token = donationEvent.token as string;
   const amount = (donationEvent.amount as bigint).toString();
 
-  // 1. Match the pending/confirmed row by donation_id_hash.
+  // 1. Match an existing row by tx_hash (the sole natural key per ADR-0005).
   const { data: existing, error: selErr } = await service
     .from("donations")
     .select("id,status,message,donor_name")
-    .eq("donation_id_hash", donationIdHashBytea)
+    .eq("tx_hash", txHash)
     .maybeSingle();
   if (selErr) return { status: 500, body: { error: "db_error" } };
   const existingRow = existing as DonationRow | null;
 
   if (existingRow) {
-    // Promote to confirmed (covers pending -> confirmed AND indexed -> confirmed).
-    // Re-run classifyMessage only when the row is still `pending`, so a
-    // prepare-time `auto_hidden` is not overwritten. For an `indexed` row the
-    // indexer already set moderation_status and we preserve it.
+    // Idempotent no-op on an already-confirmed row (ADR-0005).
+    if (existingRow.status === "confirmed") {
+      return { status: 200, body: { status: "confirmed" } };
+    }
+
+    // Promote indexed -> confirmed. Fill message/donor_name only when the
+    // existing row still has the indexer defaults (NULL message /
+    // "Anonymous" donor_name), so a verify that arrives after the indexer
+    // enriches the row with the client-supplied content.
     const update: Record<string, unknown> = {
       status: "confirmed",
-      tx_hash: txHash,
       donor_address: donorAddress,
       confirmed_at: nowIso(),
     };
-    if (existingRow.status === "pending") {
+    if (existingRow.message == null && message != null) {
+      update.message = message;
+    }
+    if (
+      (existingRow.donor_name == null || existingRow.donor_name === "Anonymous") &&
+      donorName != null
+    ) {
+      update.donor_name = donorName;
+    }
+    // Re-run classifyMessage when we are enriching content, so a banned
+    // keyword in the newly-arrived message/donor_name is caught.
+    if (update.message != null || update.donor_name != null) {
       update.moderation_status = classifyMessage(
-        existingRow.message,
-        existingRow.donor_name,
+        (update.message as string | null) ?? existingRow.message,
+        (update.donor_name as string | null) ?? existingRow.donor_name,
       );
     }
+
     const { error: updErr } = await service
       .from("donations")
       .update(update)
@@ -216,8 +227,8 @@ export async function confirmDonation(
     return { status: 200, body: { status: "confirmed" } };
   }
 
-  // 2. No existing row: the indexer has not seen it and prepare either was not
-  //    called or the row was removed. Insert a fresh confirmed row. Requires
+  // 2. No existing row: the indexer has not seen it and no prior verify fired.
+  //    Insert a fresh confirmed row with the client-supplied content. Requires
   //    the creator profile (matched by handle_hash).
   const { data: profile, error: profileErr } = await service
     .from("profiles")
@@ -228,18 +239,16 @@ export async function confirmDonation(
   if (!profile) return { status: 409, body: { error: "creator_not_found" } };
 
   const { error: insErr } = await service.from("donations").insert({
-    donation_id_hash: donationIdHashBytea,
     tx_hash: txHash,
     creator_profile_id: (profile as ProfileRow).id,
     handle_hash: handleHashBytea,
     token,
     amount,
-    donor_name: "Anonymous",
+    donor_name: donorName ?? "Anonymous",
     donor_address: donorAddress,
     status: "confirmed",
-    // No message is available from the on-chain event, so classifyMessage
-    // sees (null, "Anonymous") and returns 'visible'.
-    moderation_status: classifyMessage(null, "Anonymous"),
+    message: message,
+    moderation_status: classifyMessage(message, donorName ?? "Anonymous"),
     confirmed_at: nowIso(),
   });
   if (insErr) return { status: 500, body: { error: "db_error" } };

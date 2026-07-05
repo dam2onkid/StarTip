@@ -1,16 +1,15 @@
 // @vitest-environment node
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import * as StellarSdk from "@stellar/stellar-sdk";
-import { createHash } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 /**
- * lib/donations/confirm — `confirmDonation` HTTP contract.
+ * lib/donations/confirm — `verifyDonation` HTTP contract.
  *
  * Fetches the tx from RPC by `tx_hash`, verifies it succeeded, extracts the
- * `DonationReceived` event, checks `event.donation_id_hash == sha256(donation_id)`,
- * extracts `donor_address` from the tx source account, upserts by `tx_hash` as
- * `confirmed`, and promotes an `indexed` row to `confirmed`. Supabase is mocked
+ * `DonationReceived` event, extracts `donor_address` from the tx source
+ * account, upserts by `tx_hash` as `confirmed`, and promotes an `indexed` row
+ * to `confirmed` with client-supplied message/donor_name. Supabase is mocked
  * with a fluent recorder; the RPC returns a real `GetSuccessfulTransactionResponse`
  * built from XDR so the event-decoding and source-account extraction paths run
  * end-to-end.
@@ -19,8 +18,6 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 const CONTRACT_ID = "CCV2XK5LVOV2XK5LVOV2XK5LVOV2XK5LVOV2XK5LVOV2XK5LVOV2XMCW";
 const DONOR = StellarSdk.Keypair.random();
 const DONOR_ADDRESS = DONOR.publicKey();
-const DONATION_ID = "00000000-0000-0000-0000-0000000000d1";
-const DONATION_ID_HASH = createHash("sha256").update(DONATION_ID, "utf8").digest();
 const TX_HASH = "deadbeef".repeat(8);
 
 type Method = "select" | "insert" | "update" | "upsert" | "delete";
@@ -87,8 +84,8 @@ function findCall(calls: RecordedCall[], table: string, method: Method): Recorde
   return calls.find((c) => c.table === table && c.method === method);
 }
 
-/** Build a DonationReceived ContractEvent with the given donation_id_hash buffer. */
-function makeDonationReceivedEvent(donationIdHash: Buffer, token: string): StellarSdk.xdr.ContractEvent {
+/** Build a DonationReceived ContractEvent (7 fields, no donation_id_hash per ADR-0005). */
+function makeDonationReceivedEvent(token: string): StellarSdk.xdr.ContractEvent {
   const fields: Record<string, unknown> = {
     creator_id_hash: Buffer.alloc(32, 0xab),
     token,
@@ -97,7 +94,6 @@ function makeDonationReceivedEvent(donationIdHash: Buffer, token: string): Stell
     net_amount: BigInt("950000"),
     treasury_address: DONOR_ADDRESS,
     payout_address: DONOR_ADDRESS,
-    donation_id_hash: donationIdHash,
   };
   const entries = Object.entries(fields).map(([key, value]) => {
     let val: StellarSdk.xdr.ScVal;
@@ -173,7 +169,7 @@ function makeSuccessTxResponse(event: StellarSdk.xdr.ContractEvent, sourceKeypai
 }
 
 function makeFailedTxResponse() {
-  // confirmDonation only inspects `status` for a FAILED tx (it returns
+  // verifyDonation only inspects `status` for a FAILED tx (it returns
   // tx_failed before touching envelopeXdr / events), so a minimal shape is
   // enough to exercise the contract.
   return {
@@ -194,7 +190,7 @@ function makeFailedTxResponse() {
   } as unknown as StellarSdk.rpc.Api.GetFailedTransactionResponse;
 }
 
-describe("confirmDonation", () => {
+describe("verifyDonation", () => {
   let supabaseMock: ReturnType<typeof createMockSupabase>;
   let getTransaction: ReturnType<typeof vi.fn>;
 
@@ -206,14 +202,14 @@ describe("confirmDonation", () => {
   function deps() {
     return {
       service: supabaseMock.supabase as unknown as SupabaseClient,
-      rpc: { getTransaction } as unknown as import("./confirm").ConfirmDeps["rpc"],
+      rpc: { getTransaction } as unknown as import("./confirm").VerifyDeps["rpc"],
       contractId: CONTRACT_ID,
     };
   }
 
-  it("returns 400 invalid_body when tx_hash or donation_id is missing", async () => {
-    const { confirmDonation } = await import("./confirm");
-    const res = await confirmDonation(deps(), { tx_hash: "", donation_id: "" });
+  it("returns 400 invalid_body when tx_hash is missing", async () => {
+    const { verifyDonation } = await import("./confirm");
+    const res = await verifyDonation(deps(), { tx_hash: "" });
     expect(res.status).toBe(400);
     expect(res.body).toMatchObject({ error: "invalid_body" });
   });
@@ -227,16 +223,16 @@ describe("confirmDonation", () => {
       oldestLedger: 0,
       oldestLedgerCloseTime: 0,
     });
-    const { confirmDonation } = await import("./confirm");
-    const res = await confirmDonation(deps(), { tx_hash: TX_HASH, donation_id: DONATION_ID });
+    const { verifyDonation } = await import("./confirm");
+    const res = await verifyDonation(deps(), { tx_hash: TX_HASH });
     expect(res.status).toBe(404);
     expect(res.body).toMatchObject({ error: "tx_not_found" });
   });
 
   it("returns 409 tx_failed when the tx status is FAILED", async () => {
     getTransaction.mockResolvedValue(makeFailedTxResponse());
-    const { confirmDonation } = await import("./confirm");
-    const res = await confirmDonation(deps(), { tx_hash: TX_HASH, donation_id: DONATION_ID });
+    const { verifyDonation } = await import("./confirm");
+    const res = await verifyDonation(deps(), { tx_hash: TX_HASH });
     expect(res.status).toBe(409);
     expect(res.body).toMatchObject({ error: "tx_failed" });
   });
@@ -256,96 +252,124 @@ describe("confirmDonation", () => {
       ),
     });
     getTransaction.mockResolvedValue(makeSuccessTxResponse(otherEvent, DONOR));
-    const { confirmDonation } = await import("./confirm");
-    const res = await confirmDonation(deps(), { tx_hash: TX_HASH, donation_id: DONATION_ID });
+    const { verifyDonation } = await import("./confirm");
+    const res = await verifyDonation(deps(), { tx_hash: TX_HASH });
     expect(res.status).toBe(409);
     expect(res.body).toMatchObject({ error: "donation_event_not_found" });
   });
 
-  it("returns 409 donation_id_hash_mismatch when the event hash does not match sha256(donation_id)", async () => {
-    const wrongHash = createHash("sha256").update("other", "utf8").digest();
-    getTransaction.mockResolvedValue(makeSuccessTxResponse(makeDonationReceivedEvent(wrongHash, "USDC"), DONOR));
-    const { confirmDonation } = await import("./confirm");
-    const res = await confirmDonation(deps(), { tx_hash: TX_HASH, donation_id: DONATION_ID });
-    expect(res.status).toBe(409);
-    expect(res.body).toMatchObject({ error: "donation_id_hash_mismatch" });
-  });
-
-  it("upserts an existing pending row to confirmed with donor_address from the tx source", async () => {
-    supabaseMock.setResponder("donations:select", () => ({ data: { id: "d1", status: "pending" }, error: null }));
-    getTransaction.mockResolvedValue(
-      makeSuccessTxResponse(makeDonationReceivedEvent(DONATION_ID_HASH, "USDC"), DONOR),
-    );
-    const { confirmDonation } = await import("./confirm");
-    const res = await confirmDonation(deps(), { tx_hash: TX_HASH, donation_id: DONATION_ID });
-    expect(res.status).toBe(200);
-    expect(res.body).toMatchObject({ status: "confirmed" });
-
-    const update = findCall(supabaseMock.calls, "donations", "update");
-    expect(update).toBeDefined();
-    expect(update!.filters).toEqual({ id: "d1" });
-    expect(update!.payload).toMatchObject({
-      status: "confirmed",
-      tx_hash: TX_HASH,
-      donor_address: DONOR_ADDRESS,
-      confirmed_at: expect.any(String),
-    });
-  });
-
-  it("promotes an indexed row to confirmed", async () => {
-    supabaseMock.setResponder("donations:select", () => ({ data: { id: "d9", status: "indexed" }, error: null }));
-    getTransaction.mockResolvedValue(
-      makeSuccessTxResponse(makeDonationReceivedEvent(DONATION_ID_HASH, "USDC"), DONOR),
-    );
-    const { confirmDonation } = await import("./confirm");
-    const res = await confirmDonation(deps(), { tx_hash: TX_HASH, donation_id: DONATION_ID });
-    expect(res.status).toBe(200);
-    const update = findCall(supabaseMock.calls, "donations", "update");
-    expect((update!.payload as Record<string, unknown>).status).toBe("confirmed");
-    expect(update!.filters).toEqual({ id: "d9" });
-  });
-
-  it("inserts a new confirmed row when no existing donation matches the hash", async () => {
+  it("inserts a new confirmed row with message and donor_name from the input body when no existing row matches", async () => {
     supabaseMock.setResponder("donations:select", () => ({ data: null, error: null }));
     supabaseMock.setResponder("profiles:select", () => ({ data: { id: "p1" }, error: null }));
-    getTransaction.mockResolvedValue(
-      makeSuccessTxResponse(makeDonationReceivedEvent(DONATION_ID_HASH, "USDC"), DONOR),
-    );
-    const { confirmDonation } = await import("./confirm");
-    const res = await confirmDonation(deps(), { tx_hash: TX_HASH, donation_id: DONATION_ID });
+    getTransaction.mockResolvedValue(makeSuccessTxResponse(makeDonationReceivedEvent("USDC"), DONOR));
+    const { verifyDonation } = await import("./confirm");
+    const res = await verifyDonation(deps(), {
+      tx_hash: TX_HASH,
+      message: "Great work!",
+      donor_name: "Alice",
+    });
     expect(res.status).toBe(200);
     const insert = findCall(supabaseMock.calls, "donations", "insert");
     expect(insert).toBeDefined();
     expect(insert!.payload).toMatchObject({
-      donation_id_hash: "\\x" + DONATION_ID_HASH.toString("hex"),
       tx_hash: TX_HASH,
       creator_profile_id: "p1",
       donor_address: DONOR_ADDRESS,
+      donor_name: "Alice",
+      message: "Great work!",
       status: "confirmed",
+      confirmed_at: expect.any(String),
+    });
+    // No donation_id_hash in the payload (column dropped per ADR-0005).
+    expect((insert!.payload as Record<string, unknown>).donation_id_hash).toBeUndefined();
+  });
+
+  it("defaults donor_name to Anonymous and message to null when not provided in the input body", async () => {
+    supabaseMock.setResponder("donations:select", () => ({ data: null, error: null }));
+    supabaseMock.setResponder("profiles:select", () => ({ data: { id: "p1" }, error: null }));
+    getTransaction.mockResolvedValue(makeSuccessTxResponse(makeDonationReceivedEvent("USDC"), DONOR));
+    const { verifyDonation } = await import("./confirm");
+    const res = await verifyDonation(deps(), { tx_hash: TX_HASH });
+    expect(res.status).toBe(200);
+    const insert = findCall(supabaseMock.calls, "donations", "insert");
+    expect(insert!.payload).toMatchObject({
+      donor_name: "Anonymous",
+      message: null,
+    });
+  });
+
+  it("promotes an indexed row to confirmed, filling message and donor_name from the body when the row has indexer defaults", async () => {
+    supabaseMock.setResponder("donations:select", () => ({
+      data: { id: "d9", status: "indexed", message: null, donor_name: "Anonymous" },
+      error: null,
+    }));
+    getTransaction.mockResolvedValue(makeSuccessTxResponse(makeDonationReceivedEvent("USDC"), DONOR));
+    const { verifyDonation } = await import("./confirm");
+    const res = await verifyDonation(deps(), {
+      tx_hash: TX_HASH,
+      message: "Hello",
+      donor_name: "Bob",
+    });
+    expect(res.status).toBe(200);
+    const update = findCall(supabaseMock.calls, "donations", "update");
+    expect(update!.filters).toEqual({ id: "d9" });
+    expect(update!.payload).toMatchObject({
+      status: "confirmed",
+      donor_address: DONOR_ADDRESS,
+      message: "Hello",
+      donor_name: "Bob",
       confirmed_at: expect.any(String),
     });
   });
 
-  it("returns 409 creator_not_found when the event's handle_hash has no profile and no pending row", async () => {
+  it("does not overwrite message/donor_name on promote when the row already has non-default content", async () => {
+    supabaseMock.setResponder("donations:select", () => ({
+      data: { id: "d9", status: "indexed", message: "existing", donor_name: "ExistingName" },
+      error: null,
+    }));
+    getTransaction.mockResolvedValue(makeSuccessTxResponse(makeDonationReceivedEvent("USDC"), DONOR));
+    const { verifyDonation } = await import("./confirm");
+    const res = await verifyDonation(deps(), {
+      tx_hash: TX_HASH,
+      message: "new",
+      donor_name: "NewName",
+    });
+    expect(res.status).toBe(200);
+    const update = findCall(supabaseMock.calls, "donations", "update");
+    expect((update!.payload as Record<string, unknown>).message).toBeUndefined();
+    expect((update!.payload as Record<string, unknown>).donor_name).toBeUndefined();
+  });
+
+  it("is an idempotent no-op (no update) when the row is already confirmed", async () => {
+    supabaseMock.setResponder("donations:select", () => ({
+      data: { id: "d1", status: "confirmed", message: "hi", donor_name: "Pat" },
+      error: null,
+    }));
+    getTransaction.mockResolvedValue(makeSuccessTxResponse(makeDonationReceivedEvent("USDC"), DONOR));
+    const { verifyDonation } = await import("./confirm");
+    const res = await verifyDonation(deps(), { tx_hash: TX_HASH });
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ status: "confirmed" });
+    expect(findCall(supabaseMock.calls, "donations", "update")).toBeUndefined();
+    expect(findCall(supabaseMock.calls, "donations", "insert")).toBeUndefined();
+  });
+
+  it("returns 409 creator_not_found when the event's handle_hash has no profile and no existing row", async () => {
     supabaseMock.setResponder("donations:select", () => ({ data: null, error: null }));
     supabaseMock.setResponder("profiles:select", () => ({ data: null, error: null }));
-    getTransaction.mockResolvedValue(
-      makeSuccessTxResponse(makeDonationReceivedEvent(DONATION_ID_HASH, "USDC"), DONOR),
-    );
-    const { confirmDonation } = await import("./confirm");
-    const res = await confirmDonation(deps(), { tx_hash: TX_HASH, donation_id: DONATION_ID });
+    getTransaction.mockResolvedValue(makeSuccessTxResponse(makeDonationReceivedEvent("USDC"), DONOR));
+    const { verifyDonation } = await import("./confirm");
+    const res = await verifyDonation(deps(), { tx_hash: TX_HASH });
     expect(res.status).toBe(409);
     expect(res.body).toMatchObject({ error: "creator_not_found" });
   });
 
   it("returns 500 db_error when the upsert fails", async () => {
-    supabaseMock.setResponder("donations:select", () => ({ data: { id: "d1", status: "pending" }, error: null }));
+    supabaseMock.setResponder("donations:select", () => ({ data: { id: "d9", status: "indexed" }, error: null }));
     supabaseMock.setResponder("donations:update", () => ({ data: null, error: { message: "boom" } }));
-    getTransaction.mockResolvedValue(
-      makeSuccessTxResponse(makeDonationReceivedEvent(DONATION_ID_HASH, "USDC"), DONOR),
-    );
-    const { confirmDonation } = await import("./confirm");
-    const res = await confirmDonation(deps(), { tx_hash: TX_HASH, donation_id: DONATION_ID });
+    getTransaction.mockResolvedValue(makeSuccessTxResponse(makeDonationReceivedEvent("USDC"), DONOR));
+    const { verifyDonation } = await import("./confirm");
+    const res = await verifyDonation(deps(), { tx_hash: TX_HASH });
     expect(res.status).toBe(500);
     expect(res.body).toMatchObject({ error: "db_error" });
   });
@@ -353,42 +377,54 @@ describe("confirmDonation", () => {
   it("sets moderation_status = 'visible' on the no-existing-row insert via classifyMessage", async () => {
     supabaseMock.setResponder("donations:select", () => ({ data: null, error: null }));
     supabaseMock.setResponder("profiles:select", () => ({ data: { id: "p1" }, error: null }));
-    getTransaction.mockResolvedValue(
-      makeSuccessTxResponse(makeDonationReceivedEvent(DONATION_ID_HASH, "USDC"), DONOR),
-    );
-    const { confirmDonation } = await import("./confirm");
-    const res = await confirmDonation(deps(), { tx_hash: TX_HASH, donation_id: DONATION_ID });
+    getTransaction.mockResolvedValue(makeSuccessTxResponse(makeDonationReceivedEvent("USDC"), DONOR));
+    const { verifyDonation } = await import("./confirm");
+    const res = await verifyDonation(deps(), { tx_hash: TX_HASH });
     expect(res.status).toBe(200);
     const insert = findCall(supabaseMock.calls, "donations", "insert");
     expect((insert!.payload as Record<string, unknown>).moderation_status).toBe("visible");
   });
 
-  it("re-runs classifyMessage on the promote path when the existing row is pending, setting auto_hidden for a banned keyword", async () => {
+  it("sets moderation_status = 'auto_hidden' on insert when the message contains a banned keyword", async () => {
+    const { BANNED_KEYWORDS } = await import("./moderation");
+    supabaseMock.setResponder("donations:select", () => ({ data: null, error: null }));
+    supabaseMock.setResponder("profiles:select", () => ({ data: { id: "p1" }, error: null }));
+    getTransaction.mockResolvedValue(makeSuccessTxResponse(makeDonationReceivedEvent("USDC"), DONOR));
+    const { verifyDonation } = await import("./confirm");
+    const res = await verifyDonation(deps(), {
+      tx_hash: TX_HASH,
+      message: `hey ${BANNED_KEYWORDS[0]}`,
+    });
+    expect(res.status).toBe(200);
+    const insert = findCall(supabaseMock.calls, "donations", "insert");
+    expect((insert!.payload as Record<string, unknown>).moderation_status).toBe("auto_hidden");
+  });
+
+  it("re-runs classifyMessage on the promote path when enriching with a banned keyword message", async () => {
     const { BANNED_KEYWORDS } = await import("./moderation");
     supabaseMock.setResponder("donations:select", () => ({
-      data: { id: "d1", status: "pending", message: `hey ${BANNED_KEYWORDS[0]}`, donor_name: "Pat" },
+      data: { id: "d9", status: "indexed", message: null, donor_name: "Anonymous" },
       error: null,
     }));
-    getTransaction.mockResolvedValue(
-      makeSuccessTxResponse(makeDonationReceivedEvent(DONATION_ID_HASH, "USDC"), DONOR),
-    );
-    const { confirmDonation } = await import("./confirm");
-    const res = await confirmDonation(deps(), { tx_hash: TX_HASH, donation_id: DONATION_ID });
+    getTransaction.mockResolvedValue(makeSuccessTxResponse(makeDonationReceivedEvent("USDC"), DONOR));
+    const { verifyDonation } = await import("./confirm");
+    const res = await verifyDonation(deps(), {
+      tx_hash: TX_HASH,
+      message: `spam ${BANNED_KEYWORDS[0]}`,
+    });
     expect(res.status).toBe(200);
     const update = findCall(supabaseMock.calls, "donations", "update");
     expect((update!.payload as Record<string, unknown>).moderation_status).toBe("auto_hidden");
   });
 
-  it("does not overwrite moderation_status on the promote path when the existing row is not pending", async () => {
+  it("does not set moderation_status on the promote path when no content is enriched", async () => {
     supabaseMock.setResponder("donations:select", () => ({
-      data: { id: "d9", status: "indexed", message: "clean", donor_name: "Pat" },
+      data: { id: "d9", status: "indexed", message: "existing", donor_name: "ExistingName" },
       error: null,
     }));
-    getTransaction.mockResolvedValue(
-      makeSuccessTxResponse(makeDonationReceivedEvent(DONATION_ID_HASH, "USDC"), DONOR),
-    );
-    const { confirmDonation } = await import("./confirm");
-    const res = await confirmDonation(deps(), { tx_hash: TX_HASH, donation_id: DONATION_ID });
+    getTransaction.mockResolvedValue(makeSuccessTxResponse(makeDonationReceivedEvent("USDC"), DONOR));
+    const { verifyDonation } = await import("./confirm");
+    const res = await verifyDonation(deps(), { tx_hash: TX_HASH });
     expect(res.status).toBe(200);
     const update = findCall(supabaseMock.calls, "donations", "update");
     expect((update!.payload as Record<string, unknown>).moderation_status).toBeUndefined();

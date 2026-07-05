@@ -7,7 +7,6 @@ import type { TokenMetadata } from "../stellar/token";
 const CONTRACT_ID = "CCV2XK5LVOV2XK5LVOV2XK5LVOV2XK5LVOV2XK5LVOV2XK5LVOV2XMCW";
 const CREATOR_G = "GDF6CFYOXQTZVSLLK2RTDAUZ6N2E72IL4K2L34HXZK32KBR4NLVPLUVA";
 const HANDLE_HASH = Buffer.alloc(32, 0xab);
-const DONATION_ID_HASH = Buffer.alloc(32, 0xcd);
 
 /** bytea values travel over PostgREST as `\x`-prefixed hex. */
 function toByteaHex(buf: Buffer): string {
@@ -15,7 +14,6 @@ function toByteaHex(buf: Buffer): string {
 }
 
 const HANDLE_HASH_HEX = toByteaHex(HANDLE_HASH);
-const DONATION_ID_HASH_HEX = toByteaHex(DONATION_ID_HASH);
 
 /**
  * Build an Api.EventResponse for a DonationRouter contract event. The topic is
@@ -256,10 +254,10 @@ describe("indexer/dispatch processPoll", () => {
     expect(req.cursor).toBeUndefined();
   });
 
-  it("DonationReceived: updates an existing pending row to indexed", async () => {
+  it("DonationReceived: updates an existing indexed row in place (idempotent tx_hash + indexed_at, no status change)", async () => {
     const { supabase, calls, setResponder } = createMockSupabase();
     setResponder("indexer_state:select", () => ({ data: { id: 1, last_ledger: 100, last_cursor: "cur" }, error: null }));
-    setResponder("donations:select", () => ({ data: { id: "d1", status: "pending" }, error: null }));
+    setResponder("donations:select", () => ({ data: { id: "d1", status: "indexed" }, error: null }));
 
     const event = makeEvent("DonationReceived", {
       creator_id_hash: HANDLE_HASH,
@@ -269,7 +267,6 @@ describe("indexer/dispatch processPoll", () => {
       net_amount: BigInt("950000"),
       treasury_address: CREATOR_G,
       payout_address: CREATOR_G,
-      donation_id_hash: DONATION_ID_HASH,
     });
     const rpc = createMockRpc([event]);
     const { processPoll } = await import("./dispatch");
@@ -280,15 +277,15 @@ describe("indexer/dispatch processPoll", () => {
     expect(update!.filters).toEqual({ id: "d1" });
     expect(update!.payload).toMatchObject({
       tx_hash: "txhash-1",
-      status: "indexed",
       indexed_at: expect.any(String),
     });
+    expect((update!.payload as Record<string, unknown>).status).toBeUndefined();
   });
 
-  it("DonationReceived: inserts a new indexed row when no pending row exists and the creator profile exists", async () => {
+  it("DonationReceived: inserts a new indexed row when no existing row matches by tx_hash and the creator profile exists", async () => {
     const { supabase, calls, setResponder } = createMockSupabase();
     setResponder("indexer_state:select", () => ({ data: { id: 1, last_ledger: 100, last_cursor: "cur" }, error: null }));
-    // First select by donation_id_hash returns null, then by tx_hash returns null.
+    // No existing row by tx_hash.
     setResponder("donations:select", () => ({ data: null, error: null }));
     setResponder("profiles:select", () => ({ data: { id: "p1", owner_address: CREATOR_G }, error: null }));
 
@@ -300,7 +297,6 @@ describe("indexer/dispatch processPoll", () => {
       net_amount: BigInt("950000"),
       treasury_address: CREATOR_G,
       payout_address: CREATOR_G,
-      donation_id_hash: DONATION_ID_HASH,
     });
     const rpc = createMockRpc([event]);
     const { processPoll } = await import("./dispatch");
@@ -309,7 +305,6 @@ describe("indexer/dispatch processPoll", () => {
     const insert = findCall(calls, "donations", "insert");
     expect(insert).toBeDefined();
     expect(insert!.payload).toMatchObject({
-      donation_id_hash: DONATION_ID_HASH_HEX,
       tx_hash: "txhash-1",
       creator_profile_id: "p1",
       handle_hash: HANDLE_HASH_HEX,
@@ -324,7 +319,7 @@ describe("indexer/dispatch processPoll", () => {
     expect((insert!.payload as Record<string, unknown>).moderation_status).toBe("visible");
   });
 
-  it("DonationReceived: skips when no pending row and no matching creator profile (orphan)", async () => {
+  it("DonationReceived: skips when no existing row and no matching creator profile (orphan)", async () => {
     const { supabase, calls, setResponder } = createMockSupabase();
     setResponder("indexer_state:select", () => ({ data: { id: 1, last_ledger: 100, last_cursor: "cur" }, error: null }));
     setResponder("donations:select", () => ({ data: null, error: null }));
@@ -338,7 +333,6 @@ describe("indexer/dispatch processPoll", () => {
       net_amount: BigInt("1000000"),
       treasury_address: CREATOR_G,
       payout_address: CREATOR_G,
-      donation_id_hash: DONATION_ID_HASH,
     });
     const rpc = createMockRpc([event]);
     const { processPoll } = await import("./dispatch");
@@ -361,7 +355,6 @@ describe("indexer/dispatch processPoll", () => {
       net_amount: BigInt("1000000"),
       treasury_address: CREATOR_G,
       payout_address: CREATOR_G,
-      donation_id_hash: DONATION_ID_HASH,
     });
     const rpc = createMockRpc([event]);
     const { processPoll } = await import("./dispatch");
@@ -386,7 +379,6 @@ describe("indexer/dispatch processPoll", () => {
       net_amount: BigInt("1000000"),
       treasury_address: CREATOR_G,
       payout_address: CREATOR_G,
-      donation_id_hash: DONATION_ID_HASH,
     });
     const rpc = createMockRpc([event]);
     const { processPoll } = await import("./dispatch");

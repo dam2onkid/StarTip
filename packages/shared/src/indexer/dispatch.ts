@@ -114,44 +114,34 @@ async function dispatchDonationReceived(
   event: StellarSdk.rpc.Api.EventResponse,
   value: Record<string, unknown>,
 ): Promise<void> {
-  const donationIdHash = toByteaHex(value.donation_id_hash as Buffer);
   const handleHash = toByteaHex(value.creator_id_hash as Buffer);
   const txHash = event.txHash;
   const amount = (value.amount as bigint).toString();
 
-  // 1. Match the pending row by donation_id_hash (the prepare-created row).
-  let row = (
+  // Match by tx_hash (the sole natural key per ADR-0005). The verify path may
+  // have already inserted a confirmed row; the indexer reconciles missed
+  // donations.
+  const row = (
     await supabase
       .from("donations")
       .select("id,status")
-      .eq("donation_id_hash", donationIdHash)
+      .eq("tx_hash", txHash)
       .maybeSingle()
   ).data as DonationRow | null;
 
-  // 2. Fall back to tx_hash (the confirm path may have inserted first).
-  if (!row) {
-    row = (
-      await supabase
-        .from("donations")
-        .select("id,status")
-        .eq("tx_hash", txHash)
-        .maybeSingle()
-    ).data as DonationRow | null;
-  }
-
   if (row) {
-    // Update in place. Only promote pending -> indexed; never downgrade
-    // confirmed -> indexed. Re-writing tx_hash/indexed_at is idempotent.
+    // Update in place. Never downgrade confirmed -> indexed (ADR-0005: the
+    // verify path sets confirmed; the indexer only reconciles). Re-writing
+    // tx_hash/indexed_at is idempotent.
     const patch: Record<string, unknown> = {
       tx_hash: txHash,
       indexed_at: nowIso(),
     };
-    if (row.status === "pending") patch.status = "indexed";
     await supabase.from("donations").update(patch).eq("id", row.id);
     return;
   }
 
-  // 3. No existing row: insert an indexed row. Requires the creator profile.
+  // No existing row: insert an indexed row. Requires the creator profile.
   const profile = (
     await supabase
       .from("profiles")
@@ -165,7 +155,6 @@ async function dispatchDonationReceived(
   }
 
   await supabase.from("donations").insert({
-    donation_id_hash: donationIdHash,
     tx_hash: txHash,
     creator_profile_id: profile.id,
     handle_hash: handleHash,
