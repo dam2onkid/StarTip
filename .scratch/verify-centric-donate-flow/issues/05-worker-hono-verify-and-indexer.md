@@ -1,6 +1,6 @@
 # 05 - Create apps/worker/ with Hono verify endpoint + indexer loop
 
-Status: Untriaged
+Status: ready-for-agent
 Role: backend
 
 ## Task
@@ -169,3 +169,10 @@ process.on("SIGINT", () => { stopIndexer(); process.exit(0); });
   worker calls. Coordinate: the worker should call the new verify function
   signature from the start, so issue 06's shared-side refactor and issue 05
   land together or 06 first.
+
+## Comments
+
+- Review (2026-07-05): tightly coupled to issue 06's `confirm.ts` ->
+  `verify` signature refactor as noted above — recommend running both in
+  the same agent session rather than as independent parallel tasks, to
+  avoid a broken intermediate state. Triaged `ready-for-agent`.

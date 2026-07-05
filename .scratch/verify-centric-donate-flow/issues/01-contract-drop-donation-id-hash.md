@@ -1,6 +1,6 @@
 # 01 - Contract: drop donation_id_hash from donate() + event + tests + integration.sh
 
-Status: Untriaged
+Status: ready-for-agent
 Role: backend
 
 ## Task
@@ -51,3 +51,9 @@ Remove `donation_id_hash` from the `DonationRouter` contract per ADR-0005.
 
 - None. This is the first issue; everything else depends on the new contract
   shape.
+
+## Comments
+
+- Review (2026-07-05): verified against current `contracts/donation-router/src/lib.rs`
+  — the described `donate()` signature, doc comment, and event struct match
+  the live source exactly. Triaged `ready-for-agent`.

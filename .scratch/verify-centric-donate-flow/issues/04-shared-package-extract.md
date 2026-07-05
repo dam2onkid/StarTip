@@ -1,6 +1,6 @@
 # 04 - Extract packages/shared/ from apps/web/src/lib/
 
-Status: Untriaged
+Status: ready-for-agent
 Role: backend
 
 ## Task
@@ -135,3 +135,15 @@ Browser-only or Next.js-context-dependent code:
 ## Dependencies
 
 - Issue 03 (Turborepo setup) must land first.
+
+## Comments
+
+- Review (2026-07-05): the "Files to update" list under `## Update apps/web/
+  imports` is not exhaustive. Grepping the current `web/src` for imports of
+  `@/lib/donations/confirm`, `@/lib/indexer/dispatch`, `@/lib/stellar/server`,
+  `@/lib/stellar/token`, and `@/lib/supabase/service` turns up ~20 call sites
+  (dashboard, overlay-settings route, creators routes, wallet/link routes,
+  goal route, reconcile route, etc.), not just the 2 named files. The issue's
+  own instruction to grep before updating is correct and sufficient — flagging
+  this so whoever picks it up actually runs the grep rather than trusting the
+  short bullet list. Triaged `ready-for-agent` on that basis.

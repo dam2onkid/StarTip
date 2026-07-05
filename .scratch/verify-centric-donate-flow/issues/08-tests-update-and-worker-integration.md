@@ -1,6 +1,6 @@
 # 08 - Tests: update unit, E2E, add worker integration script
 
-Status: Untriaged
+Status: ready-for-agent
 Role: fullstack
 
 ## Task
@@ -139,3 +139,9 @@ Skip if `SKIP_INTEGRATION=1` (for CI that cannot reach testnet).
 ## Dependencies
 
 - Issues 01-07 must land first. This issue is the verification gate.
+
+## Comments
+
+- Review (2026-07-05): well-scoped as the final gate. Triaged
+  `ready-for-agent`, but it is blocked until 01-07 land — do not dispatch
+  before then.

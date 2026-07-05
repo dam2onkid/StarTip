@@ -1,6 +1,6 @@
 # 02 - DB migration: drop donation_id_hash, add status CHECK
 
-Status: Untriaged
+Status: ready-for-agent
 Role: backend
 
 ## Task
@@ -23,7 +23,7 @@ delete from public.donations where status = 'pending';
 
 -- Drop the index and column.
 drop index if exists public.donations_donation_id_hash_idx;
-alter table public.donations drop column if exists public.donations.donation_id_hash;
+alter table public.donations drop column if exists donation_id_hash;
 
 -- Constrain status to the two valid values.
 alter table public.donations
@@ -51,3 +51,11 @@ additive.
 
 - Issue 01 (contract change) should land first or simultaneously, since the
   contract no longer emits `donation_id_hash` in events.
+
+## Comments
+
+- Review (2026-07-05): the original SQL snippet used
+  `drop column if exists public.donations.donation_id_hash`, which is invalid
+  syntax (`drop column if exists` does not take a schema-qualified column
+  reference). Fixed to `drop column if exists donation_id_hash`. Triaged
+  `ready-for-agent`: self-contained, precise diff, clear verification steps.

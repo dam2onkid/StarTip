@@ -1,6 +1,6 @@
 # 03 - Turborepo setup, move web/ to apps/web/, add contracts/ shim
 
-Status: Untriaged
+Status: ready-for-agent
 Role: infra
 
 ## Task
@@ -119,3 +119,9 @@ packages:
 ## Dependencies
 
 - None. This is foundational; issues 04, 05, 06 depend on this.
+
+## Comments
+
+- Review (2026-07-05): `pnpm-workspace.yaml` currently only lists `web`, so
+  this is a clean starting point. No conflicts found. Triaged
+  `ready-for-agent`.

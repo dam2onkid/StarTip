@@ -1,6 +1,6 @@
 # 06 - Web: verify proxy route, update donate-form, remove prepare route, refactor shared confirm
 
-Status: Untriaged
+Status: ready-for-agent
 Role: fullstack
 
 ## Task
@@ -111,11 +111,13 @@ async function handleSubmit(e: React.FormEvent) {
   try {
     // 1. Build + sign + submit donate() on-chain.
     //    handle_hash = sha256(handle), contract_id from env, no donation_id_hash.
-    const handleHash = sha256(handle); // hex string
+    //    Use the existing browser-safe helper (StellarSdk.hash under the
+    //    hood) instead of node:crypto — see @/lib/creators/handle-shared.
+    const handleHash = handleHashBuffer(handle); // Buffer
     const result = await donateOnChain(
       {
         donorAddress: walletAddress,
-        handleHash: Buffer.from(handleHash, "hex"),
+        handleHash,
         token: selectedToken,
         amount: BigInt(rawAmount),
         // donationIdHash removed per ADR-0005
@@ -154,7 +156,9 @@ async function handleSubmit(e: React.FormEvent) {
 Key changes:
 - Remove the `fetch("/api/donations/prepare", ...)` block.
 - Remove `prepared.donation_id_hash` from `donateOnChain` args.
-- Compute `handleHash = sha256(handle)` locally (no server round-trip).
+- Compute `handleHash` locally via `handleHashBuffer(handle)` from
+  `@/lib/creators/handle-shared` (no server round-trip). Do not reach for
+  `node:crypto` — that helper already exists and is browser-safe.
 - Replace `fetch("/api/donations/confirm", ...)` with
   `fetch("/api/donations/verify", ...)`.
 - Body: `{ tx_hash, message, donor_name }` (no `donation_id`).
@@ -222,3 +226,14 @@ endpoint.
 - Issue 04 (shared package) must land first.
 - Issue 05 (worker) must be running for the proxy to have a target.
 - Issue 01 (contract change) must land so `donate()` signature matches.
+
+## Comments
+
+- Review (2026-07-05): the original pseudocode called an undefined
+  `sha256(handle)` for the client-side handle hash. Fixed to reference the
+  existing `handleHashBuffer` / `handleHashHex` helpers in
+  `@/lib/creators/handle-shared.ts`, which were already built to be
+  browser-safe (`StellarSdk.hash`, byte-identical to `node:crypto`'s
+  sha256) for this exact purpose in the onboarding register flow. Tightly
+  coupled to issue 05 (worker calls the same refactored `confirm.ts` ->
+  `verify` function) — recommend landing together. Triaged `ready-for-agent`.
