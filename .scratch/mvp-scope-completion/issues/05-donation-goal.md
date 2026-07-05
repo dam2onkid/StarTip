@@ -1,4 +1,4 @@
-Status: ready-for-agent
+Status: done
 
 ## Parent
 
@@ -37,26 +37,26 @@ a progress bar from confirmed/indexed visible donations in the goal's token.
 
 ## Acceptance criteria
 
-- [ ] The `donation_goals` table migration exists with the specified columns.
-- [ ] RLS allows public SELECT and owner INSERT/UPDATE/DELETE; non-owner
+- [x] The `donation_goals` table migration exists with the specified columns.
+- [x] RLS allows public SELECT and owner INSERT/UPDATE/DELETE; non-owner
       writes are denied.
-- [ ] `goalProgress` sums raw `amount` with `BigInt` for the goal's token,
+- [x] `goalProgress` sums raw `amount` with `BigInt` for the goal's token,
       handles zero donations, and computes `pct` clamped to 0-100.
-- [ ] `GET /api/creators/[handle]/goal` returns the goal or `null`.
-- [ ] `PUT /api/creators/[handle]/goal` (authed owner) upserts the row;
+- [x] `GET /api/creators/[handle]/goal` returns the goal or `null`.
+- [x] `PUT /api/creators/[handle]/goal` (authed owner) upserts the row;
       `target_amount = 0` deletes the row; non-owner PUT is rejected.
-- [ ] The dashboard active Creator panel has a Donation Goal card that sets
+- [x] The dashboard active Creator panel has a Donation Goal card that sets
       the target amount + token, shows progress, and clears the goal.
-- [ ] The public Creator profile renders a progress bar from
+- [x] The public Creator profile renders a progress bar from
       confirmed/indexed visible donations in the goal's token.
-- [ ] `supabase/tests/donation_goals_rls.test.sql` covers public SELECT,
+- [x] `supabase/tests/donation_goals_rls.test.sql` covers public SELECT,
       owner writes, non-owner denied.
-- [ ] vitest covers `goalProgress`.
-- [ ] `app/api/creators/[handle]/goal/route.test.ts` covers public GET, owner
+- [x] vitest covers `goalProgress`.
+- [x] `app/api/creators/[handle]/goal/route.test.ts` covers public GET, owner
       PUT, non-owner PUT 403, `target_amount = 0` deletes.
-- [ ] `creator-tab.test.tsx` is extended to assert the Donation Goal card
+- [x] `creator-tab.test.tsx` is extended to assert the Donation Goal card
       renders progress.
-- [ ] `pnpm build`, `pnpm typecheck`, and `pnpm test` pass.
+- [x] `pnpm build`, `pnpm typecheck`, and `pnpm test` pass.
 
 ## Blocked by
 

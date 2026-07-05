@@ -1,4 +1,4 @@
-Status: ready-for-agent
+Status: done
 
 ## Parent
 
@@ -44,30 +44,61 @@ initial server-rendered donations).
 
 ## Acceptance criteria
 
-- [ ] The `overlay_settings` table migration exists with the specified
+- [x] The `overlay_settings` table migration exists with the specified
       columns and defaults.
-- [ ] RLS allows public SELECT and owner UPDATE; non-owner UPDATE is denied.
-- [ ] `shouldShowAlert` returns `false` for a donation below `min_amount`
+- [x] RLS allows public SELECT and owner UPDATE; non-owner UPDATE is denied.
+- [x] `shouldShowAlert` returns `false` for a donation below `min_amount`
       (in raw units) and `true` otherwise.
-- [ ] `alertDurationMs` returns the configured value or the 6000 default.
-- [ ] `GET /api/overlay-settings?handle=<handle>` returns the Creator's
+- [x] `alertDurationMs` returns the configured value or the 6000 default.
+- [x] `GET /api/overlay-settings?handle=<handle>` returns the Creator's
       settings or defaults when no row exists.
-- [ ] `PUT /api/overlay-settings` (authed owner) upserts the row; non-owner
+- [x] `PUT /api/overlay-settings` (authed owner) upserts the row; non-owner
       PUT is rejected.
-- [ ] The dashboard active Creator panel has an Overlay Settings card that
+- [x] The dashboard active Creator panel has an Overlay Settings card that
       edits and saves `alert_duration_ms`, `min_amount`, `sound_enabled`.
-- [ ] The Overlay auto-dismisses each alert after `alert_duration_ms`.
-- [ ] The Overlay does not render donations below `min_amount`.
-- [ ] The Overlay plays a sound on Realtime insert when `sound_enabled` is
+- [x] The Overlay auto-dismisses each alert after `alert_duration_ms`.
+- [x] The Overlay does not render donations below `min_amount`.
+- [x] The Overlay plays a sound on Realtime insert when `sound_enabled` is
       true, and no sound when false.
-- [ ] `supabase/tests/overlay_settings_rls.test.sql` covers public SELECT,
+- [x] `supabase/tests/overlay_settings_rls.test.sql` covers public SELECT,
       owner UPDATE, non-owner UPDATE denied.
-- [ ] vitest covers `shouldShowAlert` and `alertDurationMs`.
-- [ ] `overlay-alerts.test.tsx` is extended (fake timers) to assert
+- [x] vitest covers `shouldShowAlert` and `alertDurationMs`.
+- [x] `overlay-alerts.test.tsx` is extended (fake timers) to assert
       auto-dismiss, min_amount suppression, and sound gating.
-- [ ] `app/api/overlay-settings/route.test.ts` covers public GET, owner PUT,
+- [x] `app/api/overlay-settings/route.test.ts` covers public GET, owner PUT,
       non-owner PUT 403.
-- [ ] `pnpm build`, `pnpm typecheck`, and `pnpm test` pass.
+- [x] `pnpm build`, `pnpm typecheck`, and `pnpm test` pass.
+
+## Implementation
+
+Shipped in commit `26b9ba5` (`feat(overlay): per-creator overlay settings
+(duration, min amount, sound)`).
+
+- `supabase/migrations/20260705000000_overlay_settings.sql` — table + RLS
+  (public SELECT, owner INSERT/UPDATE via `profiles.user_id = auth.uid()`
+  join, no DELETE) + column grants + `updated_at` trigger.
+- `supabase/tests/overlay_settings_rls.test.sql` — 17 pgTAP assertions.
+- `src/lib/overlay/settings.ts` — `shouldShowAlert` (BigInt raw-unit
+  comparison, inclusive boundary) + `alertDurationMs` (clamped 1000-60000,
+  default 6000). 12 vitest cases.
+- `src/app/api/overlay-settings/route.ts` — GET (public, returns defaults
+  when no row) + PUT (authed, validates 1000-60000 / >=0 / boolean, upserts
+  via session client so owner-write RLS applies). 15 vitest cases.
+- `src/app/(public)/overlay/[handle]/page.tsx` — loads the settings row +
+  token `decimals`, resolves `min_amount` display->raw via `displayToRaw()`,
+  passes `OverlaySettings` to the client.
+- `src/app/(public)/overlay/[handle]/overlay-alerts.tsx` — applies
+  `shouldShowAlert` to initial + Realtime donations, auto-dismisses each
+  `AlertCard` after `alertDurationMs`, plays `/alert.mp3` on Realtime insert
+  when `sound_enabled`. 8 new vitest cases (fake timers + Audio mock).
+- `src/app/(auth)/dashboard/creator-tab.tsx` — `OverlaySettingsCard` in the
+  Controls section (loads on mount, edits, PUTs on save). 3 new vitest cases.
+- `tests/fixtures/mock-supabase.mjs` — `overlay_settings` PostgREST handler
+  for E2E.
+- `public/alert.mp3` — short bundled alert sound.
+
+Verification: typecheck clean, 404 vitest tests pass (51 files), build
+succeeds, creator-tab Playwright E2E 8/8 pass.
 
 ## Blocked by
 
