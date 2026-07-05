@@ -13,7 +13,7 @@
 #   4. Deploys the contract with constructor args (atomic init, CAP-0058).
 #   5. Computes the native XLM SAC contract ID and calls `add_token`.
 #   6. Calls `register_creator` with a Creator ID Hash and Payout Address.
-#   7. Calls `donate` with the allowed token, an amount, and a Donation ID Hash.
+#   7. Calls `donate` with the allowed token and an amount.
 #   8. Asserts the `DonationReceived` event is visible via `stellar events`
 #      and carries the expected fields.
 #
@@ -40,12 +40,10 @@ MAX_FEE_BPS=500    # 5% immutable cap
 # 100 XLM in stroops (1 XLM = 10_000_000 stroops). Friendbot funds 10_000 XLM
 # on the local network, so the donor has plenty of headroom.
 DONATION_AMOUNT=1000000000
-# Fixed 32-byte Creator ID Hash and Donation ID Hash. The contract keys
-# Creators by sha256(handle) and dedups Donations off-chain by
-# donation_id_hash; this test uses fixed values so the assertion is on the
-# end-to-end path, not hash derivation.
+# Fixed 32-byte Creator ID Hash. The contract keys Creators by sha256(handle);
+# this test uses a fixed value so the assertion is on the end-to-end path,
+# not hash derivation.
 CREATOR_ID_HASH="0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20"
-DONATION_ID_HASH="2122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f40"
 
 # Locate the contracts workspace (this script lives in
 # contracts/donation-router/tests/).
@@ -215,8 +213,7 @@ stellar contract invoke \
   --donor "$DONOR_G" \
   --creator_id_hash "$CREATOR_ID_HASH" \
   --token "$SAC_ID" \
-  --amount "$DONATION_AMOUNT" \
-  --donation_id_hash "$DONATION_ID_HASH"
+  --amount "$DONATION_AMOUNT"
 
 # ---------------------------------------------------------------------------
 # 8. Assert the DonationReceived event is visible and carries expected fields
@@ -284,7 +281,6 @@ assert_in_events() {
 }
 
 assert_in_events "creator_id_hash"      "$CREATOR_ID_HASH"
-assert_in_events "donation_id_hash"     "$DONATION_ID_HASH"
 assert_in_events "amount"               "$DONATION_AMOUNT"
 assert_in_events "fee_amount"           "$EXPECTED_FEE"
 assert_in_events "net_amount"           "$EXPECTED_NET"

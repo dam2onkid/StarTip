@@ -135,7 +135,6 @@ pub struct DonationReceived {
     pub net_amount: i128,
     pub treasury_address: Address,
     pub payout_address: Address,
-    pub donation_id_hash: BytesN<32>,
 }
 
 #[contract]
@@ -451,15 +450,13 @@ impl DonationRouter {
     /// `token::Client::transfer` with the donor as `from`; Soroban auth
     /// propagation covers the nested calls so the donor signs once.
     ///
-    /// No on-chain replay tracking for `donation_id_hash` (ADR-0004). No
-    /// per-Donation storage.
+    /// No on-chain replay tracking and no per-Donation storage (ADR-0005).
     pub fn donate(
         env: Env,
         donor: Address,
         creator_id_hash: BytesN<32>,
         token: Address,
         amount: i128,
-        donation_id_hash: BytesN<32>,
     ) {
         donor.require_auth();
 
@@ -520,7 +517,6 @@ impl DonationRouter {
             net_amount,
             treasury_address: config.treasury_address,
             payout_address: creator.payout_address,
-            donation_id_hash,
         }
         .publish(&env);
     }
@@ -1349,16 +1345,14 @@ mod tests {
 
     /// `donate` splits the amount into fee and net, transfers each to the
     /// correct destination, extends TTLs, and emits `DonationReceived` with
-    /// all nine fields matching the expected values.
+    /// all eight fields matching the expected values.
     #[test]
     fn donate_happy_path_splits_and_emits_event() {
         let amount: i128 = 10_000_000; // 1 unit at 7 decimals
         let (env, contract_id, client, _admin, treasury, donor, payout, id_hash, token_id, _sac, token) =
             donate_setup(amount);
 
-        let donation_id_hash = creator_id_hash(&env, 99);
-
-        client.donate(&donor, &id_hash, &token_id, &amount, &donation_id_hash);
+        client.donate(&donor, &id_hash, &token_id, &amount);
 
         // Event captured immediately after the call that emitted it.
         let expected = DonationReceived {
@@ -1369,7 +1363,6 @@ mod tests {
             net_amount: 9_900_000,
             treasury_address: treasury.clone(),
             payout_address: payout.clone(),
-            donation_id_hash: donation_id_hash.clone(),
         };
         let events = env.events().all().filter_by_contract(&contract_id);
         assert_eq!(events, std::vec![expected.to_xdr(&env, &contract_id)]);
@@ -1398,9 +1391,8 @@ mod tests {
 
         client.set_paused(&admin, &true);
 
-        let donation_id_hash = creator_id_hash(&env, 98);
         let result = catch_unwind(AssertUnwindSafe(|| {
-            client.donate(&donor, &id_hash, &token_id, &amount, &donation_id_hash)
+            client.donate(&donor, &id_hash, &token_id, &amount)
         }));
         assert!(result.is_err(), "paused contract must revert");
 
@@ -1422,9 +1414,8 @@ mod tests {
             donate_setup(amount);
 
         let missing_id = creator_id_hash(&env, 77);
-        let donation_id_hash = creator_id_hash(&env, 98);
         let result = catch_unwind(AssertUnwindSafe(|| {
-            client.donate(&donor, &missing_id, &token_id, &amount, &donation_id_hash)
+            client.donate(&donor, &missing_id, &token_id, &amount)
         }));
         assert!(result.is_err(), "missing creator must revert");
 
@@ -1448,9 +1439,8 @@ mod tests {
         // Force-pause the creator via the admin kill-switch.
         client.force_pause_creator(&admin, &id_hash, &false);
 
-        let donation_id_hash = creator_id_hash(&env, 98);
         let result = catch_unwind(AssertUnwindSafe(|| {
-            client.donate(&donor, &id_hash, &token_id, &amount, &donation_id_hash)
+            client.donate(&donor, &id_hash, &token_id, &amount)
         }));
         assert!(result.is_err(), "inactive creator must revert");
 
@@ -1470,11 +1460,9 @@ mod tests {
         let (env, _contract_id, client, _admin, _treasury, donor, _payout, id_hash, token_id, _sac, _token) =
             donate_setup(amount);
 
-        let donation_id_hash = creator_id_hash(&env, 98);
-
         // Zero amount.
         let result = catch_unwind(AssertUnwindSafe(|| {
-            client.donate(&donor, &id_hash, &token_id, &0i128, &donation_id_hash)
+            client.donate(&donor, &id_hash, &token_id, &0i128)
         }));
         assert!(result.is_err(), "zero amount must revert");
         let events = env.host().get_diagnostic_events().unwrap().0;
@@ -1487,7 +1475,7 @@ mod tests {
 
         // Negative amount.
         let result = catch_unwind(AssertUnwindSafe(|| {
-            client.donate(&donor, &id_hash, &token_id, &-1i128, &donation_id_hash)
+            client.donate(&donor, &id_hash, &token_id, &-1i128)
         }));
         assert!(result.is_err(), "negative amount must revert");
         let events = env.host().get_diagnostic_events().unwrap().0;
@@ -1513,9 +1501,8 @@ mod tests {
             .register_stellar_asset_contract_v2(token_admin2)
             .address();
 
-        let donation_id_hash = creator_id_hash(&env, 98);
         let result = catch_unwind(AssertUnwindSafe(|| {
-            client.donate(&donor, &id_hash, &token2, &amount, &donation_id_hash)
+            client.donate(&donor, &id_hash, &token2, &amount)
         }));
         assert!(result.is_err(), "token not in allowlist must revert");
 
@@ -1559,8 +1546,7 @@ mod tests {
         let donor = Address::generate(&env);
         sac.mint(&donor, &amount);
 
-        let donation_id_hash = creator_id_hash(&env, 97);
-        client.donate(&donor, &id_hash, &token_id, &amount, &donation_id_hash);
+        client.donate(&donor, &id_hash, &token_id, &amount);
 
         // Event captured immediately after the call that emitted it.
         let expected = DonationReceived {
@@ -1571,7 +1557,6 @@ mod tests {
             net_amount: amount,
             treasury_address: treasury.clone(),
             payout_address: payout.clone(),
-            donation_id_hash,
         };
         let events = env.events().all().filter_by_contract(&contract_id);
         assert_eq!(events, std::vec![expected.to_xdr(&env, &contract_id)]);
@@ -1612,8 +1597,7 @@ mod tests {
         let donor = Address::generate(&env);
         sac.mint(&donor, &amount);
 
-        let donation_id_hash = creator_id_hash(&env, 96);
-        client.donate(&donor, &id_hash, &token_id, &amount, &donation_id_hash);
+        client.donate(&donor, &id_hash, &token_id, &amount);
 
         // Event captured immediately after the call that emitted it.
         let expected = DonationReceived {
@@ -1624,7 +1608,6 @@ mod tests {
             net_amount: 0,
             treasury_address: treasury.clone(),
             payout_address: payout.clone(),
-            donation_id_hash,
         };
         let events = env.events().all().filter_by_contract(&contract_id);
         assert_eq!(events, std::vec![expected.to_xdr(&env, &contract_id)]);
@@ -1667,9 +1650,8 @@ mod tests {
         // Stop mocking auths so the donor's require_auth in donate fails.
         env.set_auths(&[]);
 
-        let donation_id_hash = creator_id_hash(&env, 95);
         let result = catch_unwind(AssertUnwindSafe(|| {
-            client.donate(&donor, &id_hash, &token_id, &amount, &donation_id_hash)
+            client.donate(&donor, &id_hash, &token_id, &amount)
         }));
         assert!(result.is_err(), "donate without donor auth must revert");
     }
