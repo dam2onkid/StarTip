@@ -285,6 +285,127 @@ describe("donateOnChain", () => {
     expect(donateOnChainStub).toHaveBeenCalledOnce();
     expect(simulateTransaction).not.toHaveBeenCalled();
   });
+
+  const USDC_TRUSTLINE_TOKEN = {
+    contract_address: TOKEN,
+    symbol: "USDC",
+    issuer: DONOR_ADDRESS,
+  };
+
+  it("prepends a change_trust op when needsTrustline is true (two-op transaction)", async () => {
+    const { deps, simulateTransaction, sendTransaction, signWalletTransaction } = makeDeps();
+    simulateTransaction.mockResolvedValue(successSim());
+    signWalletTransaction.mockResolvedValue({
+      signedTxXdr: buildSignedTxXdr(),
+      signerAddress: DONOR_ADDRESS,
+    });
+    sendTransaction.mockResolvedValue({ status: "PENDING", hash: TX_HASH });
+
+    const { donateOnChain } = await import("@/lib/donations/donate");
+    const result = await donateOnChain(
+      {
+        donorAddress: DONOR_ADDRESS,
+        handleHash: HANDLE_HASH,
+        token: TOKEN,
+        amount: AMOUNT,
+        donationIdHash: DONATION_ID_HASH,
+        needsTrustline: true,
+        trustlineToken: USDC_TRUSTLINE_TOKEN,
+      },
+      deps,
+    );
+    expect(result).toEqual({ status: "PENDING", hash: TX_HASH });
+
+    // The transaction passed to simulateTransaction has two ops: changeTrust
+    // first, then the donate invokeHostFunction.
+    const simTx = simulateTransaction.mock.calls[0][0] as StellarSdk.Transaction;
+    expect(simTx.operations).toHaveLength(2);
+    expect(simTx.operations[0].type).toBe("changeTrust");
+    expect(simTx.operations[1].type).toBe("invokeHostFunction");
+  });
+
+  it("builds a single donate op when needsTrustline is false", async () => {
+    const { deps, simulateTransaction, sendTransaction, signWalletTransaction } = makeDeps();
+    simulateTransaction.mockResolvedValue(successSim());
+    signWalletTransaction.mockResolvedValue({
+      signedTxXdr: buildSignedTxXdr(),
+      signerAddress: DONOR_ADDRESS,
+    });
+    sendTransaction.mockResolvedValue({ status: "PENDING", hash: TX_HASH });
+
+    const { donateOnChain } = await import("@/lib/donations/donate");
+    await donateOnChain(
+      {
+        donorAddress: DONOR_ADDRESS,
+        handleHash: HANDLE_HASH,
+        token: TOKEN,
+        amount: AMOUNT,
+        donationIdHash: DONATION_ID_HASH,
+        needsTrustline: false,
+        trustlineToken: USDC_TRUSTLINE_TOKEN,
+      },
+      deps,
+    );
+
+    const simTx = simulateTransaction.mock.calls[0][0] as StellarSdk.Transaction;
+    expect(simTx.operations).toHaveLength(1);
+    expect(simTx.operations[0].type).toBe("invokeHostFunction");
+  });
+
+  it("throws DonateError with code 'trustline_failed' when change_trust fails at simulation", async () => {
+    const { deps, simulateTransaction } = makeDeps();
+    // A simulation error that does not decode to a recognized contract error:
+    // the change_trust op failed (e.g. asset issuer missing on-chain).
+    simulateTransaction.mockResolvedValue({
+      id: "x",
+      latestLedger: 1,
+      error: "change_trust failed: asset issuer not found",
+      result: undefined,
+    } as unknown as StellarSdk.rpc.Api.SimulateTransactionResponse);
+    const { donateOnChain } = await import("@/lib/donations/donate");
+    await expect(
+      donateOnChain(
+        {
+          donorAddress: DONOR_ADDRESS,
+          handleHash: HANDLE_HASH,
+          token: TOKEN,
+          amount: AMOUNT,
+          donationIdHash: DONATION_ID_HASH,
+          needsTrustline: true,
+          trustlineToken: USDC_TRUSTLINE_TOKEN,
+        },
+        deps,
+      ),
+    ).rejects.toMatchObject({ name: "DonateError", code: "trustline_failed" });
+    // donate() is never submitted when the trustline step fails.
+    const { sendTransaction } = makeDeps();
+    expect(sendTransaction).not.toHaveBeenCalled();
+  });
+
+  it("still surfaces a recognized contract error (Paused) in the two-op path", async () => {
+    const { deps, simulateTransaction } = makeDeps();
+    simulateTransaction.mockResolvedValue({
+      id: "x",
+      latestLedger: 1,
+      error: "Error(Paused)",
+      result: undefined,
+    } as unknown as StellarSdk.rpc.Api.SimulateTransactionResponse);
+    const { donateOnChain } = await import("@/lib/donations/donate");
+    await expect(
+      donateOnChain(
+        {
+          donorAddress: DONOR_ADDRESS,
+          handleHash: HANDLE_HASH,
+          token: TOKEN,
+          amount: AMOUNT,
+          donationIdHash: DONATION_ID_HASH,
+          needsTrustline: true,
+          trustlineToken: USDC_TRUSTLINE_TOKEN,
+        },
+        deps,
+      ),
+    ).rejects.toMatchObject({ code: "Paused" });
+  });
 });
 
 describe("decodeDonateError", () => {

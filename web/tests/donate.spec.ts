@@ -42,7 +42,10 @@ const PREPARE_RESPONSE = {
   ],
 };
 
-async function installSeams(page: Page, donateResult: "success" | "paused") {
+async function installSeams(
+  page: Page,
+  donateResult: "success" | "paused" | "no-trustline",
+) {
   await page.addInitScript((result) => {
     const address =
       "GDF6CFYOXQTZVSLLK2RTDAUZ6N2E72IL4K2L34HXZK32KBR4NLVPLUVA";
@@ -59,17 +62,30 @@ async function installSeams(page: Page, donateResult: "success" | "paused") {
       }),
       disconnect: async () => undefined,
     };
-    // Donate stub: either succeeds or throws a Paused error.
+    // Donate stub: succeeds, throws a Paused error, or exercises the two-op
+    // change_trust + donate() path (no-trustline). The no-trustline branch
+    // records the needsTrustline arg so the E2E can assert the two-op path was
+    // taken, and surfaces the trustline guidance via the checkTrustline seam.
     (window as unknown as { __STARTIP_DONATE_STUB__?: unknown }).__STARTIP_DONATE_STUB__ = {
-      donateOnChain: async () => {
+      donateOnChain: async (args?: { needsTrustline?: boolean }) => {
         if (result === "paused") {
           const err = new Error("This creator is currently paused and cannot receive donations.");
           (err as unknown as { name: string }).name = "DonateError";
           (err as unknown as { code: string }).code = "Paused";
           throw err;
         }
+        if (result === "no-trustline") {
+          (window as unknown as { __STARTIP_DONATE_STUB_ARGS__?: unknown }).__STARTIP_DONATE_STUB_ARGS__ =
+            args;
+        }
         return { status: "PENDING", hash: "deadbeef".repeat(8) };
       },
+      // Trustline check seam: returns false in the no-trustline scenario so the
+      // form shows the guidance and builds the two-op transaction.
+      checkTrustline:
+        result === "no-trustline"
+          ? async () => false
+          : async () => true,
     };
   }, donateResult);
 }
@@ -99,18 +115,25 @@ test.describe("Donate flow", () => {
 
     await page.goto("/creator/ada/donate");
 
-    // The heading is visible.
-    await expect(page.getByRole("heading", { name: /donate to ada/i })).toBeVisible();
+    // The donate form heading is visible (the redesigned form renders the
+    // creator's display name as the h1 with a "Donating to" label above it).
+    await expect(page.getByText(/donating to/i)).toBeVisible();
+    await expect(page.getByRole("heading", { name: /ada lovelace/i })).toBeVisible();
 
-    // Connect wallet. Scoped to the donate form (CSS selector, since the form
-    // has no accessible name and thus no `form` role in the ARIA tree) so the
-    // nav's Donate Wallet connector (also a "Connect wallet" button, issue 02)
-    // is not matched.
-    await page.locator("form").getByRole("button", { name: /connect wallet/i }).click();
+    // Connect wallet via the unified nav's Donate Wallet connector (issue 02
+    // moved the connector out of the form and into the nav right cluster).
+    await page
+      .getByRole("navigation", { name: "Primary" })
+      .getByRole("button", { name: /connect wallet/i })
+      .click();
     await expect(page.getByText(/Connected:/i)).toBeVisible();
 
-    // Wait for the token picker to populate (from the mock Supabase tokens endpoint).
-    await expect(page.getByRole("option", { name: /USDC/i })).toBeVisible();
+    // Wait for the token picker to populate from the mock Supabase tokens
+    // endpoint. Native <option> elements are not "visible" in Playwright's
+    // a11y tree until the <select> is open, so assert the combobox is enabled
+    // and auto-selected the first token (CUSDC) instead.
+    await expect(page.getByRole("combobox", { name: /token/i })).toBeEnabled();
+    await expect(page.getByRole("combobox", { name: /token/i })).toHaveValue("CUSDC");
 
     // Enter amount.
     await page.getByPlaceholder("0.00").fill("1.5");
@@ -128,21 +151,61 @@ test.describe("Donate flow", () => {
 
     await page.goto("/creator/ada/donate");
 
-    // Connect wallet. Scoped to the donate form (see happy path note above).
-    await page.locator("form").getByRole("button", { name: /connect wallet/i }).click();
+    // Connect wallet via the unified nav connector (see happy path note).
+    await page
+      .getByRole("navigation", { name: "Primary" })
+      .getByRole("button", { name: /connect wallet/i })
+      .click();
     await expect(page.getByText(/Connected:/i)).toBeVisible();
 
-    // Wait for the token picker.
-    await expect(page.getByRole("option", { name: /USDC/i })).toBeVisible();
+    // Wait for the token picker (see happy path note on native <option> visibility).
+    await expect(page.getByRole("combobox", { name: /token/i })).toBeEnabled();
+    await expect(page.getByRole("combobox", { name: /token/i })).toHaveValue("CUSDC");
 
     // Enter amount and submit.
     await page.getByPlaceholder("0.00").fill("1.0");
     await page.getByRole("button", { name: /donate/i }).click();
 
-    // Verify the Paused error message is displayed.
-    await expect(page.getByRole("alert")).toHaveText(
-      /paused and cannot receive donations/i,
+    // Verify the Paused error message is displayed. Scoped to the form so the
+    // Next.js route announcer (also `role="alert"`) is not matched.
+    await expect(
+      page.locator("form").getByRole("alert"),
+    ).toHaveText(/paused and cannot receive donations/i);
+  });
+
+  test("no-trustline path: shows guidance and builds a change_trust + donate() two-op transaction", async ({ page }) => {
+    await installSeams(page, "no-trustline");
+    await routeApi(page);
+
+    await page.goto("/creator/ada/donate");
+
+    // Connect wallet via the unified nav connector (see happy path note).
+    await page
+      .getByRole("navigation", { name: "Primary" })
+      .getByRole("button", { name: /connect wallet/i })
+      .click();
+    await expect(page.getByText(/Connected:/i)).toBeVisible();
+
+    // Wait for the token picker (see happy path note on native <option> visibility).
+    await expect(page.getByRole("combobox", { name: /token/i })).toBeEnabled();
+    await expect(page.getByRole("combobox", { name: /token/i })).toHaveValue("CUSDC");
+
+    // The trustline guidance renders (the checkTrustline seam returns false).
+    await expect(page.getByText(/trustline to this token is required/i)).toBeVisible();
+
+    // Enter amount and submit.
+    await page.getByPlaceholder("0.00").fill("1.0");
+    await page.getByRole("button", { name: /donate/i }).click();
+
+    // Verify success.
+    await expect(page.getByText(/donation confirmed/i)).toBeVisible();
+
+    // Assert the donate stub received needsTrustline: true (the two-op path).
+    const args = await page.evaluate(() =>
+      (window as unknown as { __STARTIP_DONATE_STUB_ARGS__?: { needsTrustline?: boolean } })
+        .__STARTIP_DONATE_STUB_ARGS__,
     );
+    expect(args?.needsTrustline).toBe(true);
   });
 
   test("shows the unified nav with the Discover link on the donate page", async ({ page }) => {

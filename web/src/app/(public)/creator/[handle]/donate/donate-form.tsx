@@ -13,6 +13,8 @@ import {
   DONATE_ERROR_MESSAGES,
   type DonateErrorCode,
 } from "@/lib/donations/donate";
+import { donorHasTrustline } from "@/lib/donations/trustline-check";
+import { needsTrustline } from "@/lib/donations/trustline";
 import type { TokenAllowlistEntry } from "@/lib/donations/prepare";
 
 /**
@@ -67,12 +69,17 @@ function creatorInitial(displayName: string): string {
   return displayName.trim().charAt(0).toUpperCase() || "?";
 }
 
+/** Quick-select amount buttons shown alongside the custom amount field. */
+const QUICK_SELECT_AMOUNTS = ["1", "5", "10"] as const;
+
 export function DonateForm({ handle, displayName = handle, avatarUrl = null }: DonateFormProps) {
   const { address: walletAddress } = useDonateWallet();
   const [tokens, setTokens] = React.useState<TokenAllowlistEntry[]>([]);
   const [selectedToken, setSelectedToken] = React.useState<string>("");
   const [tokenLoadState, setTokenLoadState] = React.useState<TokenLoadState>("loading");
   const [amount, setAmount] = React.useState("");
+  const [quickSelect, setQuickSelect] = React.useState<string | null>(null);
+  const [hasTrustline, setHasTrustline] = React.useState<boolean | null>(null);
   const [message, setMessage] = React.useState("");
   const [donorName, setDonorName] = React.useState("");
   const [phase, setPhase] = React.useState<Phase>("idle");
@@ -105,6 +112,30 @@ export function DonateForm({ handle, displayName = handle, avatarUrl = null }: D
         }
       });
   }, []);
+
+  // Check whether the Donor has a trustline to the selected token once the
+  // wallet is connected and the token picker is ready. The lookup is skipped
+  // (and `hasTrustline` reset to null) when there is no wallet or no selection,
+  // so the form never shows stale guidance. `donorHasTrustline` short-circuits
+  // to `true` for native XLM and delegates to the E2E seam when present.
+  React.useEffect(() => {
+    if (!walletAddress || !selectedToken || tokenLoadState !== "ready") {
+      setHasTrustline(null);
+      return;
+    }
+    const token = tokens.find((t) => t.contract_address === selectedToken);
+    if (!token) {
+      setHasTrustline(null);
+      return;
+    }
+    let cancelled = false;
+    donorHasTrustline(getRpc(), walletAddress, token).then((result) => {
+      if (!cancelled) setHasTrustline(result);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [walletAddress, selectedToken, tokenLoadState, tokens]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -144,8 +175,11 @@ export function DonateForm({ handle, displayName = handle, avatarUrl = null }: D
       setTokens(prepared.token_allowlist);
       setTokenLoadState(prepared.token_allowlist.length > 0 ? "ready" : "empty");
 
-      // 2. Build + sign + submit donate() on-chain.
+      // 2. Build + sign + submit donate() on-chain. When the Donor lacks a
+      //    trustline to a non-native token, the pipeline prepends a
+      //    change_trust op so the Donor signs once.
       setPhase("submitting");
+      const needsTrustlineStep = needsTrustline(token, hasTrustline ?? true);
       const result = await donateOnChain(
         {
           donorAddress: walletAddress,
@@ -153,6 +187,8 @@ export function DonateForm({ handle, displayName = handle, avatarUrl = null }: D
           token: selectedToken,
           amount: BigInt(rawAmount),
           donationIdHash: hexToBuffer(prepared.donation_id_hash),
+          needsTrustline: needsTrustlineStep,
+          trustlineToken: needsTrustlineStep ? token : undefined,
         },
         {
           rpc: getRpc(),
@@ -266,21 +302,62 @@ export function DonateForm({ handle, displayName = handle, avatarUrl = null }: D
           </label>
 
           {/* Amount */}
-          <label className="flex flex-col gap-1">
+          <div className="flex flex-col gap-1">
             <span className="font-mono text-xs uppercase tracking-wide text-muted-foreground">
               Amount
             </span>
-            <input
-              type="text"
-              inputMode="decimal"
-              value={amount}
-              onChange={(e) => setAmount(e.target.value)}
-              disabled={busy}
-              placeholder="0.00"
-              className="rounded-md border border-border bg-background px-3 py-2 text-sm"
-              required
-            />
-          </label>
+            <div className="flex flex-col gap-2">
+              <div className="flex gap-2" role="group" aria-label="Quick select amount">
+                {QUICK_SELECT_AMOUNTS.map((value) => (
+                  <button
+                    key={value}
+                    type="button"
+                    aria-pressed={quickSelect === value}
+                    onClick={() => {
+                      setAmount(value);
+                      setQuickSelect(value);
+                    }}
+                    disabled={busy}
+                    className="flex-1 rounded-md border px-3 py-2 text-sm transition-colors"
+                    style={
+                      quickSelect === value
+                        ? {
+                            borderColor: "var(--tertiary, #B4FF39)",
+                            color: "var(--tertiary, #B4FF39)",
+                          }
+                        : undefined
+                    }
+                  >
+                    {value}
+                  </button>
+                ))}
+              </div>
+              <input
+                type="text"
+                inputMode="decimal"
+                value={amount}
+                onChange={(e) => {
+                  setAmount(e.target.value);
+                  setQuickSelect(null);
+                }}
+                disabled={busy}
+                placeholder="0.00"
+                className="rounded-md border border-border bg-background px-3 py-2 text-sm"
+                required
+              />
+            </div>
+          </div>
+
+          {/* Trustline guidance: shown only when the Donor lacks a trustline to
+              a non-native token. `donorHasTrustline` returns `true` for native
+              XLM and for an existing trustline, so `false` only occurs for a
+              non-native token the Donor does not hold a trustline to. */}
+          {selectedToken && hasTrustline === false && (
+            <p className="text-sm text-muted-foreground">
+              A trustline to this token is required. The next step will add it
+              and donate in one transaction.
+            </p>
+          )}
 
           {/* Donor name (optional) */}
           <label className="flex flex-col gap-1">

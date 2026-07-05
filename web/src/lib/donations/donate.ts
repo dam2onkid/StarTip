@@ -1,4 +1,5 @@
 import * as StellarSdk from "@stellar/stellar-sdk";
+import { buildChangeTrustOp, type TrustlineToken } from "@/lib/donations/trustline";
 
 /**
  * Client-side donate transaction pipeline. The Donor builds, signs, and
@@ -27,6 +28,7 @@ export type DonateErrorCode =
   | "signer_mismatch"
   | "send_failed"
   | "simulate_failed"
+  | "trustline_failed"
   | "unknown";
 
 /** UI-facing message keys for each DonateErrorCode. */
@@ -41,6 +43,8 @@ export const DONATE_ERROR_MESSAGES: Record<DonateErrorCode, string> = {
   signer_mismatch: "The signing wallet does not match the donor address.",
   send_failed: "The transaction was rejected by the network.",
   simulate_failed: "The transaction simulation failed.",
+  trustline_failed:
+    "Could not establish a trustline to this token. Please try again or pick another token.",
   unknown: "An unexpected error occurred.",
 };
 
@@ -54,9 +58,19 @@ export class DonateError extends Error {
   }
 }
 
-/** Test seam for the Playwright E2E harness. */
+/**
+ * Test seam for the Playwright E2E harness. `donateOnChain` delegates to
+ * `donateOnChain` when the stub is present. The optional `checkTrustline` lets
+ * the E2E harness override the donor trustline lookup (see
+ * `lib/donations/trustline-check.ts`) so the two-op `change_trust` + `donate()`
+ * path can be exercised without a real Soroban RPC account.
+ */
 export interface DonateStub {
   donateOnChain(args: DonateArgs): Promise<DonateResult>;
+  checkTrustline?(args: {
+    donorAddress: string;
+    token: TrustlineToken;
+  }): Promise<boolean>;
 }
 
 declare global {
@@ -72,6 +86,18 @@ export interface DonateArgs {
   token: string;
   amount: bigint;
   donationIdHash: Buffer;
+  /**
+   * When `true`, the pipeline prepends a `change_trust` op (built from
+   * `trustlineToken`) ahead of `donate()` so the Donor establishes the
+   * trustline and donates in a single signed transaction. Defaults to `false`
+   * (donate-only), which is the native-XLM / existing-trustline path.
+   */
+  needsTrustline?: boolean;
+  /**
+   * The selected token's metadata, used to build the `change_trust` op.
+   * Required when `needsTrustline` is `true`; ignored otherwise.
+   */
+  trustlineToken?: TrustlineToken;
 }
 
 /** Result of a successful `donate` submission. */
@@ -106,6 +132,55 @@ export function decodeDonateError(error: string): DonateErrorCode {
 }
 
 /**
+ * Assemble a two-op `change_trust` + `donate()` transaction from a successful
+ * simulation. `StellarSdk.rpc.assembleTransaction` only supports single-op
+ * Soroban transactions, so for the trustline path we clone the simulated
+ * transaction with its Soroban data, clear the operations, re-add the
+ * `change_trust` op, and re-add the `donate` invocation with the simulation
+ * auth entries attached. The fee logic mirrors `assembleTransaction`.
+ */
+function assembleTwoOpTransaction(
+  raw: StellarSdk.Transaction,
+  simulation: StellarSdk.rpc.Api.SimulateTransactionResponse,
+  changeTrustOp: StellarSdk.xdr.Operation,
+  donateOp: StellarSdk.xdr.Operation,
+  networkPassphrase: string,
+): StellarSdk.Transaction {
+  const success = StellarSdk.rpc.parseRawSimulation(simulation);
+  if (!StellarSdk.rpc.Api.isSimulationSuccess(success)) {
+    throw new Error(`simulation incorrect: ${JSON.stringify(success)}`);
+  }
+  // `raw.fee` is the total classic fee (per-op fee * op count). Recover the
+  // per-op fee so cloneFrom does not double it; strip any existing resource fee
+  // so a re-simulation does not double-count it.
+  const numOps = BigInt(raw.operations.length);
+  let classicFeePerOp = numOps > BigInt(0) ? BigInt(raw.fee) / numOps : BigInt(raw.fee);
+  const rawSorobanData = raw.toEnvelope().v1().tx().ext().value();
+  if (rawSorobanData) {
+    const rf = rawSorobanData.resourceFee().toBigInt();
+    if (classicFeePerOp - rf > BigInt(0)) classicFeePerOp -= rf;
+  }
+  const txnBuilder = StellarSdk.TransactionBuilder.cloneFrom(raw, {
+    fee: classicFeePerOp.toString(),
+    sorobanData: success.transactionData.build(),
+    networkPassphrase,
+  });
+  // Re-add every op, attaching the simulation auth to the donate
+  // invokeHostFunction op (assembleTransaction cannot do this for multi-op).
+  txnBuilder.clearOperations();
+  txnBuilder.addOperation(changeTrustOp);
+  const ihf = donateOp.body().invokeHostFunctionOp();
+  const existingAuth = ihf.auth() ?? [];
+  txnBuilder.addOperation(
+    StellarSdk.Operation.invokeHostFunction({
+      func: ihf.hostFunction(),
+      auth: existingAuth.length > 0 ? existingAuth : (success.result?.auth ?? []),
+    }),
+  );
+  return txnBuilder.build();
+}
+
+/**
  * Build, sign, and submit `donate(donor, creator_id_hash, token, amount,
  * donation_id_hash)`.
  *
@@ -133,34 +208,57 @@ export async function donateOnChain(
   const account = await rpc.getAccount(donorAddress);
   const contract = new StellarSdk.Contract(contractId);
 
-  const tx = new StellarSdk.TransactionBuilder(account, {
+  const builder = new StellarSdk.TransactionBuilder(account, {
     fee: StellarSdk.BASE_FEE,
     networkPassphrase,
-  })
-    .addOperation(
-      contract.call(
-        "donate",
-        StellarSdk.Address.fromString(donorAddress).toScVal(),
-        StellarSdk.xdr.ScVal.scvBytes(handleHash),
-        StellarSdk.Address.fromString(token).toScVal(),
-        new StellarSdk.ScInt(amount).toI128(),
-        StellarSdk.xdr.ScVal.scvBytes(donationIdHash),
-      ),
-    )
-    .setTimeout(30)
-    .build();
+  });
+
+  // When the Donor lacks a trustline to a non-native token, prepend a
+  // change_trust op so the Donor establishes the trustline and donates in a
+  // single signed transaction. Skipped for native XLM and existing trustlines
+  // (the donate form gates this on `needsTrustline`).
+  let changeTrustOp: StellarSdk.xdr.Operation | undefined;
+  if (args.needsTrustline && args.trustlineToken) {
+    changeTrustOp = buildChangeTrustOp(args.trustlineToken, donorAddress);
+    builder.addOperation(changeTrustOp);
+  }
+
+  // Keep a reference to the donate invocation so the two-op assembler can
+  // re-attach the simulation auth to it (assembleTransaction only supports
+  // single-op Soroban transactions).
+  const donateOp = contract.call(
+    "donate",
+    StellarSdk.Address.fromString(donorAddress).toScVal(),
+    StellarSdk.xdr.ScVal.scvBytes(handleHash),
+    StellarSdk.Address.fromString(token).toScVal(),
+    new StellarSdk.ScInt(amount).toI128(),
+    StellarSdk.xdr.ScVal.scvBytes(donationIdHash),
+  );
+
+  const tx = builder.addOperation(donateOp).setTimeout(30).build();
 
   const sim = await rpc.simulateTransaction(tx);
   if (StellarSdk.rpc.Api.isSimulationError(sim)) {
+    const decoded = decodeDonateError(sim.error ?? "");
+    if (decoded !== "unknown") {
+      // A recognized contract error (Paused, TokenNotAllowed, ...): surface it
+      // directly so the donor sees the specific cause even in the two-op path.
+      throw new DonateError(decoded, sim.error);
+    }
+    // Unrecognized simulation failure. In the two-op path the change_trust op
+    // is the new, gating step: treat a non-contract failure as a trustline
+    // failure so the form shows `trustline_failed` and never submits donate().
     throw new DonateError(
-      decodeDonateError(sim.error ?? "") === "unknown"
-        ? "simulate_failed"
-        : decodeDonateError(sim.error ?? ""),
+      args.needsTrustline ? "trustline_failed" : "simulate_failed",
       sim.error,
     );
   }
 
-  const prepared = StellarSdk.rpc.assembleTransaction(tx, sim).build();
+  // assembleTransaction only supports single-op Soroban txs. The two-op
+  // change_trust + donate() path needs a manual clone + auth re-attach.
+  const prepared = changeTrustOp
+    ? assembleTwoOpTransaction(tx, sim, changeTrustOp, donateOp, networkPassphrase)
+    : StellarSdk.rpc.assembleTransaction(tx, sim).build();
   const { signedTxXdr, signerAddress } = await signWalletTransaction(
     prepared.toXDR(),
   );

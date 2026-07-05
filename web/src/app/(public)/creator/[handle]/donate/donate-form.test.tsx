@@ -48,8 +48,20 @@ vi.mock("@/lib/donations/donate", () => ({
     Paused: "This creator is currently paused and cannot receive donations.",
     TokenNotAllowed: "This token is not in the allowed list.",
     send_failed: "The transaction was rejected by the network.",
+    simulate_failed: "The transaction simulation failed.",
+    trustline_failed:
+      "Could not establish a trustline to this token. Please try again or pick another token.",
     unknown: "An unexpected error occurred.",
   },
+}));
+
+// Trustline lookup mock: the donate form calls donorHasTrustline before
+// building donate() to decide whether a change_trust op is needed. Default
+// returns true (existing trustline) so the donate-only path is exercised;
+// individual tests override it to false to exercise the two-op guidance.
+const donorHasTrustline = vi.fn(async () => true);
+vi.mock("@/lib/donations/trustline-check", () => ({
+  donorHasTrustline,
 }));
 
 vi.mock("@/lib/creators/handle-shared", () => ({
@@ -107,6 +119,8 @@ beforeEach(() => {
   disconnectWallet.mockReset();
   signWalletTransaction.mockReset();
   donateOnChain.mockReset();
+  donorHasTrustline.mockReset();
+  donorHasTrustline.mockResolvedValue(true);
   tokensData = [TOKEN_USDC];
 });
 
@@ -257,6 +271,142 @@ describe("DonateForm", () => {
       expect(screen.getByRole("alert")).toHaveTextContent(/donation_id_hash_mismatch/i);
     });
   });
+
+  it("renders quick-select buttons (1, 5, 10) alongside the custom amount field", async () => {
+    await renderAndConnect();
+    expect(screen.getByRole("button", { name: /^1$/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^5$/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^10$/ })).toBeInTheDocument();
+    expect(screen.getByPlaceholderText("0.00")).toBeInTheDocument();
+  });
+
+  it("sets the custom amount and highlights a quick-select button when tapped", async () => {
+    await renderAndConnect();
+    const amountInput = screen.getByPlaceholderText("0.00") as HTMLInputElement;
+    const btn5 = screen.getByRole("button", { name: /^5$/ });
+    const btn10 = screen.getByRole("button", { name: /^10$/ });
+
+    await act(async () => {
+      fireEvent.click(btn5);
+    });
+    expect(amountInput.value).toBe("5");
+    expect(btn5).toHaveAttribute("aria-pressed", "true");
+    expect(btn10).toHaveAttribute("aria-pressed", "false");
+
+    // Tapping 10 swaps the highlight.
+    await act(async () => {
+      fireEvent.click(btn10);
+    });
+    expect(amountInput.value).toBe("10");
+    expect(btn10).toHaveAttribute("aria-pressed", "true");
+    expect(btn5).toHaveAttribute("aria-pressed", "false");
+  });
+
+  it("clears the quick-select highlight when the custom field is edited", async () => {
+    await renderAndConnect();
+    const amountInput = screen.getByPlaceholderText("0.00") as HTMLInputElement;
+    const btn5 = screen.getByRole("button", { name: /^5$/ });
+
+    await act(async () => {
+      fireEvent.click(btn5);
+    });
+    expect(btn5).toHaveAttribute("aria-pressed", "true");
+
+    await act(async () => {
+      fireEvent.change(amountInput, { target: { value: "7.5" } });
+    });
+    expect(amountInput.value).toBe("7.5");
+    expect(btn5).toHaveAttribute("aria-pressed", "false");
+  });
+
+  it("shows trustline guidance when the Donor lacks a trustline to the selected token", async () => {
+    donorHasTrustline.mockResolvedValue(false);
+    await renderAndConnect();
+    await waitFor(() =>
+      expect(
+        screen.getByText(/trustline to this token is required/i),
+      ).toBeInTheDocument(),
+    );
+  });
+
+  it("does not show trustline guidance when the Donor already has a trustline", async () => {
+    donorHasTrustline.mockResolvedValue(true);
+    await renderAndConnect();
+    await waitFor(() =>
+      expect(
+        screen.queryByText(/trustline to this token is required/i),
+      ).not.toBeInTheDocument(),
+    );
+  });
+
+  it("passes needsTrustline + trustlineToken to donateOnChain when a trustline is missing", async () => {
+    donorHasTrustline.mockResolvedValue(false);
+    donateOnChain.mockResolvedValue({ status: "PENDING", hash: "deadbeef".repeat(8) });
+    mockFetch([
+      () => jsonRes(200, PREPARE_RESPONSE),
+      () => jsonRes(200, { status: "confirmed" }),
+    ]);
+    await renderAndConnect();
+
+    await act(async () => {
+      fireEvent.change(screen.getByPlaceholderText("0.00"), { target: { value: "1.0" } });
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /donate/i }));
+    });
+
+    await waitFor(() => expect(donateOnChain).toHaveBeenCalledOnce());
+    const passedArgs = donateOnChain.mock.calls[0][0] as {
+      needsTrustline?: boolean;
+      trustlineToken?: { symbol: string };
+    };
+    expect(passedArgs.needsTrustline).toBe(true);
+    expect(passedArgs.trustlineToken?.symbol).toBe("USDC");
+  });
+
+  it("omits needsTrustline when the Donor already has a trustline", async () => {
+    donorHasTrustline.mockResolvedValue(true);
+    donateOnChain.mockResolvedValue({ status: "PENDING", hash: "deadbeef".repeat(8) });
+    mockFetch([
+      () => jsonRes(200, PREPARE_RESPONSE),
+      () => jsonRes(200, { status: "confirmed" }),
+    ]);
+    await renderAndConnect();
+
+    await act(async () => {
+      fireEvent.change(screen.getByPlaceholderText("0.00"), { target: { value: "1.0" } });
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /donate/i }));
+    });
+
+    await waitFor(() => expect(donateOnChain).toHaveBeenCalledOnce());
+    const passedArgs = donateOnChain.mock.calls[0][0] as {
+      needsTrustline?: boolean;
+    };
+    expect(passedArgs.needsTrustline).toBeFalsy();
+  });
+
+  it("surfaces a trustline_failed error from the donate pipeline", async () => {
+    donorHasTrustline.mockResolvedValue(false);
+    donateOnChain.mockRejectedValue(new DonateError("trustline_failed"));
+    mockFetch([() => jsonRes(200, PREPARE_RESPONSE)]);
+    await renderAndConnect();
+
+    await act(async () => {
+      fireEvent.change(screen.getByPlaceholderText("0.00"), { target: { value: "1.0" } });
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /donate/i }));
+    });
+
+    await waitFor(() => {
+      expect(screen.getByRole("alert")).toHaveTextContent(
+        /could not establish a trustline/i,
+      );
+    });
+  });
+
 });
 
 describe("displayToRawAmount", () => {
