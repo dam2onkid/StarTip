@@ -25,6 +25,12 @@
       "skillPath": "skills/data/SKILL.md",
       "computedHash": "dfa3600447dd4cbc4c919d11576159fbd4effc714ddbcec8bd4c88ae3da379aa"
     },
+    "hono": {
+      "source": "yusukebe/hono-skill",
+      "sourceType": "github",
+      "skillPath": "skills/hono/SKILL.md",
+      "computedHash": "220e5e1b12bbaeec49ec362b6e2262d77632d0536e9758bba9acbbc323fef990"
+    },
     "premium-frontend-ui": {
       "source": "github/awesome-copilot",
       "sourceType": "github",

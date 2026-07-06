@@ -51,8 +51,10 @@ export async function checkHandleAvailability(args: {
   if (error) throw error;
   if (data) return { available: false, reason: "offchain_taken" };
 
-  // 2. On-chain: simulate get_creator(sha256(handle)). Option<Creator> arrives
-  //    as an ScVec: empty = None (free), one element = Some (taken).
+  // 2. On-chain: simulate get_creator(sha256(handle)). `Option<Creator>`
+  //    decodes via `scValToNative` as either an object (Some) or null/empty
+  //    (None). Some SDK versions wrap Some in a single-element array, so both
+  //    shapes are accepted.
   const hash = handleHashBuffer(normalizedHandle);
   const contract = new StellarSdk.Contract(contractId);
   const account = new StellarSdk.Account(SIM_SOURCE_PUBLIC_KEY, "0");
@@ -70,8 +72,7 @@ export async function checkHandleAvailability(args: {
   if (!sim.result) {
     throw new Error("simulate get_creator returned no result");
   }
-  const native = StellarSdk.scValToNative(sim.result.retval) as unknown[];
-  if (Array.isArray(native) && native.length > 0) {
+  if (hasOnChainCreator(sim.result.retval)) {
     return { available: false, reason: "onchain_taken" };
   }
   return { available: true };
@@ -92,7 +93,9 @@ export interface OnChainCreator {
  * `CreatorRegistered` event, so it recovers creators whose registration event
  * was missed by the indexer (e.g. emitted before the indexer's first poll).
  *
- * `Option<Creator>` arrives as an ScVec: empty = None, one map element = Some.
+ * `Option<Creator>` decodes via `scValToNative` as either an object (Some) or
+ * null/empty (None). Some SDK versions wrap Some in a single-element array, so
+ * both shapes are accepted.
  */
 export async function readCreatorOnChain(args: {
   rpc: RpcSimulate;
@@ -120,14 +123,52 @@ export async function readCreatorOnChain(args: {
   if (!sim.result) {
     throw new Error("simulate get_creator returned no result");
   }
-  const native = StellarSdk.scValToNative(sim.result.retval) as unknown[];
-  if (!Array.isArray(native) || native.length === 0) return null;
-  const creator = native[0] as Partial<OnChainCreator>;
+  return decodeOnChainCreator(sim.result.retval);
+}
+
+/**
+ * Decode an `Option<Creator>` ScVal into `OnChainCreator | null`. Accepts both
+ * the object form (`{owner, payout_address, active}`) and the single-element
+ * array form (`[{...}]`) that some SDK versions produce. Empty arrays, null,
+ * and undefined map to `null` (None).
+ */
+function decodeOnChainCreator(retval: StellarSdk.xdr.ScVal): OnChainCreator | null {
+  const native = StellarSdk.scValToNative(retval);
+  const entry = unwrapOptionObject(native);
+  if (!entry) return null;
+  const creator = entry as Partial<OnChainCreator>;
   return {
     owner: creator.owner as string,
     payout_address: creator.payout_address as string,
     active: creator.active as boolean,
   };
+}
+
+/**
+ * True when the decoded `Option<Creator>` represents Some (a registered
+ * creator). Used by the availability check, which only needs the presence bit.
+ */
+function hasOnChainCreator(retval: StellarSdk.xdr.ScVal): boolean {
+  return decodeOnChainCreator(retval) !== null;
+}
+
+/**
+ * Extract the inner object from an `Option<T>`-shaped native value. Returns the
+ * object for both the bare-object and single-element-array shapes, or `null`
+ * for None (empty array, null, undefined, non-object).
+ */
+function unwrapOptionObject(native: unknown): Record<string, unknown> | null {
+  if (!native) return null;
+  if (Array.isArray(native)) {
+    if (native.length === 0) return null;
+    const first = native[0];
+    return isPlainObject(first) ? (first as Record<string, unknown>) : null;
+  }
+  return isPlainObject(native) ? (native as Record<string, unknown>) : null;
+}
+
+function isPlainObject(v: unknown): v is Record<string, unknown> {
+  return typeof v === "object" && v !== null && !Array.isArray(v);
 }
 
 /**

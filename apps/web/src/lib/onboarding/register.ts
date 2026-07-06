@@ -139,15 +139,33 @@ export async function readTreasuryAddress(): Promise<string | null> {
     return null;
   }
   if (StellarSdk.rpc.Api.isSimulationError(sim) || !sim.result) return null;
-  const native = StellarSdk.scValToNative(sim.result.retval) as
-    | Record<string, unknown>
-    | unknown[]
-    | null;
-  // Option<Config> arrives as an ScVec: empty = None, one map element = Some.
-  if (!Array.isArray(native) || native.length === 0) return null;
-  const config = native[0] as Record<string, unknown>;
-  const treasury = config?.treasury_address;
+  const native = StellarSdk.scValToNative(sim.result.retval);
+  // `Option<Config>` decodes via `scValToNative` as either an object (Some) or
+  // null/empty (None). Some SDK versions wrap Some in a single-element array,
+  // so both shapes are accepted.
+  const config = unwrapOptionObject(native);
+  if (!config) return null;
+  const treasury = config.treasury_address;
   return typeof treasury === "string" ? treasury : null;
+}
+
+/**
+ * Extract the inner object from an `Option<T>`-shaped native value. Returns the
+ * object for both the bare-object and single-element-array shapes, or `null`
+ * for None (empty array, null, undefined, non-object).
+ */
+function unwrapOptionObject(native: unknown): Record<string, unknown> | null {
+  if (!native) return null;
+  if (Array.isArray(native)) {
+    if (native.length === 0) return null;
+    const first = native[0];
+    return isPlainObject(first) ? (first as Record<string, unknown>) : null;
+  }
+  return isPlainObject(native) ? (native as Record<string, unknown>) : null;
+}
+
+function isPlainObject(v: unknown): v is Record<string, unknown> {
+  return typeof v === "object" && v !== null && !Array.isArray(v);
 }
 
 /**

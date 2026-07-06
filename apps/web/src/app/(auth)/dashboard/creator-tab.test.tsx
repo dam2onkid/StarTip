@@ -67,6 +67,7 @@ vi.mock("qrcode.react", async () => {
       "data-qr-value": props.value,
     }),
   );
+  QRCodeSVG.displayName = "MockQRCodeSVG";
   return { QRCodeSVG };
 });
 
@@ -400,9 +401,41 @@ describe("CreatorTab — gate 3 on-chain register", () => {
     await waitFor(() => {
       expect(screen.getByText(/Registration submitted/i)).toBeInTheDocument();
     });
+    const pendingButton = screen.getByRole("button", { name: /registration pending/i });
+    expect(pendingButton).toBeDisabled();
+    expect(pendingButton.querySelector("svg.animate-spin")).not.toBeNull();
+    expect(input).toBeDisabled();
     expect(registerCreatorOnChain).toHaveBeenCalledWith(
       expect.objectContaining({ handle: "ada", ownerAddress: STUB_ADDRESS, payoutAddress: "GBPAYOUT" }),
     );
+  });
+
+  it("shows a button spinner while register_creator is being submitted", async () => {
+    const { CreatorTab } = await import("@/app/(auth)/dashboard/creator-tab");
+    let resolveRegister: (value: { status: string; hash: string }) => void = () => {};
+    registerCreatorOnChain.mockReturnValue(
+      new Promise((resolve) => {
+        resolveRegister = resolve;
+      }),
+    );
+    mockFetch([() => jsonRes(200, { onchain_registered: false })]);
+    render(
+      <CreatorTab profile={profile({ handle: "ada", owner_address: STUB_ADDRESS })} />,
+    );
+    await act(async () => {
+      fireEvent.change(screen.getByPlaceholderText("G…"), { target: { value: "GBPAYOUT" } });
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /register on-chain/i }));
+    });
+
+    const submittingButton = screen.getByRole("button", { name: /register on-chain/i });
+    expect(submittingButton).toBeDisabled();
+    expect(submittingButton.querySelector("svg.animate-spin")).not.toBeNull();
+
+    await act(async () => {
+      resolveRegister({ status: "PENDING", hash: "txhash" });
+    });
   });
 
   it("renders the stranded-funds warning when payoutAddressWarning returns 'contract'", async () => {

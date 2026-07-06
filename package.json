@@ -10,7 +10,8 @@
     "dev": "turbo run dev",
     "contracts:build": "cd contracts && make build",
     "contracts:test": "cd contracts && make test",
-    "contracts:integration": "cd contracts && make integration-test"
+    "contracts:integration": "cd contracts && make integration-test",
+    "contracts:deploy": "cd contracts && make deploy"
   },
   "devDependencies": {
     "turbo": "2.10.0"

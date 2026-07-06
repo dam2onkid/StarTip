@@ -6,6 +6,7 @@ import {
   handleHashBuffer,
   handleHashHex,
   checkHandleAvailability,
+  readCreatorOnChain,
 } from "@/lib/creators/handle";
 
 const CONTRACT_ID = "CCV2XK5LVOV2XK5LVOV2XK5LVOV2XK5LVOV2XK5LVOV2XK5LVOV2XMCW";
@@ -65,6 +66,31 @@ function optionRetVal(some: boolean): StellarSdk.xdr.ScVal {
         ).toScVal(),
       }),
     ]),
+  ]);
+}
+
+/**
+ * Build a bare-map Option<Creator> retval (the shape the production RPC
+ * returns via `scValToNative`): `scvMap` directly, not wrapped in `scvVec`.
+ */
+function objectRetVal(): StellarSdk.xdr.ScVal {
+  return StellarSdk.xdr.ScVal.scvMap([
+    new StellarSdk.xdr.ScMapEntry({
+      key: StellarSdk.xdr.ScVal.scvSymbol("owner"),
+      val: StellarSdk.Address.fromString(
+        "GDF6CFYOXQTZVSLLK2RTDAUZ6N2E72IL4K2L34HXZK32KBR4NLVPLUVA",
+      ).toScVal(),
+    }),
+    new StellarSdk.xdr.ScMapEntry({
+      key: StellarSdk.xdr.ScVal.scvSymbol("payout_address"),
+      val: StellarSdk.Address.fromString(
+        "GDF6CFYOXQTZVSLLK2RTDAUZ6N2E72IL4K2L34HXZK32KBR4NLVPLUVA",
+      ).toScVal(),
+    }),
+    new StellarSdk.xdr.ScMapEntry({
+      key: StellarSdk.xdr.ScVal.scvSymbol("active"),
+      val: StellarSdk.xdr.ScVal.scvBool(true),
+    }),
   ]);
 }
 
@@ -139,5 +165,65 @@ describe("checkHandleAvailability", () => {
     });
     expect(res.available).toBe(false);
     expect(res.reason).toBe("offchain_taken");
+  });
+});
+
+describe("readCreatorOnChain", () => {
+  function mockRpcWith(retval: StellarSdk.xdr.ScVal) {
+    return {
+      simulateTransaction: vi.fn(async () => ({
+        id: "sim-1",
+        latestLedger: 100,
+        original: "",
+        events: [],
+        result: { retval },
+      })),
+    };
+  }
+
+  it("returns null when get_creator returns None (empty vec)", async () => {
+    const res = await readCreatorOnChain({
+      rpc: mockRpcWith(optionRetVal(false)) as never,
+      contractId: CONTRACT_ID,
+      handle: "ada",
+    });
+    expect(res).toBeNull();
+  });
+
+  it("decodes the array-wrapped Some form (scvVec([scvMap]))", async () => {
+    const res = await readCreatorOnChain({
+      rpc: mockRpcWith(optionRetVal(true)) as never,
+      contractId: CONTRACT_ID,
+      handle: "ada",
+    });
+    expect(res).not.toBeNull();
+    expect(res?.owner).toBe(
+      "GDF6CFYOXQTZVSLLK2RTDAUZ6N2E72IL4K2L34HXZK32KBR4NLVPLUVA",
+    );
+  });
+
+  it("decodes the bare-object Some form (scvMap) the production RPC returns", async () => {
+    const res = await readCreatorOnChain({
+      rpc: mockRpcWith(objectRetVal()) as never,
+      contractId: CONTRACT_ID,
+      handle: "ada",
+    });
+    expect(res).not.toBeNull();
+    expect(res).toEqual({
+      owner: "GDF6CFYOXQTZVSLLK2RTDAUZ6N2E72IL4K2L34HXZK32KBR4NLVPLUVA",
+      payout_address: "GDF6CFYOXQTZVSLLK2RTDAUZ6N2E72IL4K2L34HXZK32KBR4NLVPLUVA",
+      active: true,
+    });
+  });
+
+  it("returns null for an invalid handle without hitting the RPC", async () => {
+    const rpc = { simulateTransaction: vi.fn() };
+    const res = await readCreatorOnChain({
+      rpc: rpc as never,
+      contractId: CONTRACT_ID,
+      handle: "x",
+    });
+    expect(res).toBeNull();
+    expect(rpc.simulateTransaction).not.toHaveBeenCalled();
   });
 });

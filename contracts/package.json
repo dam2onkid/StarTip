@@ -4,6 +4,7 @@
   "scripts": {
     "build": "make build",
     "test": "make test",
-    "integration-test": "make integration-test"
+    "integration-test": "make integration-test",
+    "deploy": "make deploy"
   }
 }

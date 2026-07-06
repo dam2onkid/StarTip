@@ -16,6 +16,7 @@ import {
 import { donorHasTrustline } from "@/lib/donations/trustline-check";
 import { needsTrustline } from "@/lib/donations/trustline";
 import { handleHashBuffer } from "@/lib/creators/handle-shared";
+import { friendlyOnchainError } from "@/lib/stellar/contract-errors";
 import type { TokenAllowlistEntry } from "@/lib/donations/token";
 
 /**
@@ -198,7 +199,7 @@ export function DonateForm({ handle, displayName = handle, avatarUrl = null }: D
         if (m.startsWith("verify:")) {
           setError(`Server error: ${m.split(":")[1]}`);
         } else {
-          setError(m);
+          setError(friendlyOnchainError(e, "An unexpected error occurred."));
         }
       } else {
         setError("An unexpected error occurred.");

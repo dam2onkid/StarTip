@@ -43,6 +43,7 @@ import {
 import { updateDonationModerationStatus } from "@/lib/creators/moderation";
 import { contractId } from "@/lib/stellar/client";
 import { displayToRawAmount, rawToDisplayAmount } from "@/lib/stellar/amount";
+import { friendlyOnchainError } from "@/lib/stellar/contract-errors";
 import type { TokenAllowlistEntry } from "@/lib/donations/token";
 import { QrCode } from "@/components/creator/qr-code";
 
@@ -643,6 +644,9 @@ function OnchainPendingGate(args: {
         : payoutAddressWarning(payout.trim(), { contractId, treasuryAddress: treasury }),
     [payout, treasury],
   );
+  const isSubmitting = status.kind === "busy";
+  const isAwaitingIndexer = submitted && status.kind === "info";
+  const isRegisterLocked = isSubmitting || isAwaitingIndexer;
 
   async function register() {
     if (!current.owner_address || !current.handle) return;
@@ -683,6 +687,7 @@ function OnchainPendingGate(args: {
             className="flex-1"
             value={payout}
             onChange={(e) => setPayout(e.target.value)}
+            disabled={isRegisterLocked}
             autoComplete="off"
             spellCheck={false}
             placeholder="G…"
@@ -699,11 +704,11 @@ function OnchainPendingGate(args: {
           type="button"
           size="sm"
           onClick={register}
-          loading={status.kind === "busy"}
-          disabled={status.kind === "busy" || payout.trim().length === 0}
+          loading={isRegisterLocked}
+          disabled={isRegisterLocked || payout.trim().length === 0}
           className="self-start"
         >
-          {status.kind === "info" ? "Registration pending" : "Register on-chain"}
+          {isAwaitingIndexer ? "Registration pending" : "Register on-chain"}
         </Button>
         <StatusLine status={status} />
       </CardContent>
@@ -2284,6 +2289,5 @@ function humanError(code: string): string {
 }
 
 function errorMessage(err: unknown, fallback: string): string {
-  if (err instanceof Error && err.message) return err.message;
-  return fallback;
+  return friendlyOnchainError(err, fallback);
 }
