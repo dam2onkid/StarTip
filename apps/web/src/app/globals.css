@@ -858,9 +858,385 @@ body {
   color: var(--foreground);
   transition: background 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
 }
+
+.creator-profile-dialog {
+  top: 50% !important;
+  left: 0 !important;
+  right: 0 !important;
+  display: flex;
+  width: min(calc(100% - 2rem), 38rem);
+  max-width: 38rem;
+  height: min(46rem, calc(100dvh - 2rem));
+  max-height: calc(100dvh - 2rem);
+  margin-inline: auto !important;
+  transform: translateY(-50%) !important;
+  grid-template-rows: none;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: var(--radius-lg);
+  border: 1px solid color-mix(in oklch, var(--foreground) 12%, transparent);
+  background: #08090a;
+  padding: 0;
+}
+
+.creator-profile-dialog[data-state="closed"] {
+  transform: translateY(-50%) scale(0.96) !important;
+}
+
+.creator-profile-dialog[data-state="open"] {
+  transform: translateY(-50%) scale(1) !important;
+}
+
+.creator-profile-dialog-header {
+  display: grid;
+  grid-template-columns: 2.5rem minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.75rem;
+  min-height: 3.625rem;
+  border-bottom: 1px solid color-mix(in oklch, var(--foreground) 7%, transparent);
+  background: color-mix(in oklch, var(--background) 92%, black);
+  padding: 0 0.9rem;
+}
+
+.creator-profile-dialog-header [data-slot="dialog-title"] {
+  font-size: 1.25rem;
+  letter-spacing: 0;
+}
+
+.creator-profile-dialog-header [data-slot="button"] {
+  min-width: 4.25rem;
+  border-radius: 9999px;
+  background: var(--foreground);
+  color: var(--background);
+  font-weight: 700;
+}
+
+.creator-profile-dialog-close {
+  display: inline-flex;
+  width: 2.25rem;
+  height: 2.25rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+  color: var(--foreground);
+  transition: background 0.2s ease;
+}
+
+.creator-profile-dialog-close svg {
+  width: 1.25rem;
+  height: 1.25rem;
+}
+
+.creator-profile-dialog-body {
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+  gap: 0.9rem;
+  flex: 1;
+  overflow-y: auto;
+  padding: 0 0.875rem 1.25rem;
+}
+
+.creator-profile-dialog .creator-profile-cover {
+  position: relative;
+  height: 10rem;
+  margin: 0 -0.875rem;
+  overflow: hidden;
+  background: #030405;
+}
+
+.creator-profile-dialog .creator-profile-cover img {
+  height: 100%;
+  width: 100%;
+  object-fit: cover;
+}
+
+.creator-profile-dialog .creator-profile-cover-actions {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  pointer-events: none;
+}
+
+.creator-profile-dialog .creator-profile-cover-actions > * {
+  pointer-events: auto;
+}
+
+.creator-profile-dialog .creator-background-fallback {
+  height: 100%;
+  background:
+    radial-gradient(circle at 50% 70%, rgba(180, 255, 57, 0.05), transparent 34%),
+    linear-gradient(180deg, #050607 0%, #000 100%);
+}
+
+/* "New" badge shown over the avatar/cover when a local file has been
+   picked but not yet saved. Uses the single lime accent (DESIGN.md). */
+.creator-profile-dialog .creator-pending-badge {
+  position: absolute;
+  top: 0.5rem;
+  left: 0.5rem;
+  z-index: 2;
+  padding: 0.15rem 0.5rem;
+  border-radius: 9999px;
+  background: color-mix(in oklch, var(--primary) 92%, transparent);
+  color: #030405;
+  font-family: var(--font-mono), monospace;
+  font-size: 0.6rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  box-shadow: 0 6px 18px -8px rgba(0, 0, 0, 0.7);
+}
+
+/* Avatar variant: the avatar circle itself has `overflow: hidden`, so the
+   badge lives on the photo-row and sits at the avatar's top-left edge. */
+.creator-profile-dialog .creator-pending-badge-avatar {
+  top: -0.1rem;
+  left: 0.4rem;
+}
+
+.creator-profile-dialog .creator-background-fallback::before {
+  content: "=.   ++.   =++.   ==++=   ==-.   +#   -\A+=.   :=*#.   ====#.   +===-.   .==.   .*#.   *\A=:   =++*.   =**#@   =+**+:=   =**.   ==#=   *\A=:   *##-   ++*+   -*##-   +=**.   -*--   #";
+  position: absolute;
+  left: 50%;
+  top: 3rem;
+  transform: translateX(-50%);
+  color: color-mix(in oklch, var(--foreground) 62%, transparent);
+  font-family: var(--font-mono), monospace;
+  font-size: 0.9rem;
+  line-height: 1.2;
+  white-space: pre;
+  opacity: 0.85;
+}
+
+.creator-profile-dialog .creator-profile-photo-row {
+  position: relative;
+  display: grid;
+  grid-template-columns: 7.25rem minmax(0, 1fr);
+  min-height: 5.9rem;
+  min-width: 0;
+  align-items: center;
+  gap: 0.9rem;
+  margin-top: -2.85rem;
+}
+
+.creator-profile-dialog .creator-profile-avatar {
+  position: relative;
+  display: grid;
+  width: 7.25rem;
+  height: 7.25rem;
+  place-items: center;
+  overflow: hidden;
+  border-radius: 9999px;
+  border: 4px solid #f45b2e;
+  background: color-mix(in oklch, var(--card) 90%, transparent);
+  color: var(--foreground);
+  font-family: var(--font-display), var(--font-body), sans-serif;
+  font-size: 1.5rem;
+  font-weight: 600;
+  box-shadow:
+    0 0 0 4px #0a0b0d,
+    0 18px 44px -20px rgba(0, 0, 0, 0.85);
+}
+
+.creator-profile-dialog .creator-profile-avatar img {
+  height: 100%;
+  width: 100%;
+  object-fit: cover;
+}
+
+.creator-profile-dialog .creator-avatar-action {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  cursor: pointer;
+  place-items: center;
+  border-radius: 9999px;
+  border: 0;
+  background: rgba(0, 0, 0, 0.22);
+  color: var(--foreground);
+  transition: background 0.2s ease, transform 0.2s ease;
+}
+
+.creator-profile-dialog .creator-avatar-action svg,
+.creator-profile-dialog .creator-icon-action svg {
+  width: 1.1rem;
+  height: 1.1rem;
+}
+
+.creator-profile-dialog .creator-avatar-action::before {
+  content: "";
+  position: absolute;
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 9999px;
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(8px);
+}
+
+.creator-profile-dialog .creator-avatar-action svg {
+  position: relative;
+}
+
+.creator-profile-dialog .creator-profile-photo-card {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  border-radius: var(--radius-md);
+  background: color-mix(in oklch, var(--foreground) 5%, transparent);
+  padding: 0.9rem 0.8rem;
+}
+
+.creator-profile-dialog .creator-profile-photo-card div {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.creator-profile-dialog .creator-profile-photo-card strong {
+  font-size: 0.98rem;
+  line-height: 1.25;
+  color: var(--foreground);
+}
+
+.creator-profile-dialog .creator-profile-photo-card span {
+  font-size: 0.88rem;
+  line-height: 1.35;
+  color: var(--muted-foreground);
+}
+
+.creator-profile-dialog .creator-icon-action,
+.creator-profile-dialog .creator-file-action {
+  display: inline-flex;
+  min-height: 2.25rem;
+  cursor: pointer;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  white-space: nowrap;
+  border-radius: 9999px;
+  border: 0;
+  background: color-mix(in oklch, var(--foreground) 12%, transparent);
+  padding: 0.45rem 0.85rem;
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--foreground);
+  transition: background 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
+}
+
+.creator-profile-dialog .creator-icon-action {
+  width: 2.8rem;
+  min-height: 2.8rem;
+  padding: 0;
+  background: color-mix(in oklch, var(--background) 72%, transparent);
+  backdrop-filter: blur(10px);
+}
+
+.creator-profile-dialog [data-testid="creator-background-remove"] {
+  width: 2.8rem;
+  height: 2.8rem;
+  border-radius: 9999px;
+  background: color-mix(in oklch, var(--background) 72%, transparent);
+  color: var(--foreground);
+  backdrop-filter: blur(10px);
+}
+
+.creator-profile-dialog .creator-file-action svg,
+.creator-profile-dialog [data-testid="creator-background-remove"] svg {
+  width: 1rem;
+  height: 1rem;
+  flex: none;
+}
+
+.creator-profile-dialog .creator-profile-field {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+
+.creator-profile-dialog .creator-profile-field label {
+  position: absolute;
+  left: 0.75rem;
+  top: 0.55rem;
+  z-index: 1;
+  color: var(--muted-foreground);
+  font-size: 0.82rem;
+  line-height: 1;
+}
+
+.creator-profile-dialog .creator-profile-field input,
+.creator-profile-dialog .creator-profile-field textarea {
+  width: 100%;
+  border-radius: var(--radius-sm);
+  border: 1px solid color-mix(in oklch, var(--foreground) 18%, transparent);
+  background: transparent;
+  color: var(--foreground);
+  font-size: 1rem;
+  font-weight: 600;
+  outline: none;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.creator-profile-dialog .creator-profile-field input {
+  height: 3.65rem;
+  padding: 1.45rem 0.75rem 0.45rem;
+}
+
+.creator-profile-dialog .creator-profile-field textarea {
+  min-height: 6.1rem;
+  resize: vertical;
+  padding: 1.55rem 0.75rem 0.75rem;
+  line-height: 1.25;
+}
+
+.creator-profile-dialog .creator-profile-field input:focus-visible,
+.creator-profile-dialog .creator-profile-field textarea:focus-visible {
+  border-color: color-mix(in oklch, var(--foreground) 32%, transparent);
+  box-shadow: 0 0 0 3px color-mix(in oklch, var(--foreground) 8%, transparent);
+}
+
+.creator-profile-status {
+  min-height: 1rem;
+  font-size: 0.75rem;
+}
+
+@media (max-width: 520px) {
+  .creator-profile-dialog {
+    width: calc(100% - 1rem);
+    max-width: none;
+    height: min(46rem, calc(100dvh - 1rem));
+    max-height: calc(100dvh - 1rem);
+    border-radius: var(--radius-lg);
+  }
+
+  .creator-profile-dialog .creator-profile-photo-row {
+    grid-template-columns: 7.25rem minmax(0, 1fr);
+  }
+
+  .creator-profile-dialog .creator-profile-photo-card {
+    padding: 0.8rem 0.7rem;
+  }
+
+  .creator-profile-dialog .creator-profile-photo-card strong {
+    font-size: 0.9rem;
+  }
+
+  .creator-profile-dialog .creator-profile-photo-card span {
+    font-size: 0.82rem;
+  }
+}
+
 @media (hover: hover) and (pointer: fine) {
   .dashboard .creator-file-action:hover,
-  .dashboard .creator-avatar-action:hover {
+  .dashboard .creator-avatar-action:hover,
+  .creator-profile-dialog .creator-file-action:hover,
+  .creator-profile-dialog .creator-avatar-action:hover {
     background: color-mix(in oklch, var(--foreground) 11%, transparent);
     border-color: color-mix(in oklch, var(--foreground) 20%, transparent);
     transform: translateY(-1px);

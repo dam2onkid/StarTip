@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { CheckIcon, ClipboardIcon, ImageIcon, InfoIcon, Trash2Icon } from "lucide-react";
+import { CheckIcon, ClipboardIcon, InfoIcon } from "lucide-react";
 import { createBrowserClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import {
@@ -776,7 +776,6 @@ function ActiveGate(args: {
             title="Public Profile"
             description="Keep your creator page ready to share."
           >
-            <ProfileEditCard current={current} onUpdate={onUpdate} />
             <PublicLinksCard handle={current.handle} />
             <QrCodeCard handle={current.handle} />
           </CreatorSettingsSection>
@@ -855,10 +854,12 @@ function CreatorSettingsSidebar({
           </h2>
           <p className="truncate text-sm text-muted-foreground">@{current.handle}</p>
         </div>
-        <span className="status-pill" data-tone={paused ? "paused" : "active"}>
-          <span className="dot" aria-hidden />
-          {paused ? "Paused" : "Active"}
-        </span>
+        {paused ? (
+          <span className="status-pill" data-tone="paused">
+            <span className="dot" aria-hidden />
+            Paused
+          </span>
+        ) : null}
       </div>
       <dl className="creator-settings-quick-stats">
         <div>
@@ -985,12 +986,6 @@ function PublicLinksCard({ handle }: { handle: string | null }) {
       </CardContent>
     </Card>
   );
-}
-
-function initials(name: string): string {
-  const words = name.trim().split(/\s+/).filter(Boolean);
-  if (words.length === 0) return "C";
-  return words.slice(0, 2).map((word) => word[0]?.toUpperCase() ?? "").join("") || "C";
 }
 
 function EmptyState({
@@ -1373,248 +1368,6 @@ function PauseCard({ current }: { current: CreatorProfile }) {
               : "Pause"}
         </Button>
         <StatusLine status={status} />
-      </CardContent>
-    </Card>
-  );
-}
-
-/** Profile edit: display_name, avatar_url, bio via owner UPDATE RLS + avatar upload. */
-function ProfileEditCard(args: {
-  current: CreatorProfile;
-  onUpdate: (updater: (prev: CreatorProfile) => CreatorProfile) => void;
-}) {
-  const { current, onUpdate } = args;
-  const [displayName, setDisplayName] = useState(current.display_name);
-  const [bio, setBio] = useState(current.bio ?? "");
-  const [avatarUrl, setAvatarUrl] = useState<string | null>(current.avatar_url);
-  const [bannerUrl, setBannerUrl] = useState<string | null>(current.banner_url ?? null);
-  const [status, setStatus] = useState<
-    | { kind: "idle" }
-    | { kind: "saving" }
-    | { kind: "saved" }
-    | { kind: "error"; message: string }
-  >({ kind: "idle" });
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const bannerInputRef = useRef<HTMLInputElement>(null);
-
-  async function save() {
-    setStatus({ kind: "saving" });
-    try {
-      const supabase = createBrowserClient();
-      let nextAvatarUrl = avatarUrl;
-      let nextBannerUrl = bannerUrl;
-      const file = fileInputRef.current?.files?.[0];
-      if (file) {
-        const ext = file.name.split(".").pop() ?? "png";
-        const path = `${current.user_id}/${Date.now()}.${ext}`;
-        const up = await supabase.storage.from("avatars").upload(path, file, {
-          cacheControl: "3600",
-          upsert: false,
-        });
-        if (up.error) throw up.error;
-        nextAvatarUrl = supabase.storage.from("avatars").getPublicUrl(path).data.publicUrl;
-      }
-      const bannerFile = bannerInputRef.current?.files?.[0];
-      if (bannerFile) {
-        const ext = bannerFile.name.split(".").pop() ?? "png";
-        const path = `${current.user_id}/banner-${Date.now()}.${ext}`;
-        const up = await supabase.storage.from("avatars").upload(path, bannerFile, {
-          cacheControl: "3600",
-          upsert: false,
-        });
-        if (up.error) throw up.error;
-        nextBannerUrl = supabase.storage.from("avatars").getPublicUrl(path).data.publicUrl;
-      }
-      const update: {
-        display_name: string;
-        bio: string;
-        avatar_url?: string | null;
-        banner_url?: string | null;
-      } = {
-        display_name: displayName.trim() || "Anonymous",
-        bio: bio.trim(),
-      };
-      if (nextAvatarUrl !== current.avatar_url) {
-        update.avatar_url = nextAvatarUrl;
-      }
-      if (nextBannerUrl !== (current.banner_url ?? null)) {
-        update.banner_url = nextBannerUrl;
-      }
-      const res = await supabase.from("profiles").update(update).eq("user_id", current.user_id);
-      if (res.error) throw res.error;
-      setAvatarUrl(nextAvatarUrl);
-      setBannerUrl(nextBannerUrl);
-      if (fileInputRef.current) fileInputRef.current.value = "";
-      if (bannerInputRef.current) bannerInputRef.current.value = "";
-      onUpdate((prev) => ({
-        ...prev,
-        display_name: update.display_name,
-        bio: update.bio,
-        avatar_url: nextAvatarUrl,
-        banner_url: nextBannerUrl,
-      }));
-      setStatus({ kind: "saved" });
-    } catch (e) {
-      let message = "Could not save profile.";
-      if (e instanceof Error && e.message) message = e.message;
-      else if (e && typeof e === "object" && "message" in e && typeof (e as { message: unknown }).message === "string")
-        message = (e as { message: string }).message;
-      setStatus({ kind: "error", message });
-    }
-  }
-
-  async function removeBackground() {
-    setStatus({ kind: "saving" });
-    try {
-      const supabase = createBrowserClient();
-      const res = await supabase
-        .from("profiles")
-        .update({ banner_url: null })
-        .eq("user_id", current.user_id);
-      if (res.error) throw res.error;
-      setBannerUrl(null);
-      if (bannerInputRef.current) bannerInputRef.current.value = "";
-      onUpdate((prev) => ({ ...prev, banner_url: null }));
-      setStatus({ kind: "saved" });
-    } catch (e) {
-      setStatus({ kind: "error", message: errorMessage(e, "Could not remove background.") });
-    }
-  }
-
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitleWithInfo
-          title="Edit your creator profile"
-          info="Your display name, avatar, and bio appear on your public creator page."
-        />
-      </CardHeader>
-      <CardContent className="flex flex-col gap-3">
-        <div className="creator-profile-editor">
-          <div className="creator-profile-cover">
-            {bannerUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={bannerUrl} alt="" className="h-full w-full object-cover" />
-            ) : (
-              <div className="creator-background-fallback" aria-hidden />
-            )}
-            <div className="creator-profile-cover-actions">
-              <label className="creator-file-action" htmlFor="creator-background-input">
-                <ImageIcon data-icon="inline-start" aria-hidden />
-                Change background
-              </label>
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                onClick={removeBackground}
-                loading={status.kind === "saving"}
-                disabled={status.kind === "saving" || !bannerUrl}
-                data-testid="creator-background-remove"
-              >
-                <Trash2Icon data-icon="inline-start" aria-hidden />
-                Remove
-              </Button>
-            </div>
-            <input
-              id="creator-background-input"
-              ref={bannerInputRef}
-              type="file"
-              accept="image/png,image/jpeg,image/gif,image/webp"
-              className="sr-only"
-              data-testid="creator-background-input"
-              onChange={() => setStatus({ kind: "idle" })}
-            />
-          </div>
-          <div className="creator-profile-photo-row">
-            <div className="creator-profile-avatar">
-              {avatarUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={avatarUrl}
-                  alt=""
-                  width={72}
-                  height={72}
-                  className="h-full w-full object-cover"
-                  data-testid="creator-avatar-preview"
-                />
-              ) : (
-                <span data-testid="creator-avatar-placeholder">{initials(displayName)}</span>
-              )}
-              <label className="creator-avatar-action" htmlFor="creator-avatar-input">
-                <ImageIcon aria-hidden />
-                <span className="sr-only">Change avatar</span>
-              </label>
-            </div>
-            <div className="creator-profile-photo-copy">
-              <strong>Edit your photo</strong>
-              <span>PNG, JPG, GIF, or WebP. Wide images work best for the background.</span>
-            </div>
-            <label className="creator-file-action" htmlFor="creator-avatar-input">
-              <ImageIcon data-icon="inline-start" aria-hidden />
-              Change photo
-            </label>
-            <input
-              id="creator-avatar-input"
-              name="avatar"
-              ref={fileInputRef}
-              type="file"
-              accept="image/*"
-              className="sr-only"
-              data-testid="creator-avatar-input"
-              onChange={() => setStatus({ kind: "idle" })}
-            />
-          </div>
-        </div>
-        <div className="flex flex-col gap-1">
-          <label className="text-xs text-muted-foreground" htmlFor="creator-display-name-input">
-            Display name
-          </label>
-          <Input
-            id="creator-display-name-input"
-            name="displayName"
-            className="flex-1"
-            value={displayName}
-            onChange={(e) => { setDisplayName(e.target.value); setStatus({ kind: "idle" }); }}
-            placeholder="Anonymous"
-            autoComplete="off"
-          />
-        </div>
-        <div className="flex flex-col gap-1">
-          <label className="text-xs text-muted-foreground" htmlFor="creator-bio-input">
-            Bio
-          </label>
-          <textarea
-            id="creator-bio-input"
-            name="bio"
-            className="min-h-20 flex-1 rounded-lg border border-input bg-transparent px-3 py-2 text-sm outline-none transition-[border-color,box-shadow] placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 dark:bg-input/30"
-            value={bio}
-            onChange={(e) => { setBio(e.target.value); setStatus({ kind: "idle" }); }}
-            placeholder="Tell donors about yourself."
-            autoComplete="off"
-          />
-        </div>
-        <Button
-          type="button"
-          size="sm"
-          onClick={save}
-          loading={status.kind === "saving"}
-          disabled={status.kind === "saving"}
-          className="self-start"
-          data-testid="creator-profile-save"
-        >
-          Save profile
-        </Button>
-        {status.kind === "saved" && (
-          <p className="text-xs text-tertiary" aria-live="polite" data-testid="creator-save-status">
-            Profile saved.
-          </p>
-        )}
-        {status.kind === "error" && (
-          <p className="text-xs text-destructive" aria-live="polite" role="alert" data-testid="creator-save-status">
-            {status.message}
-          </p>
-        )}
       </CardContent>
     </Card>
   );

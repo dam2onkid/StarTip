@@ -1,6 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor, act } from "@testing-library/react";
 
+// jsdom's `URL.createObjectURL` returns an opaque `blob:nodedata:` URL that
+// is unique per call and hard to assert on. The profile dialog uses it to
+// preview a locally picked avatar/background before Save uploads it. Stub it
+// to a stable string so the preview flow is testable.
+URL.createObjectURL = vi.fn(() => "blob:mock://preview");
+URL.revokeObjectURL = vi.fn();
+
 const getUser = vi.fn();
 const serverFrom = vi.fn();
 const serviceFrom = vi.fn();
@@ -113,20 +120,131 @@ describe("/dashboard shell", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: /edit profile/i }));
-    const input = screen.getByLabelText(/display name/i);
+    expect(screen.queryByText(/^Active$/)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /edit creator profile/i }));
+    const input = screen.getByLabelText(/^name$/i);
+    const bioInput = screen.getByLabelText(/bio/i);
     await act(async () => {
       fireEvent.change(input, { target: { value: "Ada Lovelace" } });
     });
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: /save profile/i }));
+      fireEvent.change(bioInput, { target: { value: "Math pioneer." } });
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
     });
 
     await waitFor(() => {
       expect(screen.getByTestId("save-status")).toHaveTextContent(/saved/i);
     });
-    expect(fromUpdate).toHaveBeenCalledWith({ display_name: "Ada Lovelace" });
+    expect(fromUpdate).toHaveBeenCalledWith({
+      display_name: "Ada Lovelace",
+      bio: "Math pioneer.",
+    });
     expect(updateEq).toHaveBeenCalledWith("user_id", "u1");
+  });
+
+  it("uploads and removes creator profile background from the header dialog", async () => {
+    const { DashboardShell } = await import("@/app/(auth)/dashboard/page");
+    render(
+      <DashboardShell
+        creatorProfile={{
+          id: "p1",
+          user_id: "u1",
+          display_name: "Ada",
+          avatar_url: null,
+          banner_url: "https://example.storage/avatars/u1/old.png",
+          bio: "Pioneer programmer.",
+          handle: "ada",
+          owner_address: "G-OWNER",
+          onchain_registered: true,
+          paused: false,
+        }}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /edit creator profile/i }));
+    const file = new File(["banner"], "cover.png", { type: "image/png" });
+    await act(async () => {
+      fireEvent.change(screen.getByTestId("creator-background-input"), {
+        target: { files: [file] },
+      });
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("creator-profile-save"));
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId("save-status")).toHaveTextContent(/saved/i);
+    });
+    expect(storageUpload).toHaveBeenCalledWith(
+      expect.stringMatching(/^u1\/banner-\d+\.png$/),
+      file,
+      { cacheControl: "3600", upsert: false },
+    );
+    expect(fromUpdate).toHaveBeenCalledWith({
+      display_name: "Ada",
+      bio: "Pioneer programmer.",
+      banner_url: "https://example.storage/avatars/u1/1.png",
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("creator-background-remove"));
+    });
+    await waitFor(() => {
+      expect(fromUpdate).toHaveBeenLastCalledWith({ banner_url: null });
+    });
+  });
+
+  it("shows a local preview of a picked avatar and background before saving", async () => {
+    const { DashboardShell } = await import("@/app/(auth)/dashboard/page");
+    render(
+      <DashboardShell
+        creatorProfile={{
+          id: "p1",
+          user_id: "u1",
+          display_name: "Ada",
+          avatar_url: null,
+          banner_url: null,
+          bio: null,
+          handle: null,
+          owner_address: null,
+          onchain_registered: false,
+          paused: false,
+        }}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /edit creator profile/i }));
+
+    // No preview or "New" badge before a file is picked.
+    expect(screen.queryByTestId("creator-avatar-pending")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("creator-background-pending")).not.toBeInTheDocument();
+
+    const avatarFile = new File(["avatar"], "face.png", { type: "image/png" });
+    const bannerFile = new File(["banner"], "cover.png", { type: "image/png" });
+    await act(async () => {
+      fireEvent.change(screen.getByTestId("creator-avatar-input"), {
+        target: { files: [avatarFile] },
+      });
+    });
+    await act(async () => {
+      fireEvent.change(screen.getByTestId("creator-background-input"), {
+        target: { files: [bannerFile] },
+      });
+    });
+
+    // The locally picked image is rendered immediately (blob URL) and a
+    // "New" badge marks it as unsaved so the user knows it was added.
+    expect(screen.getByTestId("creator-avatar-preview-pending")).toHaveAttribute(
+      "src",
+      "blob:mock://preview",
+    );
+    expect(screen.getByTestId("creator-avatar-pending")).toHaveTextContent(/new/i);
+    expect(screen.getByTestId("creator-background-preview")).toHaveAttribute(
+      "src",
+      "blob:mock://preview",
+    );
+    expect(screen.getByTestId("creator-background-pending")).toHaveTextContent(/new/i);
   });
 });
 

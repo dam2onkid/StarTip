@@ -648,90 +648,14 @@ describe("CreatorTab — active features", () => {
     });
   });
 
-  it("edits display_name + bio via the owner UPDATE RLS path", async () => {
+  it("keeps the profile tab focused on public links, with profile editing owned by the dashboard header", async () => {
     const { CreatorTab } = await import("@/app/(auth)/dashboard/creator-tab");
     render(<CreatorTab profile={activeProfile()} activeData={activeData()} />);
     await openCreatorTab(/profile & links/i);
-    const nameInput = screen.getByLabelText(/display name/i);
-    const bioInput = screen.getByLabelText(/bio/i);
-    await act(async () => {
-      fireEvent.change(nameInput, { target: { value: "Ada L." } });
-    });
-    await act(async () => {
-      fireEvent.change(bioInput, { target: { value: "Math pioneer." } });
-    });
-    await act(async () => {
-      fireEvent.click(screen.getByTestId("creator-profile-save"));
-    });
-    await waitFor(() => {
-      expect(screen.getByTestId("creator-save-status")).toHaveTextContent(/saved/i);
-    });
-    // Assert the PATCH went to profiles with display_name + bio, filtered by user_id.
-    const profilePatch = supabaseFromCalls.find((c) => c.table === "profiles");
-    expect(profilePatch).toBeDefined();
-    expect(profilePatch?.payload).toEqual({
-      display_name: "Ada L.",
-      bio: "Math pioneer.",
-    });
-    expect(profilePatch?.filters.user_id).toBe("u1");
-  });
-
-  it("renders the avatar input and placeholder when no avatar is set", async () => {
-    const { CreatorTab } = await import("@/app/(auth)/dashboard/creator-tab");
-    render(<CreatorTab profile={activeProfile({ avatar_url: null })} activeData={activeData()} />);
-    await openCreatorTab(/profile & links/i);
-    expect(screen.getByTestId("creator-avatar-placeholder")).toBeInTheDocument();
-    expect(screen.getByTestId("creator-avatar-input")).toBeInTheDocument();
-  });
-
-  it("uploads and saves a creator background image", async () => {
-    const { CreatorTab } = await import("@/app/(auth)/dashboard/creator-tab");
-    render(<CreatorTab profile={activeProfile()} activeData={activeData()} />);
-    await openCreatorTab(/profile & links/i);
-    const file = new File(["banner"], "cover.png", { type: "image/png" });
-    await act(async () => {
-      fireEvent.change(screen.getByTestId("creator-background-input"), {
-        target: { files: [file] },
-      });
-    });
-    await act(async () => {
-      fireEvent.click(screen.getByTestId("creator-profile-save"));
-    });
-    await waitFor(() => {
-      expect(screen.getByTestId("creator-save-status")).toHaveTextContent(/saved/i);
-    });
-    expect(supabaseStorageCalls.some((c) => c.bucket === "avatars" && c.path.includes("banner-"))).toBe(true);
-    const bannerPatch = supabaseFromCalls.find(
-      (c) => c.table === "profiles" && c.payload && "banner_url" in (c.payload as Record<string, unknown>),
-    );
-    expect(bannerPatch?.payload).toMatchObject({
-      display_name: "Ada",
-      bio: "Pioneer programmer.",
-      banner_url: expect.stringMatching(/\/avatars\/u1\/banner-\d+\.png$/),
-    });
-    expect(bannerPatch?.filters.user_id).toBe("u1");
-  });
-
-  it("removes the creator background image", async () => {
-    const { CreatorTab } = await import("@/app/(auth)/dashboard/creator-tab");
-    render(
-      <CreatorTab
-        profile={activeProfile({ banner_url: "https://stub/banner.png" })}
-        activeData={activeData()}
-      />,
-    );
-    await openCreatorTab(/profile & links/i);
-    await act(async () => {
-      fireEvent.click(screen.getByTestId("creator-background-remove"));
-    });
-    await waitFor(() => {
-      expect(screen.getByTestId("creator-save-status")).toHaveTextContent(/saved/i);
-    });
-    const bannerPatch = supabaseFromCalls.find(
-      (c) => c.table === "profiles" && c.payload && "banner_url" in (c.payload as Record<string, unknown>),
-    );
-    expect(bannerPatch?.payload).toEqual({ banner_url: null });
-    expect(bannerPatch?.filters.user_id).toBe("u1");
+    expect(screen.queryByText(/edit your creator profile/i)).not.toBeInTheDocument();
+    expect(screen.queryByTestId("creator-profile-save")).not.toBeInTheDocument();
+    expect(screen.getByTestId("creator-donate-url")).toBeInTheDocument();
+    expect(screen.getByTestId("qr-svg")).toBeInTheDocument();
   });
 
   it("lists donations including hidden in the moderation list", async () => {

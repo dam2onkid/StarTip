@@ -1,16 +1,15 @@
 "use client";
 
 import * as React from "react";
-import { UserRoundIcon } from "lucide-react";
+import { ImageIcon, PencilIcon, Trash2Icon, XIcon } from "lucide-react";
 import { Grain } from "@/components/landing/grain";
 import { createBrowserClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
+  DialogClose,
   DialogContent,
   DialogDescription,
-  DialogFooter,
-  DialogHeader,
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
@@ -86,10 +85,20 @@ export function DashboardTabs({
   const [avatarUrl, setAvatarUrl] = React.useState<string | null>(
     creatorProfile.avatar_url,
   );
+  const [bannerUrl, setBannerUrl] = React.useState<string | null>(
+    creatorProfile.banner_url ?? null,
+  );
+  const [bio, setBio] = React.useState(creatorProfile.bio ?? "");
   const [profileStatus, setProfileStatus] = React.useState<ProfileStatus>({
     kind: "idle",
   });
+  // Local preview of a freshly picked file (before Save uploads it to
+  // Supabase). `URL.createObjectURL` gives a blob: URL we can render
+  // immediately so the dialog reflects the user's pick without a round-trip.
+  const [avatarPreview, setAvatarPreview] = React.useState<string | null>(null);
+  const [bannerPreview, setBannerPreview] = React.useState<string | null>(null);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
+  const bannerInputRef = React.useRef<HTMLInputElement>(null);
 
   // Position the active indicator under the selected tab. The indicator is
   // absolutely positioned inside `.tab-list`, and `btn.offsetLeft` is already
@@ -135,11 +144,42 @@ export function DashboardTabs({
     tabRefs.current[id]?.focus();
   }
 
+  // Revoke pending blob URLs when they're replaced or the shell unmounts,
+  // otherwise we leak a file descriptor per pick.
+  React.useEffect(() => {
+    return () => {
+      if (avatarPreview) URL.revokeObjectURL(avatarPreview);
+      if (bannerPreview) URL.revokeObjectURL(bannerPreview);
+    };
+  }, [avatarPreview, bannerPreview]);
+
+  function handleAvatarFileChange() {
+    const file = fileInputRef.current?.files?.[0];
+    if (avatarPreview) URL.revokeObjectURL(avatarPreview);
+    setAvatarPreview(file ? URL.createObjectURL(file) : null);
+    setProfileStatus({ kind: "idle" });
+  }
+
+  function handleBannerFileChange() {
+    const file = bannerInputRef.current?.files?.[0];
+    if (bannerPreview) URL.revokeObjectURL(bannerPreview);
+    setBannerPreview(file ? URL.createObjectURL(file) : null);
+    setProfileStatus({ kind: "idle" });
+  }
+
+  function clearPendingPreviews() {
+    if (avatarPreview) URL.revokeObjectURL(avatarPreview);
+    if (bannerPreview) URL.revokeObjectURL(bannerPreview);
+    setAvatarPreview(null);
+    setBannerPreview(null);
+  }
+
   async function saveProfile() {
     setProfileStatus({ kind: "saving" });
     try {
       const supabase = createBrowserClient();
       let nextAvatarUrl = avatarUrl;
+      let nextBannerUrl = bannerUrl;
 
       const file = fileInputRef.current?.files?.[0];
       if (file) {
@@ -152,12 +192,32 @@ export function DashboardTabs({
         if (up.error) throw up.error;
         nextAvatarUrl = supabase.storage.from("avatars").getPublicUrl(path).data.publicUrl;
       }
+      const bannerFile = bannerInputRef.current?.files?.[0];
+      if (bannerFile) {
+        const ext = bannerFile.name.split(".").pop() ?? "png";
+        const path = `${creatorProfile.user_id}/banner-${Date.now()}.${ext}`;
+        const up = await supabase.storage.from("avatars").upload(path, bannerFile, {
+          cacheControl: "3600",
+          upsert: false,
+        });
+        if (up.error) throw up.error;
+        nextBannerUrl = supabase.storage.from("avatars").getPublicUrl(path).data.publicUrl;
+      }
 
-      const update: { display_name: string; avatar_url?: string | null } = {
+      const update: {
+        display_name: string;
+        bio: string;
+        avatar_url?: string | null;
+        banner_url?: string | null;
+      } = {
         display_name: displayName.trim() || "Anonymous",
+        bio: bio.trim(),
       };
       if (nextAvatarUrl !== creatorProfile.avatar_url) {
         update.avatar_url = nextAvatarUrl;
+      }
+      if (nextBannerUrl !== (creatorProfile.banner_url ?? null)) {
+        update.banner_url = nextBannerUrl;
       }
 
       const res = await supabase
@@ -168,7 +228,11 @@ export function DashboardTabs({
 
       setDisplayName(update.display_name);
       setAvatarUrl(nextAvatarUrl);
+      setBannerUrl(nextBannerUrl);
+      setBio(update.bio);
       if (fileInputRef.current) fileInputRef.current.value = "";
+      if (bannerInputRef.current) bannerInputRef.current.value = "";
+      clearPendingPreviews();
       setProfileStatus({ kind: "saved" });
     } catch (e) {
       let message = "Could not save profile.";
@@ -186,8 +250,38 @@ export function DashboardTabs({
     }
   }
 
+  async function removeBackground() {
+    setProfileStatus({ kind: "saving" });
+    try {
+      const supabase = createBrowserClient();
+      const res = await supabase
+        .from("profiles")
+        .update({ banner_url: null })
+        .eq("user_id", creatorProfile.user_id);
+      if (res.error) throw res.error;
+      setBannerUrl(null);
+      if (bannerInputRef.current) bannerInputRef.current.value = "";
+      clearPendingPreviews();
+      setProfileStatus({ kind: "saved" });
+    } catch (e) {
+      setProfileStatus({
+        kind: "error",
+        message: e instanceof Error && e.message ? e.message : "Could not remove background.",
+      });
+    }
+  }
+
   const donorCount = donorData?.donations.length ?? 0;
-  const identity = useIdentity(creatorProfile);
+  const editableCreatorProfile = React.useMemo<CreatorProfile>(
+    () => ({
+      ...creatorProfile,
+      display_name: displayName,
+      avatar_url: avatarUrl,
+      banner_url: bannerUrl,
+      bio,
+    }),
+    [avatarUrl, bannerUrl, bio, creatorProfile, displayName],
+  );
 
   return (
     <>
@@ -210,13 +304,25 @@ export function DashboardTabs({
                   </h1>
                   <ProfileEditDialog
                     avatarUrl={avatarUrl}
+                    avatarPreview={avatarPreview}
+                    bannerPreview={bannerPreview}
                     displayName={displayName}
                     fileInputRef={fileInputRef}
+                    bannerInputRef={bannerInputRef}
                     status={profileStatus}
                     onDisplayNameChange={(next) => {
                       setDisplayName(next);
                       setProfileStatus({ kind: "idle" });
                     }}
+                    bio={bio}
+                    bannerUrl={bannerUrl}
+                    onBioChange={(next) => {
+                      setBio(next);
+                      setProfileStatus({ kind: "idle" });
+                    }}
+                    onAvatarFileChange={handleAvatarFileChange}
+                    onBannerFileChange={handleBannerFileChange}
+                    onRemoveBackground={removeBackground}
                     onSave={saveProfile}
                   />
                 </div>
@@ -226,22 +332,6 @@ export function DashboardTabs({
                       @{creatorProfile.handle}
                     </span>
                   )}
-                  <StatusPill
-                    tone={
-                      identity.onchain
-                        ? identity.paused
-                          ? "paused"
-                          : "active"
-                        : "neutral"
-                    }
-                    label={
-                      identity.onchain
-                        ? identity.paused
-                          ? "Paused"
-                          : "Active"
-                        : "Not registered"
-                    }
-                  />
                 </div>
               </div>
             </div>
@@ -323,7 +413,7 @@ export function DashboardTabs({
         ) : (
           <div role="tabpanel" id="creator-panel" aria-labelledby="creator-tab">
             <CreatorTab
-              profile={creatorProfile}
+              profile={editableCreatorProfile}
               activeData={creatorActiveData}
             />
           </div>
@@ -335,13 +425,6 @@ export function DashboardTabs({
 
 /* ------------------------------------------------------------------ */
 
-function useIdentity(p: CreatorProfile): {
-  onchain: boolean;
-  paused: boolean;
-} {
-  return { onchain: p.onchain_registered, paused: p.paused ?? false };
-}
-
 function IdentityAvatar({
   avatarUrl,
   name,
@@ -350,10 +433,7 @@ function IdentityAvatar({
   name: string;
 }) {
   const initials = React.useMemo(() => {
-    const parts = name.trim().split(/\s+/).filter(Boolean);
-    if (parts.length === 0) return "·";
-    if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
-    return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+    return initialsForName(name, "·");
   }, [name]);
   return (
     <div className="identity-avatar h-14 w-14 sm:h-16 sm:w-16" aria-hidden>
@@ -381,132 +461,213 @@ function DashboardStat({ label, value }: { label: string; value: string }) {
 
 function ProfileEditDialog({
   avatarUrl,
+  avatarPreview,
+  bannerPreview,
+  bannerUrl,
+  bio,
   displayName,
   fileInputRef,
+  bannerInputRef,
   status,
+  onBioChange,
   onDisplayNameChange,
+  onAvatarFileChange,
+  onBannerFileChange,
+  onRemoveBackground,
   onSave,
 }: {
   avatarUrl: string | null;
+  avatarPreview: string | null;
+  bannerPreview: string | null;
+  bannerUrl: string | null;
+  bio: string;
   displayName: string;
   fileInputRef: React.RefObject<HTMLInputElement | null>;
+  bannerInputRef: React.RefObject<HTMLInputElement | null>;
   status: ProfileStatus;
+  onBioChange: (value: string) => void;
   onDisplayNameChange: (value: string) => void;
+  onAvatarFileChange: () => void;
+  onBannerFileChange: () => void;
+  onRemoveBackground: () => void;
   onSave: () => void;
 }) {
+  // A pending local pick takes precedence over the saved URL so the dialog
+  // reflects the user's selection immediately, before Save uploads it.
+  const avatarSrc = avatarPreview ?? avatarUrl;
+  const bannerSrc = bannerPreview ?? bannerUrl;
+
   return (
     <Dialog>
       <DialogTrigger asChild>
-        <Button type="button" variant="outline" size="icon-sm" aria-label="Edit profile">
-          <UserRoundIcon aria-hidden />
+        <Button type="button" variant="outline" size="icon-sm" aria-label="Edit creator profile">
+          <PencilIcon aria-hidden />
         </Button>
       </DialogTrigger>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Edit your profile</DialogTitle>
-          <DialogDescription>
-            Your display name appears on donations and leaderboards. Your avatar
-            is shown next to your name.
-          </DialogDescription>
-        </DialogHeader>
-        <div className="flex flex-col gap-4">
-          <div className="flex items-center gap-4">
-            {avatarUrl ? (
+      <DialogContent
+        // `translate-none` cancels DialogContent's base `-translate-x-1/2
+        // -translate-y-1/2` via tailwind-merge. Those compile to the
+        // standalone CSS `translate` property, which composes independently
+        // of `transform` — left uncanceled, that -50%/-50% offset stacked on
+        // top of `.creator-profile-dialog`'s own transform-based centering
+        // and shifted the dialog up and to the left instead of centering it.
+        className="creator-profile-dialog translate-none"
+        showCloseButton={false}
+      >
+        <div className="creator-profile-dialog-header">
+          <DialogClose className="creator-profile-dialog-close" aria-label="Close">
+            <XIcon aria-hidden />
+          </DialogClose>
+          <DialogTitle>Edit profile</DialogTitle>
+          <Button
+            type="button"
+            size="sm"
+            variant="secondary"
+            onClick={onSave}
+            loading={status.kind === "saving"}
+            disabled={status.kind === "saving"}
+            data-testid="creator-profile-save"
+          >
+            Save
+          </Button>
+        </div>
+        <DialogDescription className="sr-only">
+          Your display name, avatar, background, and bio appear on your public creator page.
+        </DialogDescription>
+        <div className="creator-profile-dialog-body">
+          <div className="creator-profile-cover">
+            {bannerSrc ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img
-                src={avatarUrl}
+                src={bannerSrc}
                 alt=""
-                width={56}
-                height={56}
-                className="h-14 w-14 rounded-full object-cover"
+                data-testid={bannerPreview ? "creator-background-preview" : undefined}
               />
             ) : (
-              <div
-                aria-hidden
-                className="h-14 w-14 rounded-full bg-foreground/10"
-              />
+              <div className="creator-background-fallback" aria-hidden />
             )}
-            <div className="flex min-w-0 flex-1 flex-col gap-1">
-              <label
-                className="text-xs text-muted-foreground"
-                htmlFor="avatar-input"
+            {bannerPreview && (
+              <span className="creator-pending-badge" data-testid="creator-background-pending">
+                New
+              </span>
+            )}
+            <div className="creator-profile-cover-actions">
+              <label className="creator-icon-action" htmlFor="creator-background-input">
+                <ImageIcon aria-hidden />
+                <span className="sr-only">Change background</span>
+              </label>
+              <Button
+                type="button"
+                size="icon-sm"
+                variant="ghost"
+                onClick={onRemoveBackground}
+                loading={status.kind === "saving"}
+                disabled={status.kind === "saving" || !bannerUrl}
+                data-testid="creator-background-remove"
+                aria-label="Remove background"
               >
-                Avatar
+                <Trash2Icon aria-hidden />
+              </Button>
+            </div>
+            <input
+              id="creator-background-input"
+              ref={bannerInputRef}
+              type="file"
+              accept="image/png,image/jpeg,image/gif,image/webp"
+              className="sr-only"
+              data-testid="creator-background-input"
+              onChange={onBannerFileChange}
+            />
+          </div>
+          <div className="creator-profile-photo-row">
+            {avatarPreview && (
+              <span
+                className="creator-pending-badge creator-pending-badge-avatar"
+                data-testid="creator-avatar-pending"
+              >
+                New
+              </span>
+            )}
+            <div className="creator-profile-avatar">
+              {avatarSrc ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={avatarSrc}
+                  alt=""
+                  width={96}
+                  height={96}
+                  data-testid={avatarPreview ? "creator-avatar-preview-pending" : "creator-avatar-preview"}
+                />
+              ) : (
+                <span data-testid="creator-avatar-placeholder">{initialsForName(displayName, "C")}</span>
+              )}
+              <label className="creator-avatar-action" htmlFor="creator-avatar-input">
+                <ImageIcon aria-hidden />
+                <span className="sr-only">Change avatar</span>
               </label>
               <input
-                id="avatar-input"
+                id="creator-avatar-input"
+                name="avatar"
                 ref={fileInputRef}
                 type="file"
                 accept="image/*"
-                className="w-full text-xs text-muted-foreground file:mr-3 file:rounded-md file:border-0 file:bg-foreground/8 file:px-3 file:py-1.5 file:text-xs file:text-foreground"
-                data-testid="avatar-input"
+                className="sr-only"
+                data-testid="creator-avatar-input"
+                onChange={onAvatarFileChange}
               />
             </div>
           </div>
-          <div className="flex flex-col gap-1">
+          <div className="creator-profile-field">
             <label
-              className="text-xs text-muted-foreground"
               htmlFor="display-name-input"
             >
-              Display name
+              Name
             </label>
             <Input
               id="display-name-input"
-              className="flex-1"
               value={displayName}
               onChange={(e) => onDisplayNameChange(e.target.value)}
               placeholder="Anonymous"
               autoComplete="off"
             />
           </div>
-        </div>
-        <DialogFooter className="items-start sm:items-center sm:justify-between">
-          <div className="min-h-5">
-            {status.kind === "saved" && (
-              <p
-                className="text-xs text-tertiary"
-                aria-live="polite"
-                data-testid="save-status"
-              >
-                Profile saved.
-              </p>
-            )}
-            {status.kind === "error" && (
-              <p
-                className="text-xs text-destructive"
-                aria-live="polite"
-                role="alert"
-                data-testid="save-status"
-              >
-                {status.message}
-              </p>
-            )}
+          <div className="creator-profile-field">
+            <label htmlFor="creator-bio-input">
+              Bio
+            </label>
+            <textarea
+              id="creator-bio-input"
+              name="bio"
+              value={bio}
+              onChange={(e) => onBioChange(e.target.value)}
+              placeholder="Tell donors about yourself."
+              autoComplete="off"
+            />
           </div>
-          <Button
-            type="button"
-            size="sm"
-            onClick={onSave}
-            disabled={status.kind === "saving"}
-          >
-            {status.kind === "saving" ? "Saving..." : "Save profile"}
-          </Button>
-        </DialogFooter>
+          {status.kind === "saved" && (
+            <p className="creator-profile-status text-tertiary" aria-live="polite" data-testid="save-status">
+              Profile saved.
+            </p>
+          )}
+          {status.kind === "error" && (
+            <p
+              className="creator-profile-status text-destructive"
+              aria-live="polite"
+              role="alert"
+              data-testid="save-status"
+            >
+              {status.message}
+            </p>
+          )}
+        </div>
       </DialogContent>
     </Dialog>
   );
 }
 
-function StatusPill({
-  tone,
-  label,
-}: {
-  tone: "active" | "paused" | "neutral";
-  label: string;
-}) {
-  return (
-    <span className="status-pill" data-tone={tone}>
-      <span className="dot" aria-hidden />
-      {label}
-    </span>
-  );
+function initialsForName(name: string, fallback: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return fallback;
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
 }
