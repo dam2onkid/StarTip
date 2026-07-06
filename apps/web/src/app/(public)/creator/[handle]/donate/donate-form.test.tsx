@@ -90,14 +90,6 @@ const TOKEN_USDC = {
   icon_url: null,
 };
 
-const PREPARE_RESPONSE = {
-  donation_id: "00000000-0000-0000-0000-000000000001",
-  donation_id_hash: "ab".repeat(32),
-  contract_id: "C-TEST-CONTRACT",
-  handle_hash: "cd".repeat(32),
-  token_allowlist: [TOKEN_USDC],
-};
-
 function mockFetch(responses: Array<(url: string, init?: RequestInit) => Response>) {
   const calls = responses.slice();
   global.fetch = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
@@ -195,10 +187,9 @@ describe("DonateForm", () => {
     expect(screen.getByRole("combobox", { name: /token/i })).toBeDisabled();
   });
 
-  it("completes the full prepare -> submit -> confirm flow and shows success", async () => {
+  it("completes the full submit -> verify flow and shows success", async () => {
     donateOnChain.mockResolvedValue({ status: "PENDING", hash: "deadbeef".repeat(8) });
     mockFetch([
-      () => jsonRes(200, PREPARE_RESPONSE),
       () => jsonRes(200, { status: "confirmed" }),
     ]);
     await renderAndConnect();
@@ -215,11 +206,20 @@ describe("DonateForm", () => {
       expect(screen.getByText(/donation confirmed/i)).toBeInTheDocument();
     });
     expect(donateOnChain).toHaveBeenCalledOnce();
+    // The verify body carries tx_hash + off-chain content, no donation_id.
+    const verifyCall = (global.fetch as unknown as { mock: { calls: [string, RequestInit][] } }).mock.calls.find(
+      (c) => c[0].includes("/api/donations/verify"),
+    );
+    expect(verifyCall).toBeDefined();
+    const verifyBody = JSON.parse(verifyCall![1].body as string);
+    expect(verifyBody.tx_hash).toBe("deadbeef".repeat(8));
+    expect(verifyBody.donation_id).toBeUndefined();
+    expect(verifyBody.donation_id_hash).toBeUndefined();
   });
 
   it("surfaces a Paused error from the donate pipeline as a user-facing message", async () => {
     donateOnChain.mockRejectedValue(new DonateError("Paused"));
-    mockFetch([() => jsonRes(200, PREPARE_RESPONSE)]);
+    mockFetch([() => jsonRes(200, { status: "confirmed" })]);
     await renderAndConnect();
 
     await act(async () => {
@@ -236,8 +236,9 @@ describe("DonateForm", () => {
     });
   });
 
-  it("surfaces a prepare API error (creator_paused)", async () => {
-    mockFetch([() => jsonRes(409, { error: "creator_paused" })]);
+  it("surfaces a verify API error (creator_not_found)", async () => {
+    donateOnChain.mockResolvedValue({ status: "PENDING", hash: "deadbeef".repeat(8) });
+    mockFetch([() => jsonRes(409, { error: "creator_not_found" })]);
     await renderAndConnect();
 
     await act(async () => {
@@ -248,16 +249,13 @@ describe("DonateForm", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByRole("alert")).toHaveTextContent(/creator_paused/i);
+      expect(screen.getByRole("alert")).toHaveTextContent(/creator_not_found/i);
     });
   });
 
-  it("surfaces a confirm API error", async () => {
+  it("surfaces a verify API error (tx_failed)", async () => {
     donateOnChain.mockResolvedValue({ status: "PENDING", hash: "deadbeef".repeat(8) });
-    mockFetch([
-      () => jsonRes(200, PREPARE_RESPONSE),
-      () => jsonRes(409, { error: "donation_id_hash_mismatch" }),
-    ]);
+    mockFetch([() => jsonRes(409, { error: "tx_failed" })]);
     await renderAndConnect();
 
     await act(async () => {
@@ -268,7 +266,7 @@ describe("DonateForm", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByRole("alert")).toHaveTextContent(/donation_id_hash_mismatch/i);
+      expect(screen.getByRole("alert")).toHaveTextContent(/tx_failed/i);
     });
   });
 
@@ -343,7 +341,6 @@ describe("DonateForm", () => {
     donorHasTrustline.mockResolvedValue(false);
     donateOnChain.mockResolvedValue({ status: "PENDING", hash: "deadbeef".repeat(8) });
     mockFetch([
-      () => jsonRes(200, PREPARE_RESPONSE),
       () => jsonRes(200, { status: "confirmed" }),
     ]);
     await renderAndConnect();
@@ -368,7 +365,6 @@ describe("DonateForm", () => {
     donorHasTrustline.mockResolvedValue(true);
     donateOnChain.mockResolvedValue({ status: "PENDING", hash: "deadbeef".repeat(8) });
     mockFetch([
-      () => jsonRes(200, PREPARE_RESPONSE),
       () => jsonRes(200, { status: "confirmed" }),
     ]);
     await renderAndConnect();
@@ -390,7 +386,7 @@ describe("DonateForm", () => {
   it("surfaces a trustline_failed error from the donate pipeline", async () => {
     donorHasTrustline.mockResolvedValue(false);
     donateOnChain.mockRejectedValue(new DonateError("trustline_failed"));
-    mockFetch([() => jsonRes(200, PREPARE_RESPONSE)]);
+    mockFetch([() => jsonRes(200, { status: "confirmed" })]);
     await renderAndConnect();
 
     await act(async () => {

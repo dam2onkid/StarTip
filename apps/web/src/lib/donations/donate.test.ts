@@ -21,7 +21,6 @@ const CONTRACT_ID = "CCV2XK5LVOV2XK5LVOV2XK5LVOV2XK5LVOV2XK5LVOV2XK5LVOV2XMCW";
 const DONOR = StellarSdk.Keypair.random();
 const DONOR_ADDRESS = DONOR.publicKey();
 const HANDLE_HASH = Buffer.alloc(32, 0xab);
-const DONATION_ID_HASH = Buffer.alloc(32, 0xcd);
 const TOKEN = "CCV2XK5LVOV2XK5LVOV2XK5LVOV2XK5LVOV2XK5LVOV2XK5LVOV2XMCW";
 const AMOUNT = BigInt("1000000");
 const TX_HASH = "deadbeef".repeat(8);
@@ -92,7 +91,6 @@ describe("donateOnChain", () => {
           StellarSdk.xdr.ScVal.scvBytes(HANDLE_HASH),
           StellarSdk.Address.fromString(TOKEN).toScVal(),
           new StellarSdk.ScInt(AMOUNT).toI128(),
-          StellarSdk.xdr.ScVal.scvBytes(DONATION_ID_HASH),
         ),
       )
       .setTimeout(30)
@@ -149,7 +147,6 @@ describe("donateOnChain", () => {
         handleHash: HANDLE_HASH,
         token: TOKEN,
         amount: AMOUNT,
-        donationIdHash: DONATION_ID_HASH,
       },
       deps,
     );
@@ -178,7 +175,6 @@ describe("donateOnChain", () => {
           handleHash: HANDLE_HASH,
           token: TOKEN,
           amount: AMOUNT,
-          donationIdHash: DONATION_ID_HASH,
         },
         deps,
       ),
@@ -202,7 +198,6 @@ describe("donateOnChain", () => {
           handleHash: HANDLE_HASH,
           token: TOKEN,
           amount: AMOUNT,
-          donationIdHash: DONATION_ID_HASH,
         },
         deps,
       ),
@@ -235,7 +230,6 @@ describe("donateOnChain", () => {
           handleHash: HANDLE_HASH,
           token: TOKEN,
           amount: AMOUNT,
-          donationIdHash: DONATION_ID_HASH,
         },
         deps,
       ),
@@ -257,7 +251,6 @@ describe("donateOnChain", () => {
           handleHash: HANDLE_HASH,
           token: TOKEN,
           amount: AMOUNT,
-          donationIdHash: DONATION_ID_HASH,
         },
         deps,
       ),
@@ -277,7 +270,6 @@ describe("donateOnChain", () => {
         handleHash: HANDLE_HASH,
         token: TOKEN,
         amount: AMOUNT,
-        donationIdHash: DONATION_ID_HASH,
       },
       deps,
     );
@@ -308,7 +300,6 @@ describe("donateOnChain", () => {
         handleHash: HANDLE_HASH,
         token: TOKEN,
         amount: AMOUNT,
-        donationIdHash: DONATION_ID_HASH,
         needsTrustline: true,
         trustlineToken: USDC_TRUSTLINE_TOKEN,
       },
@@ -340,7 +331,6 @@ describe("donateOnChain", () => {
         handleHash: HANDLE_HASH,
         token: TOKEN,
         amount: AMOUNT,
-        donationIdHash: DONATION_ID_HASH,
         needsTrustline: false,
         trustlineToken: USDC_TRUSTLINE_TOKEN,
       },
@@ -370,7 +360,6 @@ describe("donateOnChain", () => {
           handleHash: HANDLE_HASH,
           token: TOKEN,
           amount: AMOUNT,
-          donationIdHash: DONATION_ID_HASH,
           needsTrustline: true,
           trustlineToken: USDC_TRUSTLINE_TOKEN,
         },
@@ -398,7 +387,6 @@ describe("donateOnChain", () => {
           handleHash: HANDLE_HASH,
           token: TOKEN,
           amount: AMOUNT,
-          donationIdHash: DONATION_ID_HASH,
           needsTrustline: true,
           trustlineToken: USDC_TRUSTLINE_TOKEN,
         },

@@ -34,7 +34,7 @@ export const NATIVE_XLM_SAC_CONTRACT_IDS: ReadonlySet<string> = new Set([
 
 /**
  * The subset of a token-allowlist entry the trustline logic needs. Structurally
- * compatible with `TokenAllowlistEntry` from `lib/donations/prepare`, so the
+ * compatible with `TokenAllowlistEntry` from `lib/donations/token`, so the
  * donate form can pass its selected token entry directly. `issuer` is nullable
  * because native XLM has no issuer and some SAC interfaces do not expose one.
  */

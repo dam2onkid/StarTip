@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { useDonateWallet } from "@/components/landing/donate-wallet-context";
 import { signWalletTransaction } from "@/lib/wallet/kit";
-import { getRpc, networkPassphrase } from "@/lib/stellar/client";
+import { getRpc, networkPassphrase, contractId } from "@/lib/stellar/client";
 import { createBrowserClient } from "@/lib/supabase/client";
 import {
   donateOnChain,
@@ -15,21 +15,24 @@ import {
 } from "@/lib/donations/donate";
 import { donorHasTrustline } from "@/lib/donations/trustline-check";
 import { needsTrustline } from "@/lib/donations/trustline";
-import type { TokenAllowlistEntry } from "@/lib/donations/prepare";
+import { handleHashBuffer } from "@/lib/creators/handle-shared";
+import type { TokenAllowlistEntry } from "@/lib/donations/token";
 
 /**
  * Donate form for `/creator/[handle]/donate`. The Donor:
  *   1. Connects a Stellar wallet.
- *   2. Picks a token from the on-chain allowlist (returned by prepare).
+ *   2. Picks a token from the on-chain allowlist (mirrored to `tokens`).
  *   3. Enters an amount in display units (converted to raw i128 via decimals).
  *   4. Optionally adds a message and display name.
- *   5. Submits: prepare -> build + sign + submit `donate()` -> confirm.
+ *   5. Submits: build + sign + submit `donate()` -> verify.
  *
- * Errors from the typed contract enum (Paused, TokenNotAllowed, etc.) are
- * decoded and surfaced with a user-facing message.
+ * The verify call posts `tx_hash` + off-chain content to the worker proxy
+ * (ADR-0005: verify is the fast path; the indexer reconciles). Errors from the
+ * typed contract enum (Paused, TokenNotAllowed, etc.) are decoded and surfaced
+ * with a user-facing message.
  */
 
-type Phase = "idle" | "preparing" | "submitting" | "confirming" | "success" | "error";
+type Phase = "idle" | "submitting" | "confirming" | "success" | "error";
 type TokenLoadState = "loading" | "ready" | "empty" | "error";
 
 interface DonateFormProps {
@@ -38,20 +41,8 @@ interface DonateFormProps {
   avatarUrl?: string | null;
 }
 
-interface PrepareResponse {
-  donation_id: string;
-  donation_id_hash: string;
-  contract_id: string;
-  handle_hash: string;
-  token_allowlist: TokenAllowlistEntry[];
-}
-
-interface PrepareError {
+interface VerifyError {
   error: string;
-}
-
-function hexToBuffer(hex: string): Buffer {
-  return Buffer.from(hex, "hex");
 }
 
 /**
@@ -86,7 +77,7 @@ export function DonateForm({ handle, displayName = handle, avatarUrl = null }: D
   const [error, setError] = React.useState<string | null>(null);
   const [txHash, setTxHash] = React.useState<string | null>(null);
 
-  const busy = phase === "preparing" || phase === "submitting" || phase === "confirming";
+  const busy = phase === "submitting" || phase === "confirming";
 
   // Fetch the token allowlist on mount. The `tokens` table has a public SELECT
   // RLS policy (ADR: the token picker is public, no RPC call per prepare).
@@ -148,45 +139,22 @@ export function DonateForm({ handle, displayName = handle, avatarUrl = null }: D
       return;
     }
 
-    setPhase("preparing");
+    setPhase("submitting");
     setError(null);
     setTxHash(null);
 
     try {
-      // 1. Prepare: mint donation_id + hash, insert pending row.
-      const prepareRes = await fetch("/api/donations/prepare", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          handle,
-          token: selectedToken,
-          amount: rawAmount,
-          message: message || undefined,
-          donor_name: donorName || undefined,
-        }),
-      });
-      const prepareBody = (await prepareRes.json()) as PrepareResponse | PrepareError;
-      if (!prepareRes.ok) {
-        throw new Error(
-          `prepare:${(prepareBody as PrepareError).error}` as string,
-        );
-      }
-      const prepared = prepareBody as PrepareResponse;
-      setTokens(prepared.token_allowlist);
-      setTokenLoadState(prepared.token_allowlist.length > 0 ? "ready" : "empty");
-
-      // 2. Build + sign + submit donate() on-chain. When the Donor lacks a
-      //    trustline to a non-native token, the pipeline prepends a
-      //    change_trust op so the Donor signs once.
-      setPhase("submitting");
+      // 1. Build + sign + submit donate() on-chain. handle_hash is computed
+      //    locally as sha256(handle) (no server round-trip per ADR-0005).
+      //    When the Donor lacks a trustline to a non-native token, the
+      //    pipeline prepends a change_trust op so the Donor signs once.
       const needsTrustlineStep = needsTrustline(token, hasTrustline ?? true);
       const result = await donateOnChain(
         {
           donorAddress: walletAddress,
-          handleHash: hexToBuffer(prepared.handle_hash),
+          handleHash: handleHashBuffer(handle),
           token: selectedToken,
           amount: BigInt(rawAmount),
-          donationIdHash: hexToBuffer(prepared.donation_id_hash),
           needsTrustline: needsTrustlineStep,
           trustlineToken: needsTrustlineStep ? token : undefined,
         },
@@ -194,24 +162,29 @@ export function DonateForm({ handle, displayName = handle, avatarUrl = null }: D
           rpc: getRpc(),
           signWalletTransaction,
           networkPassphrase,
-          contractId: prepared.contract_id,
+          contractId,
         },
       );
       setTxHash(result.hash);
 
-      // 3. Confirm: verify tx + event, upsert as confirmed.
+      // 2. Verify: post tx_hash + off-chain content to the worker proxy. The
+      //    worker polls rpc.getTransaction until the tx is visible, then
+      //    upserts the donation by tx_hash as confirmed (ADR-0005). A 202
+      //    means the tx is still pending; the row will appear via the indexer
+      //    and Supabase Realtime.
       setPhase("confirming");
-      const confirmRes = await fetch("/api/donations/confirm", {
+      const verifyRes = await fetch("/api/donations/verify", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           tx_hash: result.hash,
-          donation_id: prepared.donation_id,
+          message: message || undefined,
+          donor_name: donorName || undefined,
         }),
       });
-      if (!confirmRes.ok) {
-        const confirmBody = (await confirmRes.json()) as PrepareError;
-        throw new Error(`confirm:${confirmBody.error}` as string);
+      if (!verifyRes.ok) {
+        const verifyBody = (await verifyRes.json()) as VerifyError;
+        throw new Error(`verify:${verifyBody.error}` as string);
       }
 
       setPhase("success");
@@ -221,8 +194,8 @@ export function DonateForm({ handle, displayName = handle, avatarUrl = null }: D
         setError(DONATE_ERROR_MESSAGES[e.code as DonateErrorCode]);
       } else if (e instanceof Error) {
         const m = e.message;
-        // Prepare/confirm API errors: "prepare:<code>" / "confirm:<code>"
-        if (m.startsWith("prepare:") || m.startsWith("confirm:")) {
+        // Verify API errors arrive as "verify:<code>".
+        if (m.startsWith("verify:")) {
           setError(`Server error: ${m.split(":")[1]}`);
         } else {
           setError(m);
@@ -409,7 +382,6 @@ export function DonateForm({ handle, displayName = handle, avatarUrl = null }: D
             disabled={!walletAddress || !selectedToken || !amount || busy}
             className="w-full"
           >
-            {phase === "preparing" && "Preparing..."}
             {phase === "submitting" && "Submitting..."}
             {phase === "confirming" && "Confirming..."}
             {(phase === "idle" || phase === "success" || phase === "error") && "Donate"}

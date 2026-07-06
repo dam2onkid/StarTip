@@ -20,7 +20,6 @@ export type Database = {
           confirmed_at: string | null
           created_at: string
           creator_profile_id: string
-          donation_id_hash: string
           donor_address: string | null
           donor_name: string
           handle_hash: string
@@ -38,7 +37,6 @@ export type Database = {
           confirmed_at?: string | null
           created_at?: string
           creator_profile_id: string
-          donation_id_hash: string
           donor_address?: string | null
           donor_name?: string
           handle_hash: string
@@ -56,7 +54,6 @@ export type Database = {
           confirmed_at?: string | null
           created_at?: string
           creator_profile_id?: string
-          donation_id_hash?: string
           donor_address?: string | null
           donor_name?: string
           handle_hash?: string

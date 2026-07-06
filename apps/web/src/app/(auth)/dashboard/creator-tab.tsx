@@ -43,7 +43,7 @@ import {
 import { updateDonationModerationStatus } from "@/lib/creators/moderation";
 import { contractId } from "@/lib/stellar/client";
 import { displayToRawAmount, rawToDisplayAmount } from "@/lib/stellar/amount";
-import type { TokenAllowlistEntry } from "@/lib/donations/prepare";
+import type { TokenAllowlistEntry } from "@/lib/donations/token";
 import { QrCode } from "@/components/creator/qr-code";
 
 /**

@@ -3,11 +3,11 @@ import { buildChangeTrustOp, type TrustlineToken } from "@/lib/donations/trustli
 
 /**
  * Client-side donate transaction pipeline. The Donor builds, signs, and
- * submits `donate(donor, creator_id_hash, token, amount, donation_id_hash)`
- * directly to Soroban RPC from `/creator/[handle]/donate` (ADR-0002: the
- * wallet owns the on-chain signature; the server never sees the secret key).
- * The server only mirrors the resulting `DonationReceived` event via the
- * indexer and the confirm fast path.
+ * submits `donate(donor, creator_id_hash, token, amount)` directly to Soroban
+ * RPC from `/creator/[handle]/donate` (ADR-0002: the wallet owns the on-chain
+ * signature; the server never sees the secret key). The server only mirrors
+ * the resulting `DonationReceived` event via the indexer and the verify fast
+ * path.
  *
  * Test seam: when `window.__STARTIP_DONATE_STUB__` is present (injected by the
  * Playwright E2E harness), `donateOnChain` delegates to it instead of building
@@ -85,7 +85,6 @@ export interface DonateArgs {
   handleHash: Buffer;
   token: string;
   amount: bigint;
-  donationIdHash: Buffer;
   /**
    * When `true`, the pipeline prepends a `change_trust` op (built from
    * `trustlineToken`) ahead of `donate()` so the Donor establishes the
@@ -181,8 +180,7 @@ function assembleTwoOpTransaction(
 }
 
 /**
- * Build, sign, and submit `donate(donor, creator_id_hash, token, amount,
- * donation_id_hash)`.
+ * Build, sign, and submit `donate(donor, creator_id_hash, token, amount)`.
  *
  * 1. Delegate to `window.__STARTIP_DONATE_STUB__` if present (E2E seam).
  * 2. Load the wallet account from RPC (the source must exist and be funded).
@@ -202,7 +200,7 @@ export async function donateOnChain(
     typeof window !== "undefined" ? window.__STARTIP_DONATE_STUB__ : undefined;
   if (stub) return stub.donateOnChain(args);
 
-  const { donorAddress, handleHash, token, amount, donationIdHash } = args;
+  const { donorAddress, handleHash, token, amount } = args;
   const { rpc, signWalletTransaction, networkPassphrase, contractId } = deps;
 
   const account = await rpc.getAccount(donorAddress);
@@ -232,7 +230,6 @@ export async function donateOnChain(
     StellarSdk.xdr.ScVal.scvBytes(handleHash),
     StellarSdk.Address.fromString(token).toScVal(),
     new StellarSdk.ScInt(amount).toI128(),
-    StellarSdk.xdr.ScVal.scvBytes(donationIdHash),
   );
 
   const tx = builder.addOperation(donateOp).setTimeout(30).build();

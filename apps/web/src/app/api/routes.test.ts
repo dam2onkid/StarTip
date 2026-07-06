@@ -8,8 +8,7 @@ import { describe, it } from "vitest";
  *   - GET  /api/creators/[handle]     -> app/api/creators/[handle]/route.test.ts
  *   - POST /api/wallet/link/challenge -> app/api/wallet/link/challenge/route.test.ts
  *   - POST /api/wallet/link           -> app/api/wallet/link/route.test.ts
- *   - POST /api/donations/prepare     -> lib/donations/prepare.test.ts
- *   - POST /api/donations/confirm     -> lib/donations/confirm.test.ts
+ *   - POST /api/donations/verify      -> apps/worker/src/server.test.ts (proxied)
  *   - POST /api/indexer/poll          -> app/api/indexer/poll/route.test.ts
  *
  * This file is kept as an index placeholder so the test suite still documents

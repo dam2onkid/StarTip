@@ -11,36 +11,18 @@ import { expectUnifiedNav } from "./nav-helpers";
  *     `donate()` build/sign/submit path so the E2E does not have to mock the
  *     full Soroban JSON-RPC surface.
  *
- * The API routes (`/api/donations/prepare`, `/api/donations/confirm`) are
- * fulfilled via `page.route` so the browser sees the real HTTP contract
- * without the Next.js routes having to talk to a real Stellar RPC. The mock
- * Supabase server (e2e-server.mjs) returns the token allowlist from
- * `/rest/v1/tokens`.
+ * The API route (`/api/donations/verify`) is fulfilled via `page.route` so
+ * the browser sees the real HTTP contract without the Next.js route having to
+ * talk to the worker. The mock Supabase server (e2e-server.mjs) returns the
+ * token allowlist from `/rest/v1/tokens`.
  *
  * Two scenarios:
- *   1. Happy path: prepare -> donate -> confirm -> success.
+ *   1. Happy path: donate -> verify -> success.
  *   2. Error path: the donate stub throws a `Paused` error, and the UI
  *      surfaces the user-facing message.
  */
 
 const STUB_ADDRESS = "GDF6CFYOXQTZVSLLK2RTDAUZ6N2E72IL4K2L34HXZK32KBR4NLVPLUVA";
-
-const PREPARE_RESPONSE = {
-  donation_id: "00000000-0000-0000-0000-000000000001",
-  donation_id_hash: "ab".repeat(32),
-  contract_id: "C-TEST-CONTRACT",
-  handle_hash: "cd".repeat(32),
-  token_allowlist: [
-    {
-      contract_address: "CUSDC",
-      symbol: "USDC",
-      name: "USD Coin",
-      issuer: null,
-      decimals: 6,
-      icon_url: null,
-    },
-  ],
-};
 
 async function installSeams(
   page: Page,
@@ -91,15 +73,7 @@ async function installSeams(
 }
 
 async function routeApi(page: Page) {
-  await page.route("**/api/donations/prepare", async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify(PREPARE_RESPONSE),
-    });
-  });
-
-  await page.route("**/api/donations/confirm", async (route) => {
+  await page.route("**/api/donations/verify", async (route) => {
     await route.fulfill({
       status: 200,
       contentType: "application/json",

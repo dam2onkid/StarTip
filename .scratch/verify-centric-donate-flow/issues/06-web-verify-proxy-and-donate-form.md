@@ -1,6 +1,6 @@
 # 06 - Web: verify proxy route, update donate-form, remove prepare route, refactor shared confirm
 
-Status: Untriaged
+Status: done
 Role: fullstack
 
 ## Task
