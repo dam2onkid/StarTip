@@ -129,7 +129,7 @@ describe("GET /api/overlay-settings", () => {
     const res = await GET(getReq("ada"));
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({
-      alert_duration_ms: 6000,
+      alert_duration_ms: 10000,
       min_amount: "0",
       sound_enabled: true,
       theme: "default",

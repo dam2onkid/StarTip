@@ -15,7 +15,7 @@
  */
 
 /** The default alert duration (ms) when no row exists or the field is missing. */
-export const DEFAULT_ALERT_DURATION_MS = 6000;
+export const DEFAULT_ALERT_DURATION_MS = 10000;
 
 /** Minimum/maximum allowed `alert_duration_ms` (matches the API validation). */
 export const MIN_ALERT_DURATION_MS = 1000;
@@ -68,7 +68,7 @@ export function shouldShowAlert(
 
 /**
  * The configured alert duration in ms, clamped to the 1000-60000 band, with
- * the 6000ms default when the field is missing or not a finite number. The
+ * the 10000ms default when the field is missing or not a finite number. The
  * clamp mirrors the API validation so a stale/invalid row never produces an
  * unworkable timer (e.g. 0ms or 99999ms).
  */

@@ -510,7 +510,7 @@ export function startMockSupabase(port) {
         try { patch = raw ? JSON.parse(raw) : {}; } catch { patch = {}; }
         overlaySettingsRow = {
           creator_profile_id: patch.creator_profile_id ?? CREATOR_MODE_PROFILE_ID,
-          alert_duration_ms: patch.alert_duration_ms ?? 6000,
+          alert_duration_ms: patch.alert_duration_ms ?? 10000,
           min_amount: patch.min_amount ?? "0",
           sound_enabled: patch.sound_enabled ?? true,
           theme: "default",

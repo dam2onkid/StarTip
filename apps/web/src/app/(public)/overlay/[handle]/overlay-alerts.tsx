@@ -17,8 +17,8 @@ import { rawToDisplayAmount } from "@/lib/stellar/amount";
  * live without a page reload.
  *
  * Overlay settings (spec §11.3) are passed from the server component:
- *   * `alert_duration_ms` — each alert auto-dismisses after this many ms
- *     (default 6000). The `MAX_ALERTS = 5` cap remains as a safety bound.
+ *   * `alert_duration_ms` — each queued alert auto-dismisses after this many
+ *     ms (default 10000).
  *   * `min_amount` (in raw units, resolved by the server using the token
  *     decimals) — donations below this threshold are silently recorded but
  *     not shown. {@link shouldShowAlert} applies the filter to both the
@@ -81,9 +81,6 @@ declare global {
   }
 }
 
-/** Maximum number of alerts kept on screen at once (oldest dropped first). */
-const MAX_ALERTS = 5;
-
 /** Path to the bundled alert sound in /public. */
 const ALERT_SOUND_URL = "/alert.mp3";
 
@@ -111,7 +108,7 @@ export function OverlayAlerts({
     () => initialDonations.filter((d) => shouldShowAlert(d, resolvedSettings)),
     [initialDonations, resolvedSettings],
   );
-  const [alerts, setAlerts] = React.useState<OverlayDonation[]>(seeded);
+  const [queue, setQueue] = React.useState<OverlayDonation[]>(seeded);
 
   // Re-seed when the server snapshot changes (e.g. settings updated). The
   // `seeded` array is memoized, so this only runs when the initial donations
@@ -124,7 +121,7 @@ export function OverlayAlerts({
   const [prevSeeded, setPrevSeeded] = React.useState(seeded);
   if (seeded !== prevSeeded) {
     setPrevSeeded(seeded);
-    setAlerts(seeded);
+    setQueue(seeded);
   }
 
   const symbolByContract = React.useMemo(() => {
@@ -142,20 +139,17 @@ export function OverlayAlerts({
   }, [tokenAllowlist]);
 
   const removeAlert = React.useCallback((id: string) => {
-    setAlerts((prev) => prev.filter((d) => d.id !== id));
+    setQueue((prev) => (prev[0]?.id === id ? prev.slice(1) : prev));
   }, []);
 
   const appendAlert = React.useCallback(
     (row: OverlayDonation) => {
       // Suppress donations below min_amount (in raw units).
       if (!shouldShowAlert(row, resolvedSettings)) return;
-      setAlerts((prev) => {
-        // Drop the oldest when the cap is reached, then append the new alert.
-        const next = prev.length >= MAX_ALERTS ? prev.slice(prev.length - MAX_ALERTS + 1) : prev.slice();
+      setQueue((prev) => {
         // De-duplicate by id (Realtime may re-deliver).
-        if (next.some((d) => d.id === row.id)) return prev;
-        next.push(row);
-        return next;
+        if (prev.some((d) => d.id === row.id)) return prev;
+        return [...prev, row];
       });
       // Play the alert sound on Realtime insert when enabled. No sound on the
       // initial server-rendered donations (those are not "inserts").
@@ -166,24 +160,26 @@ export function OverlayAlerts({
 
   useOverlayRealtime(creatorProfileId, appendAlert);
 
+  const currentAlert = queue[0] ?? null;
+
   return (
     <div
       data-testid="overlay-alerts"
       aria-live="polite"
-      aria-atomic="false"
-      className="pointer-events-none fixed inset-0 flex flex-col-reverse gap-3 px-6 py-6"
+      aria-atomic="true"
+      className="pointer-events-none fixed inset-0 flex items-center justify-center px-6 py-6"
     >
       <AnimatePresence initial={false}>
-        {alerts.map((d) => (
+        {currentAlert ? (
           <AlertCard
-            key={d.id}
-            donation={d}
-            symbol={symbolByContract.get(d.token) ?? d.token}
-            decimals={decimalsByContract.get(d.token) ?? 0}
+            key={currentAlert.id}
+            donation={currentAlert}
+            symbol={symbolByContract.get(currentAlert.token) ?? currentAlert.token}
+            decimals={decimalsByContract.get(currentAlert.token) ?? 0}
             durationMs={durationMs}
             onExpire={removeAlert}
           />
-        ))}
+        ) : null}
       </AnimatePresence>
     </div>
   );
@@ -217,38 +213,38 @@ function AlertCard({
     return () => window.clearTimeout(id);
   }, [donation.id, durationMs, onExpire]);
 
+  const amount = rawToDisplayAmount(donation.amount, decimals);
+
   return (
     <motion.div
       data-testid="overlay-alert"
-      layout
       initial={enter}
       animate={rest}
       exit={enter}
       transition={{ type: "spring", stiffness: 220, damping: 26 }}
-      className="pointer-events-auto w-full max-w-sm rounded-lg bg-card/80 p-4 ring-1 ring-foreground/10 backdrop-blur-md"
+      className="pointer-events-auto w-full max-w-xl rounded-lg bg-card/85 p-7 ring-1 ring-foreground/10 backdrop-blur-md"
     >
-      <div className="flex items-baseline justify-between gap-3">
+      <p className="break-words font-display text-[1.625rem] font-semibold leading-tight text-foreground">
         <span
           data-testid="alert-donor-name"
-          className="min-w-0 truncate font-display text-lg font-semibold text-foreground"
+          className="text-primary"
         >
           {donation.donor_name}
         </span>
-        <span className="flex shrink-0 items-baseline font-mono text-sm tabular-nums">
-          <span data-testid="alert-amount" className="text-primary">
-            {rawToDisplayAmount(donation.amount, decimals)}
-          </span>
-          <span data-testid="alert-symbol" className="ml-1 text-muted-foreground">
+        {" donated "}
+        <span className="font-mono text-[1.45rem] tabular-nums text-primary">
+          <span data-testid="alert-amount">{amount}</span>
+          <span data-testid="alert-symbol" className="ml-1">
             {symbol}
           </span>
         </span>
-      </div>
+      </p>
       {donation.message ? (
         <p
           data-testid="alert-message"
-          className="mt-1 break-words text-sm text-muted-foreground"
+          className="mt-3 break-words text-[1.3rem] leading-snug text-muted-foreground"
         >
-          {donation.message}
+          &quot;{donation.message}&quot;
         </p>
       ) : null}
     </motion.div>

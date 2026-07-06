@@ -109,7 +109,7 @@ describe("OverlayAlerts — initial render", () => {
 
     const alerts = screen.getByTestId("overlay-alerts");
     expect(alerts).toBeInTheDocument();
-    expect(screen.getAllByTestId("overlay-alert")).toHaveLength(2);
+    expect(screen.getAllByTestId("overlay-alert")).toHaveLength(1);
 
     // Ada: name, amount, symbol, message.
     const adaAlert = screen.getAllByTestId("overlay-alert").find((el) =>
@@ -118,16 +118,10 @@ describe("OverlayAlerts — initial render", () => {
     expect(adaAlert).toBeDefined();
     expect(adaAlert?.querySelector("[data-testid='alert-amount']")).toHaveTextContent("100");
     expect(adaAlert?.querySelector("[data-testid='alert-symbol']")).toHaveTextContent("USDC");
-    expect(adaAlert?.querySelector("[data-testid='alert-message']")).toHaveTextContent("Thank you!");
+    expect(adaAlert?.querySelector("[data-testid='alert-message']")).toHaveTextContent("\"Thank you!\"");
 
-    // Bob: no message node when message is null.
-    const bobAlert = screen.getAllByTestId("overlay-alert").find((el) =>
-      el.querySelector("[data-testid='alert-donor-name']")?.textContent === "Bob",
-    );
-    expect(bobAlert).toBeDefined();
-    expect(bobAlert?.querySelector("[data-testid='alert-amount']")).toHaveTextContent("500");
-    expect(bobAlert?.querySelector("[data-testid='alert-symbol']")).toHaveTextContent("USDC");
-    expect(bobAlert?.querySelector("[data-testid='alert-message']")).toBeNull();
+    // Bob is queued behind Ada and appears after Ada expires.
+    expect(screen.queryByText(/Bob donated/)).toBeNull();
   });
 
   it("falls back to the raw token string when no allowlist entry matches", () => {
@@ -196,7 +190,7 @@ describe("OverlayAlerts — initial render", () => {
     render(
       <OverlayAlerts
         creatorProfileId="c1"
-        initialDonations={VISIBLE}
+        initialDonations={[]}
         tokenAllowlist={TOKENS}
       />,
     );
@@ -210,11 +204,11 @@ describe("OverlayAlerts — Realtime inserts", () => {
     render(
       <OverlayAlerts
         creatorProfileId="c1"
-        initialDonations={VISIBLE}
+        initialDonations={[]}
         tokenAllowlist={TOKENS}
       />,
     );
-    expect(screen.getAllByTestId("overlay-alert")).toHaveLength(2);
+    expect(screen.queryAllByTestId("overlay-alert")).toHaveLength(0);
 
     await act(async () => {
       realtimeCb?.({
@@ -230,7 +224,7 @@ describe("OverlayAlerts — Realtime inserts", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getAllByTestId("overlay-alert")).toHaveLength(3);
+      expect(screen.getAllByTestId("overlay-alert")).toHaveLength(1);
     });
     const late = screen.getAllByTestId("overlay-alert").find((el) =>
       el.querySelector("[data-testid='alert-donor-name']")?.textContent === "Latecomer",
@@ -273,17 +267,16 @@ describe("OverlayAlerts — Realtime inserts", () => {
     expect(screen.getByTestId("alert-symbol")).toHaveTextContent("XLM");
   });
 
-  it("drops the oldest alert once the cap is reached", async () => {
+  it("queues donations and shows them one at a time", async () => {
     render(
       <OverlayAlerts
         creatorProfileId="c1"
-        initialDonations={VISIBLE}
+        initialDonations={[]}
         tokenAllowlist={TOKENS}
+        settings={{ alertDurationMs: 1000, soundEnabled: false }}
       />,
     );
-    // Push past the MAX_ALERTS (5) cap: 2 seeded + 4 inserts = 6 -> oldest
-    // (Ada) is dropped.
-    for (let i = 0; i < 4; i++) {
+    for (let i = 0; i < 3; i++) {
       await act(async () => {
         realtimeCb?.({
           new: {
@@ -298,12 +291,14 @@ describe("OverlayAlerts — Realtime inserts", () => {
       });
     }
     await waitFor(() => {
-      expect(screen.getAllByTestId("overlay-alert")).toHaveLength(5);
+      expect(screen.getAllByTestId("overlay-alert")).toHaveLength(1);
     });
-    // Ada (the oldest seeded) is no longer rendered.
-    expect(screen.queryByText("Ada")).toBeNull();
-    // Bob (second-oldest) is still present.
-    expect(screen.getByText("Bob")).toBeInTheDocument();
+    expect(screen.getByTestId("alert-donor-name")).toHaveTextContent("Donor0");
+    expect(screen.queryByText("Donor1")).toBeNull();
+
+    await waitFor(() => {
+      expect(screen.getAllByTestId("alert-donor-name").some((el) => el.textContent === "Donor1")).toBe(true);
+    }, { timeout: 3500 });
   });
 
   it("de-duplicates inserts by id (Realtime may re-deliver)", async () => {
@@ -320,7 +315,7 @@ describe("OverlayAlerts — Realtime inserts", () => {
       });
     });
     // d1 already exists; no new alert is added.
-    expect(screen.getAllByTestId("overlay-alert")).toHaveLength(2);
+    expect(screen.getAllByTestId("overlay-alert")).toHaveLength(1);
   });
 
   it("uses the window.__STARTIP_OVERLAY_REALTIME_STUB__ seam when present", async () => {
@@ -336,7 +331,7 @@ describe("OverlayAlerts — Realtime inserts", () => {
     const { unmount } = render(
       <OverlayAlerts
         creatorProfileId="c1"
-        initialDonations={VISIBLE}
+        initialDonations={[]}
         tokenAllowlist={TOKENS}
       />,
     );
@@ -353,7 +348,7 @@ describe("OverlayAlerts — Realtime inserts", () => {
       });
     });
     await waitFor(() => {
-      expect(screen.getByText("Seam")).toBeInTheDocument();
+      expect(screen.getByTestId("alert-donor-name")).toHaveTextContent("Seam");
     });
 
     unmount();
@@ -363,27 +358,27 @@ describe("OverlayAlerts — Realtime inserts", () => {
 
 describe("OverlayAlerts — overlay settings (auto-dismiss, min_amount, sound)", () => {
   it("auto-dismisses each alert after alert_duration_ms", async () => {
-    // Use a short duration with real timers so framer-motion's exit animation
+    // Use the shortest valid duration with real timers so framer-motion's exit animation
     // (rAF-based) can flush the exiting nodes from the DOM. The auto-dismiss
     // timer is a real `window.setTimeout`; this tests the actual behavior.
-    const settings: OverlaySettings = { alertDurationMs: 100, soundEnabled: false };
+    const settings: OverlaySettings = { alertDurationMs: 1000, soundEnabled: false };
     render(
       <OverlayAlerts
         creatorProfileId="c1"
-        initialDonations={VISIBLE}
+        initialDonations={[VISIBLE[0]]}
         tokenAllowlist={TOKENS}
         settings={settings}
       />,
     );
-    expect(screen.getAllByTestId("overlay-alert")).toHaveLength(2);
+    expect(screen.getAllByTestId("overlay-alert")).toHaveLength(1);
 
-    // After the duration elapses, both alerts are removed from the queue and
+    // After the duration elapses, the active alert is removed from the queue and
     // framer-motion's exit animation flushes them from the DOM.
     await waitFor(
       () => {
         expect(screen.queryAllByTestId("overlay-alert")).toHaveLength(0);
       },
-      { timeout: 2000 },
+      { timeout: 4000 },
     );
   });
 
@@ -401,7 +396,7 @@ describe("OverlayAlerts — overlay settings (auto-dismiss, min_amount, sound)",
     await act(async () => {
       vi.advanceTimersByTime(4000);
     });
-    expect(screen.getAllByTestId("overlay-alert")).toHaveLength(2);
+    expect(screen.getAllByTestId("overlay-alert")).toHaveLength(1);
   });
 
   it("suppresses initial donations below min_amount (raw units)", () => {
@@ -425,13 +420,12 @@ describe("OverlayAlerts — overlay settings (auto-dismiss, min_amount, sound)",
     render(
       <OverlayAlerts
         creatorProfileId="c1"
-        initialDonations={VISIBLE}
+        initialDonations={[]}
         tokenAllowlist={TOKENS}
         settings={settings}
       />,
     );
-    // Bob (500) survived the initial filter -> 1 alert.
-    expect(screen.getAllByTestId("overlay-alert")).toHaveLength(1);
+    expect(screen.queryAllByTestId("overlay-alert")).toHaveLength(0);
 
     // Insert below threshold -> suppressed, not rendered, no sound.
     await act(async () => {
@@ -449,7 +443,7 @@ describe("OverlayAlerts — overlay settings (auto-dismiss, min_amount, sound)",
     await waitFor(() => {
       expect(screen.queryByText("Small")).toBeNull();
     });
-    expect(screen.getAllByTestId("overlay-alert")).toHaveLength(1);
+    expect(screen.queryAllByTestId("overlay-alert")).toHaveLength(0);
 
     // Insert at/above threshold -> rendered.
     await act(async () => {
@@ -474,7 +468,7 @@ describe("OverlayAlerts — overlay settings (auto-dismiss, min_amount, sound)",
     render(
       <OverlayAlerts
         creatorProfileId="c1"
-        initialDonations={VISIBLE}
+        initialDonations={[]}
         tokenAllowlist={TOKENS}
         settings={settings}
       />,
@@ -508,7 +502,7 @@ describe("OverlayAlerts — overlay settings (auto-dismiss, min_amount, sound)",
     render(
       <OverlayAlerts
         creatorProfileId="c1"
-        initialDonations={VISIBLE}
+        initialDonations={[]}
         tokenAllowlist={TOKENS}
         settings={settings}
       />,
@@ -544,7 +538,7 @@ describe("OverlayAlerts — overlay settings (auto-dismiss, min_amount, sound)",
     expect(audioInstances).toHaveLength(0);
   });
 
-  it("uses the default 6000ms duration when settings.alertDurationMs is omitted (fake timers)", async () => {
+  it("uses the default 10000ms duration when settings.alertDurationMs is omitted (fake timers)", async () => {
     vi.useFakeTimers();
     render(
       <OverlayAlerts
@@ -554,11 +548,11 @@ describe("OverlayAlerts — overlay settings (auto-dismiss, min_amount, sound)",
         settings={{ soundEnabled: false }}
       />,
     );
-    expect(screen.getAllByTestId("overlay-alert")).toHaveLength(2);
-    // Just before 6000ms: the default-duration timer has not fired yet.
+    expect(screen.getAllByTestId("overlay-alert")).toHaveLength(1);
+    // Just before 10000ms: the default-duration timer has not fired yet.
     await act(async () => {
-      vi.advanceTimersByTime(5999);
+      vi.advanceTimersByTime(9999);
     });
-    expect(screen.getAllByTestId("overlay-alert")).toHaveLength(2);
+    expect(screen.getAllByTestId("overlay-alert")).toHaveLength(1);
   });
 });

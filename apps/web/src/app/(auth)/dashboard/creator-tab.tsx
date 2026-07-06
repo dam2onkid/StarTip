@@ -44,6 +44,7 @@ import { contractId } from "@/lib/stellar/client";
 import { displayToRawAmount, rawToDisplayAmount } from "@/lib/stellar/amount";
 import { friendlyOnchainError } from "@/lib/stellar/contract-errors";
 import type { TokenAllowlistEntry } from "@/lib/donations/token";
+import { DEFAULT_ALERT_DURATION_MS } from "@/lib/overlay/settings";
 import { QrCode } from "@/components/creator/qr-code";
 
 /**
@@ -1412,7 +1413,7 @@ function OverlayUrlCard({ handle }: { handle: string | null }) {
  * 10^decimals) before handing it to the Overlay client.
  */
 function OverlaySettingsCard({ handle }: { handle: string | null }) {
-  const [durationMs, setDurationMs] = useState<number>(6000);
+  const [durationMs, setDurationMs] = useState<number>(DEFAULT_ALERT_DURATION_MS);
   const [minAmount, setMinAmount] = useState<string>("0");
   const [soundEnabled, setSoundEnabled] = useState<boolean>(true);
   const [loading, setLoading] = useState(true);
@@ -1432,7 +1433,7 @@ function OverlaySettingsCard({ handle }: { handle: string | null }) {
           sound_enabled?: boolean;
         };
         if (!alive) return;
-        setDurationMs(body.alert_duration_ms ?? 6000);
+        setDurationMs(body.alert_duration_ms ?? DEFAULT_ALERT_DURATION_MS);
         setMinAmount(String(body.min_amount ?? "0"));
         setSoundEnabled(body.sound_enabled !== false);
       })
@@ -1516,7 +1517,7 @@ function OverlaySettingsCard({ handle }: { handle: string | null }) {
             data-testid="overlay-duration-input"
           />
           <p className="text-[0.65rem] text-muted-foreground/70">
-            1000–60000ms. Default 6000ms (6 seconds).
+            1000-60000ms. Default 10000ms (10 seconds).
           </p>
         </div>
 

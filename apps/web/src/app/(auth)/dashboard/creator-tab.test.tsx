@@ -181,7 +181,7 @@ function mockFetch(responses: Array<(url: string, init?: RequestInit) => Respons
     // can stage a custom settings row) and falls back to defaults otherwise.
     if (u.includes("/api/overlay-settings") && method === "GET" && calls.length === 0) {
       return jsonRes(200, {
-        alert_duration_ms: 6000,
+        alert_duration_ms: 10000,
         min_amount: "0",
         sound_enabled: true,
       });
@@ -227,7 +227,7 @@ beforeEach(() => {
     const u = url.toString();
     if (u.includes("/api/overlay-settings")) {
       return jsonRes(200, {
-        alert_duration_ms: 6000,
+        alert_duration_ms: 10000,
         min_amount: "0",
         sound_enabled: true,
       });
@@ -712,7 +712,7 @@ describe("CreatorTab — active features", () => {
     await openCreatorTab(/overlay/i);
     await screen.findByTestId("overlay-settings-card");
     await waitFor(() => {
-      expect(screen.getByTestId("overlay-duration-input")).toHaveValue(6000);
+      expect(screen.getByTestId("overlay-duration-input")).toHaveValue(10000);
     });
     expect(screen.getByTestId("overlay-min-amount-input")).toHaveValue(0);
     expect(screen.getByTestId("overlay-sound-toggle")).toBeChecked();

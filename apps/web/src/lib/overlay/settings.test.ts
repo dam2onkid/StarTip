@@ -7,7 +7,7 @@ import { describe, it, expect } from "vitest";
  * `shouldShowAlert` suppresses donations whose raw `amount` is below the
  * Creator's `min_amount` (already converted to raw units by the server
  * component, so the client never needs a per-alert decimals lookup).
- * `alertDurationMs` returns the configured alert duration or the 6000ms
+ * `alertDurationMs` returns the configured alert duration or the 10000ms
  * default when the field is missing/invalid.
  */
 
@@ -85,16 +85,16 @@ describe("alertDurationMs", () => {
     expect(alertDurationMs({ alertDurationMs: 4000 })).toBe(4000);
   });
 
-  it("returns the 6000 default when the field is missing", async () => {
+  it("returns the 10000 default when the field is missing", async () => {
     const { alertDurationMs } = await import("@/lib/overlay/settings");
-    expect(alertDurationMs({})).toBe(6000);
+    expect(alertDurationMs({})).toBe(10000);
   });
 
-  it("returns the 6000 default when the field is not a finite number", async () => {
+  it("returns the 10000 default when the field is not a finite number", async () => {
     const { alertDurationMs } = await import("@/lib/overlay/settings");
-    expect(alertDurationMs({ alertDurationMs: NaN })).toBe(6000);
-    expect(alertDurationMs({ alertDurationMs: Infinity })).toBe(6000);
-    expect(alertDurationMs({ alertDurationMs: "6000" as unknown as number })).toBe(6000);
+    expect(alertDurationMs({ alertDurationMs: NaN })).toBe(10000);
+    expect(alertDurationMs({ alertDurationMs: Infinity })).toBe(10000);
+    expect(alertDurationMs({ alertDurationMs: "10000" as unknown as number })).toBe(10000);
   });
 
   it("clamps a sub-1000 value up to the 1000 floor", async () => {

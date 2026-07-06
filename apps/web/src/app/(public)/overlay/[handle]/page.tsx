@@ -97,7 +97,7 @@ export default async function OverlayPage({
  * `OverlaySettings` shape. `min_amount` is converted from display units to
  * raw units (multiplied by 10^decimals) using the first token in the
  * allowlist (the MVP is single-token). When no row exists, the defaults
- * (6000ms, no threshold, sound on) apply.
+ * (10000ms, no threshold, sound on) apply.
  */
 function resolveOverlaySettings(
   row: { alert_duration_ms: number | null; min_amount: string | null; sound_enabled: boolean | null } | null,

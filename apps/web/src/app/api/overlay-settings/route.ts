@@ -14,7 +14,7 @@ import {
  * GET `?handle=<handle>` — public. Resolves the handle to a registered,
  * not-paused Creator profile (service role, bypasses RLS), reads the
  * `overlay_settings` row by `creator_profile_id`, and returns it. When no
- * row exists, returns the column defaults (6000ms, 0, true, 'default') so
+ * row exists, returns the column defaults (10000ms, 0, true, 'default') so
  * the Overlay works out of the box before the Creator configures it.
  *
  * PUT (authed) — upserts the caller's row. Body:
