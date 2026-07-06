@@ -1,6 +1,6 @@
 # 07 - Contract redeploy and re-seed
 
-Status: Untriaged
+Status: done
 Role: backend
 
 ## Task
@@ -129,3 +129,71 @@ the new `donate()` signature (4 args) and 7-field event shape.
 - Issue 02 (DB migration) should land before or alongside, so the DB
   schema matches the new contract.
 - Issue 05 + 06 (worker + web) should be ready for the smoke test.
+
+## Deployment record
+
+Executed on testnet. The new contract replaces
+`CBMAACZ23PQPSV3XM6K22W7KP3T4IE7X7SLRVO44EKACP64N36GY7IYK` (left as an
+orphan per Cleanup above).
+
+- **New contract ID**: `CCX2A6EVPHWLL4SKTS2KPUJBUHKXJVU5EZNFLZZNVJVAGNAIBHFXEH3Y`
+- **WASM**: `contracts/target/wasm32v1-none/release/donation_router.wasm`
+  (15372 bytes optimized, hash
+  `d9fa7f8295773c1fcf65fa9b7feba6edcbb576c1e03919e822e8ded1bfec86f3`).
+  Built via `stellar contract build --package donation-router`.
+- **Deploy + constructor** (atomic, CAP-0058): source `continuum-deployer`,
+  `--admin GDOAROA7O4BFXS3CPXUNA4NQWZJIN3YN67BEZYZMYLI4STZEFI3BODO4`,
+  `--treasury_address` same as admin, `--platform_fee_bps 100`,
+  `--max_fee_bps 500`. Tx
+  `00857355bf8994480e62ed4a71ea0a4a19e09a7447e03261e64f1e3ff891f6b5`.
+- **Token allowlist re-seeded**: `add_token` for the native XLM SAC
+  (`CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC`) and USDC
+  SAC (`CA2E53VHFZ6YSWQIEIPBXJQGT6VW3VKWWZO555XKRQXYJ63GEBJJGHY7`), both
+  emitting `TokenAllowlistUpdated { added: true }`. The `tokens` table
+  already held these rows from the prior contract; the indexer will upsert
+  the same addresses on the next `TokenAllowlistUpdated` it sees.
+- **Creator re-registered**: `register_creator` for the `jadennguyen`
+  handle hash (`48f8d67652c7d68e79cbbb775e7033176f355ec7989db077a870f5a5f75234e7`),
+  signed by `heir1` (`GASMDBHB5FRDACGEUUZIODXR47HJYYIGKGUYRJGASLIM67JGEY7TCX3Z`)
+  which is now the on-chain owner and payout address. The original owner
+  key (`GADK72HP...`) was not in the local keyring, so `heir1` takes
+  ownership for testnet. Tx
+  `f27e9a539f131404e108aab4740985533ba439bb9f476a393cc663c817f48539`.
+- **DB profile updated**: `profiles.jadennguyen` `owner_address` and
+  `payout_address` set to `heir1`'s address, `onchain_registered = true`,
+  `paused = false`. `indexer_state` seed row `(1, 0, null)` restored so
+  the indexer bootstraps from the latest ledger on first poll.
+- **Env updated**: `apps/web/.env`
+  (`NEXT_PUBLIC_DONATION_ROUTER_CONTRACT_ID`) and `apps/worker/.env`
+  (`DONATION_ROUTER_CONTRACT_ID`) both point at the new contract ID. Both
+  files are gitignored (they hold the service role key).
+
+### Verification
+
+- `get_config` read: admin/treasury = `continuum-deployer`, fee 100, max
+  500, paused false, allowlist = [native SAC, USDC SAC]. Matches the old
+  contract exactly.
+- `get_creator` read: `active = true`, owner = payout = `heir1`.
+- Contract unit tests: `cargo test --package donation-router` -> 35/35
+  pass.
+- Monorepo typecheck: `pnpm run typecheck` -> 3/3 packages pass.
+- Monorepo test suite: `pnpm run test` -> 4/4 packages pass (contracts
+  35, web 364, shared, worker).
+- Worker smoke test: booted `apps/worker` against the new contract ID.
+  `POST /verify` returns 401 without bearer, 400 on bad body, 202
+  `{ status: "pending" }` for a nonexistent tx hash after the poll
+  window. Indexer loop polls the new contract ID (0 events processed,
+  expected with no donations yet).
+
+### Not done
+
+- **Step 7 (`make integration-test`)**: skipped. The local-network
+  integration test requires Docker, which is not installed in this
+  environment. The contract unit tests cover the `donate()` 4-arg
+  signature and 7-field event shape; the integration script remains the
+  secondary seam for CLI-encoding regressions and should be run where
+  Docker is available.
+- **Step 8 full smoke (browser + wallet)**: the wallet-sign + Realtime
+  confirm path was not exercised end-to-end (requires a human-driven
+  Freighter sign). The worker verify endpoint and indexer were
+  health-checked as above.
