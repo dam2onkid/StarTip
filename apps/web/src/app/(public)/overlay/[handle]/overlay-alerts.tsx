@@ -8,6 +8,7 @@ import {
   alertDurationMs,
   type OverlaySettings,
 } from "@/lib/overlay/settings";
+import { rawToDisplayAmount } from "@/lib/stellar/amount";
 
 /**
  * Overlay client component. Renders donation alerts (Donor Name, amount +
@@ -35,11 +36,17 @@ import {
  * them). The initial donations passed from the server component are already
  * filtered the same way.
  *
- * Token symbol resolution: `donations.token` stores the token contract
- * address (per the confirm path). The server passes the token allowlist
- * (`contract_address` -> `symbol`); the client maps each donation's token to
- * its symbol, falling back to the raw `token` string when no allowlist entry
- * matches (e.g. the mock stores the symbol directly).
+ * Token symbol + decimals resolution: `donations.token` stores the token
+ * contract address (per the confirm path) and `donations.amount` stores the
+ * raw i128 amount in the smallest divisible unit (`10^decimals` per display
+ * unit, e.g. 90000000 raw = 9 XLM at 7 decimals). The server passes the token
+ * allowlist (`contract_address` -> `symbol`, `decimals`); the client maps each
+ * donation's token to its symbol (falling back to the raw `token` string when
+ * no allowlist entry matches, e.g. the mock stores the symbol directly) and to
+ * its `decimals`, then converts the raw `amount` to a human-readable display
+ * string via `rawToDisplayAmount`. A token with no allowlist entry (or no
+ * `decimals`) falls back to `decimals = 0`, which renders the raw amount
+ * unchanged.
  *
  * Test seam: when `window.__STARTIP_OVERLAY_REALTIME_STUB__` is present
  * (injected by the Playwright E2E harness), the hook registers the insert
@@ -107,15 +114,30 @@ export function OverlayAlerts({
   const [alerts, setAlerts] = React.useState<OverlayDonation[]>(seeded);
 
   // Re-seed when the server snapshot changes (e.g. settings updated). The
-  // dependency is the memoized `seeded` array, which only changes when the
-  // initial donations or settings actually change.
-  React.useEffect(() => {
+  // `seeded` array is memoized, so this only runs when the initial donations
+  // or settings actually change. Adjusting state during render (storing the
+  // previous `seeded` reference and calling setAlerts when it changes) is the
+  // React-recommended replacement for the `useEffect(() => setAlerts(seeded))`
+  // anti-pattern: React re-renders synchronously before commit instead of
+  // cascading an effect-driven update after commit.
+  // https://react.dev/learn/you-might-not-need-an-effect#adjusting-some-state-when-a-prop-changes
+  const [prevSeeded, setPrevSeeded] = React.useState(seeded);
+  if (seeded !== prevSeeded) {
+    setPrevSeeded(seeded);
     setAlerts(seeded);
-  }, [seeded]);
+  }
 
   const symbolByContract = React.useMemo(() => {
     const map = new Map<string, string>();
     for (const t of tokenAllowlist) map.set(t.contract_address, t.symbol);
+    return map;
+  }, [tokenAllowlist]);
+
+  const decimalsByContract = React.useMemo(() => {
+    const map = new Map<string, number>();
+    for (const t of tokenAllowlist) {
+      if (typeof t.decimals === "number") map.set(t.contract_address, t.decimals);
+    }
     return map;
   }, [tokenAllowlist]);
 
@@ -157,6 +179,7 @@ export function OverlayAlerts({
             key={d.id}
             donation={d}
             symbol={symbolByContract.get(d.token) ?? d.token}
+            decimals={decimalsByContract.get(d.token) ?? 0}
             durationMs={durationMs}
             onExpire={removeAlert}
           />
@@ -169,11 +192,13 @@ export function OverlayAlerts({
 function AlertCard({
   donation,
   symbol,
+  decimals,
   durationMs,
   onExpire,
 }: {
   donation: OverlayDonation;
   symbol: string;
+  decimals: number;
   durationMs: number;
   onExpire: (id: string) => void;
 }) {
@@ -211,7 +236,7 @@ function AlertCard({
         </span>
         <span className="flex shrink-0 items-baseline font-mono text-sm tabular-nums">
           <span data-testid="alert-amount" className="text-primary">
-            {donation.amount}
+            {rawToDisplayAmount(donation.amount, decimals)}
           </span>
           <span data-testid="alert-symbol" className="ml-1 text-muted-foreground">
             {symbol}

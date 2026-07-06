@@ -143,6 +143,52 @@ describe("OverlayAlerts — initial render", () => {
     expect(screen.getByTestId("alert-symbol")).toHaveTextContent("USDC");
   });
 
+  it("converts the raw amount to display units using the token decimals", () => {
+    // The contract stores amounts in the smallest divisible unit (10^decimals
+    // per display unit). 90000000 raw at 7 decimals (native XLM) renders as "9",
+    // not "90000000".
+    render(
+      <OverlayAlerts
+        creatorProfileId="c1"
+        initialDonations={[
+          { id: "xlm", donor_name: "Ada", amount: "90000000", token: "XLM_CONTRACT", message: null, created_at: "t" },
+        ]}
+        tokenAllowlist={[{ contract_address: "XLM_CONTRACT", symbol: "XLM", decimals: 7 }]}
+      />,
+    );
+    expect(screen.getByTestId("alert-amount")).toHaveTextContent("9");
+    expect(screen.getByTestId("alert-symbol")).toHaveTextContent("XLM");
+  });
+
+  it("renders fractional display amounts and trims trailing zeros", () => {
+    // 1500000 raw at 6 decimals (USDC) = 1.5 display units.
+    render(
+      <OverlayAlerts
+        creatorProfileId="c1"
+        initialDonations={[
+          { id: "usdc", donor_name: "Bob", amount: "1500000", token: "CUSDC", message: null, created_at: "t" },
+        ]}
+        tokenAllowlist={[{ contract_address: "CUSDC", symbol: "USDC", decimals: 6 }]}
+      />,
+    );
+    expect(screen.getByTestId("alert-amount")).toHaveTextContent("1.5");
+  });
+
+  it("renders the raw amount unchanged when the token has no decimals entry", () => {
+    // Fallback: a token with no allowlist entry (or no decimals) uses
+    // decimals = 0, so the raw amount is rendered as-is.
+    render(
+      <OverlayAlerts
+        creatorProfileId="c1"
+        initialDonations={[
+          { id: "raw", donor_name: "Ada", amount: "90000000", token: "UNKNOWN", message: null, created_at: "t" },
+        ]}
+        tokenAllowlist={[]}
+      />,
+    );
+    expect(screen.getByTestId("alert-amount")).toHaveTextContent("90000000");
+  });
+
   it("does not render hidden donations handed to it (client never receives them)", () => {
     // The server / RLS filter hidden rows before the client sees them. The
     // client is only ever handed visible rows; assert it renders exactly
@@ -193,6 +239,38 @@ describe("OverlayAlerts — Realtime inserts", () => {
     expect(late?.querySelector("[data-testid='alert-amount']")).toHaveTextContent("42");
     expect(late?.querySelector("[data-testid='alert-symbol']")).toHaveTextContent("USDC");
     expect(late?.querySelector("[data-testid='alert-message']")).toHaveTextContent("Caught the stream late!");
+  });
+
+  it("converts a Realtime insert's raw amount to display units", async () => {
+    // A live insert carries the raw i128 amount from the contract; the overlay
+    // must convert it to display units using the token's decimals before
+    // rendering, so a 90000000-raw XLM donation shows as "9" not "90000000".
+    render(
+      <OverlayAlerts
+        creatorProfileId="c1"
+        initialDonations={[]}
+        tokenAllowlist={[{ contract_address: "XLM_CONTRACT", symbol: "XLM", decimals: 7 }]}
+      />,
+    );
+
+    await act(async () => {
+      realtimeCb?.({
+        new: {
+          id: "live",
+          donor_name: "LiveDonor",
+          amount: "90000000",
+          token: "XLM_CONTRACT",
+          message: null,
+          created_at: "t",
+        },
+      });
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("LiveDonor")).toBeInTheDocument();
+    });
+    expect(screen.getByTestId("alert-amount")).toHaveTextContent("9");
+    expect(screen.getByTestId("alert-symbol")).toHaveTextContent("XLM");
   });
 
   it("drops the oldest alert once the cap is reached", async () => {
