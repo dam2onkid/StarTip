@@ -105,7 +105,9 @@ export function decodeDonationReceivedEvent(
   const topics = v0.topics();
   if (!topics || topics.length === 0) return null;
   const topic = StellarSdk.scValToNative(topics[0]);
-  if (topic !== "DonationReceived") return null;
+  // The Soroban #[contractevent] macro emits the topic as a snake_case
+  // Symbol (e.g. "donation_received"), not the PascalCase struct name.
+  if (topic !== "donation_received") return null;
   return StellarSdk.scValToNative(v0.data()) as Record<string, unknown>;
 }
 

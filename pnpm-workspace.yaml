@@ -10,6 +10,7 @@ allowBuilds:
   '@stellar/stellar-sdk': false
   blake-hash: false
   bufferutil: false
+  esbuild: set this to true or false
   protobufjs: false
   secp256k1: false
   sharp: true

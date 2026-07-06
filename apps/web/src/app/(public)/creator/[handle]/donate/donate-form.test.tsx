@@ -14,6 +14,18 @@ const connectWallet = vi.fn();
 const disconnectWallet = vi.fn();
 const signWalletTransaction = vi.fn();
 
+// Sonner toast mock: the donate form fires toast.success / toast.error on
+// the success and error paths. Each method is a spy so tests can assert the
+// toast fired with the expected message/description.
+const toastSuccess = vi.fn();
+const toastError = vi.fn();
+vi.mock("sonner", () => ({
+  toast: {
+    success: toastSuccess,
+    error: toastError,
+  },
+}));
+
 vi.mock("@/lib/wallet/kit", () => ({
   connectWallet,
   disconnectWallet,
@@ -106,18 +118,46 @@ function jsonRes(status: number, body: unknown): Response {
   });
 }
 
+// Audio mock: jsdom's HTMLMediaElement.play() is not implemented and returns
+// a promise that never settles, which would hang any test that reaches the
+// success phase (the donate form plays a sound on success). The mock records
+// the URL and resolves play so tests can assert the sound fired.
+const audioPlay = vi.fn(() => Promise.resolve());
+const audioInstances: { src: string; volume: number; played: boolean }[] = [];
+
 beforeEach(() => {
+  audioPlay.mockClear();
+  audioInstances.length = 0;
+  // Stub the global Audio constructor so `new Audio(url)` returns a
+  // controllable object. Tests that care about sound assert on
+  // `audioInstances`.
+  vi.stubGlobal("Audio", vi.fn(function (this: unknown, url: string) {
+    const inst = {
+      src: url,
+      volume: 1,
+      played: false,
+      play: vi.fn(() => {
+        inst.played = true;
+        return audioPlay();
+      }),
+    };
+    audioInstances.push(inst);
+    return inst;
+  }));
   connectWallet.mockReset();
   disconnectWallet.mockReset();
   signWalletTransaction.mockReset();
   donateOnChain.mockReset();
   donorHasTrustline.mockReset();
   donorHasTrustline.mockResolvedValue(true);
+  toastSuccess.mockReset();
+  toastError.mockReset();
   tokensData = [TOKEN_USDC];
 });
 
 afterEach(() => {
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
 });
 
 async function renderAndConnect(handle = "ada") {
@@ -215,6 +255,39 @@ describe("DonateForm", () => {
     expect(verifyBody.tx_hash).toBe("deadbeef".repeat(8));
     expect(verifyBody.donation_id).toBeUndefined();
     expect(verifyBody.donation_id_hash).toBeUndefined();
+    // The success sound fires once when the flow reaches the success phase.
+    expect(audioInstances).toHaveLength(1);
+    expect(audioInstances[0].src).toBe("/alert.mp3");
+    expect(audioInstances[0].played).toBe(true);
+    // A success toast is shown to the user.
+    expect(toastSuccess).toHaveBeenCalledOnce();
+    expect(toastSuccess.mock.calls[0][0]).toBe("Donation confirmed!");
+    expect(toastError).not.toHaveBeenCalled();
+  });
+
+  it("does not play the success sound when the donate flow errors", async () => {
+    donateOnChain.mockRejectedValue(new DonateError("Paused"));
+    mockFetch([() => jsonRes(200, { status: "confirmed" })]);
+    await renderAndConnect();
+
+    await act(async () => {
+      fireEvent.change(screen.getByPlaceholderText("0.00"), { target: { value: "1.0" } });
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /donate/i }));
+    });
+
+    await waitFor(() => {
+      expect(screen.getByRole("alert")).toHaveTextContent(
+        /paused and cannot receive donations/i,
+      );
+    });
+    // No success sound on the error path.
+    expect(audioInstances).toHaveLength(0);
+    // An error toast is shown instead of a success toast.
+    expect(toastError).toHaveBeenCalledOnce();
+    expect(toastError.mock.calls[0][0]).toBe("Donation failed");
+    expect(toastSuccess).not.toHaveBeenCalled();
   });
 
   it("surfaces a Paused error from the donate pipeline as a user-facing message", async () => {

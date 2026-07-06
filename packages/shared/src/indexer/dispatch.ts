@@ -329,28 +329,28 @@ export async function processPoll<R extends RpcLike>(
     }
     if (!decoded) continue;
     switch (decoded.topic) {
-      case "DonationReceived":
+      case "donation_received":
         await dispatchDonationReceived(supabase, event, decoded.value);
         processed++;
         break;
-      case "CreatorRegistered":
+      case "creator_registered":
         await dispatchCreatorRegistered(supabase, decoded.value);
         processed++;
         break;
-      case "CreatorPayoutUpdated":
+      case "creator_payout_updated":
         await dispatchCreatorPayoutUpdated(supabase, decoded.value);
         processed++;
         break;
-      case "CreatorActiveChanged":
+      case "creator_active_changed":
         await dispatchCreatorActiveChanged(supabase, decoded.value);
         processed++;
         break;
-      case "TokenAllowlistUpdated":
+      case "token_allowlist_updated":
         await dispatchTokenAllowlistUpdated(deps, decoded.value);
         processed++;
         break;
       default:
-        // Unknown topic (e.g. admin-only events like TreasuryUpdated). Skip
+        // Unknown topic (e.g. admin-only events like treasury_updated). Skip
         // dispatch but still advance the cursor past it below.
         break;
     }

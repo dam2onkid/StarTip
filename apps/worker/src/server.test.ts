@@ -109,7 +109,7 @@ function makeDonationReceivedEvent(token: string): StellarSdk.xdr.ContractEvent 
     body: new StellarSdk.xdr.ContractEventBody(
       0,
       new StellarSdk.xdr.ContractEventV0({
-        topics: [StellarSdk.xdr.ScVal.scvSymbol("DonationReceived")],
+        topics: [StellarSdk.xdr.ScVal.scvSymbol("donation_received")],
         data: StellarSdk.xdr.ScVal.scvMap(entries),
       }),
     ),

@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { useDonateWallet } from "@/components/landing/donate-wallet-context";
@@ -64,6 +65,28 @@ function creatorInitial(displayName: string): string {
 /** Quick-select amount buttons shown alongside the custom amount field. */
 const QUICK_SELECT_AMOUNTS = ["1", "5", "10"] as const;
 
+/** Path to the bundled success sound in /public (shared with the overlay). */
+const SUCCESS_SOUND_URL = "/alert.mp3";
+
+/**
+ * Play a short success sound when a donation is confirmed. Swallows autoplay
+ * errors: the browser may block `play()` until a user interaction, but the
+ * donate submit click already counts as one, so this is reliable in practice.
+ * Exposed for test spying via the `Audio` global.
+ */
+function playDonateSuccessSound(): void {
+  if (typeof Audio === "undefined") return;
+  try {
+    const audio = new Audio(SUCCESS_SOUND_URL);
+    audio.volume = 0.8;
+    void audio.play().catch(() => {
+      // Autoplay blocked or decode error: silent. The success UI still shows.
+    });
+  } catch {
+    // `new Audio` or `play` threw: silent.
+  }
+}
+
 export function DonateForm({ handle, displayName = handle, avatarUrl = null }: DonateFormProps) {
   const { address: walletAddress } = useDonateWallet();
   const [tokens, setTokens] = React.useState<TokenAllowlistEntry[]>([]);
@@ -79,6 +102,21 @@ export function DonateForm({ handle, displayName = handle, avatarUrl = null }: D
   const [txHash, setTxHash] = React.useState<string | null>(null);
 
   const busy = phase === "submitting" || phase === "confirming";
+
+  // Play the success sound once when the flow reaches the success phase. The
+  // submit click that started the flow counts as a user interaction, so
+  // autoplay is allowed. Guarded by a ref so a re-render in the success phase
+  // (e.g. parent re-render) does not replay the sound.
+  const playedSuccessSound = React.useRef(false);
+  React.useEffect(() => {
+    if (phase === "success" && !playedSuccessSound.current) {
+      playedSuccessSound.current = true;
+      playDonateSuccessSound();
+    }
+    if (phase !== "success") {
+      playedSuccessSound.current = false;
+    }
+  }, [phase]);
 
   // Fetch the token allowlist on mount. The `tokens` table has a public SELECT
   // RLS policy (ADR: the token picker is public, no RPC call per prepare).
@@ -189,21 +227,30 @@ export function DonateForm({ handle, displayName = handle, avatarUrl = null }: D
       }
 
       setPhase("success");
+      toast.success("Donation confirmed!", {
+        description: `Sent to ${displayName}. Tx: ${result.hash.slice(0, 10)}...`,
+      });
     } catch (e) {
       setPhase("error");
+      let friendly: string;
       if (e instanceof DonateError) {
-        setError(DONATE_ERROR_MESSAGES[e.code as DonateErrorCode]);
+        friendly = DONATE_ERROR_MESSAGES[e.code as DonateErrorCode];
+        setError(friendly);
       } else if (e instanceof Error) {
         const m = e.message;
         // Verify API errors arrive as "verify:<code>".
         if (m.startsWith("verify:")) {
-          setError(`Server error: ${m.split(":")[1]}`);
+          friendly = `Server error: ${m.split(":")[1]}`;
+          setError(friendly);
         } else {
-          setError(friendlyOnchainError(e, "An unexpected error occurred."));
+          friendly = friendlyOnchainError(e, "An unexpected error occurred.");
+          setError(friendly);
         }
       } else {
-        setError("An unexpected error occurred.");
+        friendly = "An unexpected error occurred.";
+        setError(friendly);
       }
+      toast.error("Donation failed", { description: friendly });
     }
   }
 

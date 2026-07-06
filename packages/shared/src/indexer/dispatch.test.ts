@@ -259,7 +259,7 @@ describe("indexer/dispatch processPoll", () => {
     setResponder("indexer_state:select", () => ({ data: { id: 1, last_ledger: 100, last_cursor: "cur" }, error: null }));
     setResponder("donations:select", () => ({ data: { id: "d1", status: "indexed" }, error: null }));
 
-    const event = makeEvent("DonationReceived", {
+    const event = makeEvent("donation_received", {
       creator_id_hash: HANDLE_HASH,
       token: "USDC-CONTRACT",
       amount: BigInt("1000000"),
@@ -289,7 +289,7 @@ describe("indexer/dispatch processPoll", () => {
     setResponder("donations:select", () => ({ data: null, error: null }));
     setResponder("profiles:select", () => ({ data: { id: "p1", owner_address: CREATOR_G }, error: null }));
 
-    const event = makeEvent("DonationReceived", {
+    const event = makeEvent("donation_received", {
       creator_id_hash: HANDLE_HASH,
       token: "USDC-CONTRACT",
       amount: BigInt("1000000"),
@@ -325,7 +325,7 @@ describe("indexer/dispatch processPoll", () => {
     setResponder("donations:select", () => ({ data: null, error: null }));
     setResponder("profiles:select", () => ({ data: null, error: null }));
 
-    const event = makeEvent("DonationReceived", {
+    const event = makeEvent("donation_received", {
       creator_id_hash: HANDLE_HASH,
       token: "USDC-CONTRACT",
       amount: BigInt("1000000"),
@@ -347,7 +347,7 @@ describe("indexer/dispatch processPoll", () => {
     setResponder("indexer_state:select", () => ({ data: { id: 1, last_ledger: 100, last_cursor: "cur" }, error: null }));
     setResponder("donations:select", () => ({ data: { id: "d1", status: "confirmed" }, error: null }));
 
-    const event = makeEvent("DonationReceived", {
+    const event = makeEvent("donation_received", {
       creator_id_hash: HANDLE_HASH,
       token: "USDC-CONTRACT",
       amount: BigInt("1000000"),
@@ -371,7 +371,7 @@ describe("indexer/dispatch processPoll", () => {
     setResponder("indexer_state:select", () => ({ data: { id: 1, last_ledger: 100, last_cursor: "cur" }, error: null }));
     setResponder("donations:select", () => ({ data: { id: "d1", status: "indexed" }, error: null }));
 
-    const event = makeEvent("DonationReceived", {
+    const event = makeEvent("donation_received", {
       creator_id_hash: HANDLE_HASH,
       token: "USDC-CONTRACT",
       amount: BigInt("1000000"),
@@ -397,7 +397,7 @@ describe("indexer/dispatch processPoll", () => {
     setResponder("indexer_state:select", () => ({ data: { id: 1, last_ledger: 100, last_cursor: "cur" }, error: null }));
     setResponder("profiles:select", () => ({ data: { id: "p1", owner_address: CREATOR_G }, error: null }));
 
-    const event = makeEvent("CreatorRegistered", {
+    const event = makeEvent("creator_registered", {
       creator_id_hash: HANDLE_HASH,
       owner: CREATOR_G,
       payout_address: CREATOR_G,
@@ -421,7 +421,7 @@ describe("indexer/dispatch processPoll", () => {
     setResponder("indexer_state:select", () => ({ data: { id: 1, last_ledger: 100, last_cursor: "cur" }, error: null }));
     setResponder("profiles:select", () => ({ data: null, error: null }));
 
-    const event = makeEvent("CreatorRegistered", {
+    const event = makeEvent("creator_registered", {
       creator_id_hash: HANDLE_HASH,
       owner: CREATOR_G,
       payout_address: CREATOR_G,
@@ -438,7 +438,7 @@ describe("indexer/dispatch processPoll", () => {
     setResponder("indexer_state:select", () => ({ data: { id: 1, last_ledger: 100, last_cursor: "cur" }, error: null }));
     setResponder("profiles:select", () => ({ data: { id: "p1", owner_address: "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF" }, error: null }));
 
-    const event = makeEvent("CreatorRegistered", {
+    const event = makeEvent("creator_registered", {
       creator_id_hash: HANDLE_HASH,
       owner: CREATOR_G,
       payout_address: CREATOR_G,
@@ -455,7 +455,7 @@ describe("indexer/dispatch processPoll", () => {
     setResponder("indexer_state:select", () => ({ data: { id: 1, last_ledger: 100, last_cursor: "cur" }, error: null }));
     setResponder("profiles:select", () => ({ data: { id: "p1", owner_address: CREATOR_G }, error: null }));
 
-    const event = makeEvent("CreatorPayoutUpdated", {
+    const event = makeEvent("creator_payout_updated", {
       creator_id_hash: HANDLE_HASH,
       old_payout_address: CREATOR_G,
       new_payout_address: CREATOR_G,
@@ -474,7 +474,7 @@ describe("indexer/dispatch processPoll", () => {
     setResponder("indexer_state:select", () => ({ data: { id: 1, last_ledger: 100, last_cursor: "cur" }, error: null }));
     setResponder("profiles:select", () => ({ data: { id: "p1" }, error: null }));
 
-    const pauseEvent = makeEvent("CreatorActiveChanged", {
+    const pauseEvent = makeEvent("creator_active_changed", {
       creator_id_hash: HANDLE_HASH,
       active: false,
     });
@@ -492,7 +492,7 @@ describe("indexer/dispatch processPoll", () => {
     setResponder("indexer_state:select", () => ({ data: { id: 1, last_ledger: 100, last_cursor: "cur" }, error: null }));
     setResponder("profiles:select", () => ({ data: { id: "p1" }, error: null }));
 
-    const event = makeEvent("CreatorActiveChanged", {
+    const event = makeEvent("creator_active_changed", {
       creator_id_hash: HANDLE_HASH,
       active: true,
     });
@@ -509,7 +509,7 @@ describe("indexer/dispatch processPoll", () => {
     setResponder("indexer_state:select", () => ({ data: { id: 1, last_ledger: 100, last_cursor: "cur" }, error: null }));
 
     const tokenContract = "CCV2XK5LVOV2XK5LVOV2XK5LVOV2XK5LVOV2XK5LVOV2XK5LVOV2XMCW";
-    const event = makeEvent("TokenAllowlistUpdated", {
+    const event = makeEvent("token_allowlist_updated", {
       token: tokenContract,
       added: true,
     });
@@ -535,7 +535,7 @@ describe("indexer/dispatch processPoll", () => {
     setResponder("indexer_state:select", () => ({ data: { id: 1, last_ledger: 100, last_cursor: "cur" }, error: null }));
 
     const tokenContract = "CCV2XK5LVOV2XK5LVOV2XK5LVOV2XK5LVOV2XK5LVOV2XK5LVOV2XMCW";
-    const event = makeEvent("TokenAllowlistUpdated", {
+    const event = makeEvent("token_allowlist_updated", {
       token: tokenContract,
       added: false,
     });
@@ -554,8 +554,8 @@ describe("indexer/dispatch processPoll", () => {
     setResponder("indexer_state:select", () => ({ data: { id: 1, last_ledger: 100, last_cursor: "cur" }, error: null }));
     setResponder("profiles:select", () => ({ data: { id: "p1" }, error: null }));
 
-    const e1 = makeEvent("CreatorActiveChanged", { creator_id_hash: HANDLE_HASH, active: true }, { ledger: 110, id: "e1" });
-    const e2 = makeEvent("CreatorActiveChanged", { creator_id_hash: HANDLE_HASH, active: false }, { ledger: 120, id: "e2" });
+    const e1 = makeEvent("creator_active_changed", { creator_id_hash: HANDLE_HASH, active: true }, { ledger: 110, id: "e1" });
+    const e2 = makeEvent("creator_active_changed", { creator_id_hash: HANDLE_HASH, active: false }, { ledger: 120, id: "e2" });
     const rpc = createMockRpc([e1, e2], "next-cursor");
     const { processPoll } = await import("./dispatch");
     const result = await processPoll({ supabase: supabase as any, rpc, tokenReader, contractId: CONTRACT_ID });
@@ -587,10 +587,10 @@ describe("indexer/dispatch processPoll", () => {
     const { supabase, calls, setResponder } = createMockSupabase();
     setResponder("indexer_state:select", () => ({ data: { id: 1, last_ledger: 100, last_cursor: "cur" }, error: null }));
 
-    const event = makeEvent(" TreasuryUpdated", { old_treasury_address: CREATOR_G, new_treasury_address: CREATOR_G });
+    const event = makeEvent(" treasury_updated", { old_treasury_address: CREATOR_G, new_treasury_address: CREATOR_G });
     // fix the topic to a real unknown one
     (event as unknown as { topic: StellarSdk.xdr.ScVal[] }).topic = [
-      StellarSdk.xdr.ScVal.scvSymbol("TreasuryUpdated"),
+      StellarSdk.xdr.ScVal.scvSymbol("treasury_updated"),
     ];
     const rpc = createMockRpc([event]);
     const { processPoll } = await import("./dispatch");

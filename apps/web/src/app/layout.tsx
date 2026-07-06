@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Inter, Inter_Tight, JetBrains_Mono } from "next/font/google";
 import { Providers } from "@/components/providers";
 import { SiteNav } from "@/components/landing/site-nav";
+import { Toaster } from "@/components/ui/sonner";
 import { createServerClient } from "@/lib/supabase/server";
 import { resolveNavAuth } from "@/lib/nav/auth";
 import "./globals.css";
@@ -55,6 +56,7 @@ export default async function RootLayout({
         <Providers>
           <SiteNav auth={auth} />
           {children}
+          <Toaster />
         </Providers>
       </body>
     </html>
