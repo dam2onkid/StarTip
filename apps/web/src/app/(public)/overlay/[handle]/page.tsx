@@ -1,15 +1,14 @@
 import { notFound } from "next/navigation";
 import { createServiceClient } from "@startip/shared/supabase/service";
-import { OverlayAlerts, type OverlayDonation, type OverlayToken } from "./overlay-alerts";
+import { OverlayAlerts, type OverlayToken } from "./overlay-alerts";
 import type { OverlaySettings } from "@/lib/overlay/settings";
 
 /**
  * `/overlay/[handle]` — public OBS browser source. Resolves the Handle to its
- * `creator_profile_id` (registered + not paused), fetches the initial visible
- * confirmed/indexed donations, the token allowlist, and the Creator's
- * `overlay_settings` row, and hands them to the `<OverlayAlerts>` client
- * component which subscribes to Supabase Realtime on `donations` for live
- * alerts.
+ * `creator_profile_id` (registered + not paused), fetches the token allowlist
+ * and the Creator's `overlay_settings` row, and hands them to the
+ * `<OverlayAlerts>` client component which subscribes to Supabase Realtime on
+ * `donations` for live alerts.
  *
  * Overlay settings (spec §11.3): the server loads the Creator's
  * `overlay_settings` row (or falls back to defaults when no row exists) and
@@ -22,12 +21,11 @@ import type { OverlaySettings } from "@/lib/overlay/settings";
  *
  * No auth required. The handle is resolved via the service role (bypasses RLS)
  * filtered to `onchain_registered = true AND paused = false`, so unknown /
- * not-registered / paused handles 404. The initial donations read uses the
- * same `status IN ('confirmed','indexed') AND moderation_status = 'visible'`
- * filter the Realtime subscription uses, so hidden messages are suppressed
- * both on first paint and on live inserts (the
- * `donations_anon_visible_select` RLS policy enforces the same on the
- * anon-key Realtime channel).
+ * not-registered / paused handles 404. Historical donations are intentionally
+ * not replayed on page load; the overlay only displays Realtime events that
+ * arrive after the browser source is opened. The
+ * `donations_anon_visible_select` RLS policy suppresses hidden rows on the
+ * anon-key Realtime channel.
  *
  * The page renders a transparent, full-viewport surface so it composes
  * cleanly as an OBS browser source. `params` is a Promise in Next.js 15; the
@@ -60,14 +58,6 @@ export default async function OverlayPage({
     notFound();
   }
 
-  const { data: donations } = await service
-    .from("donations")
-    .select("id,donor_name,amount,token,message,created_at")
-    .eq("creator_profile_id", p.id)
-    .in("status", ["confirmed", "indexed"])
-    .eq("moderation_status", "visible")
-    .order("created_at", { ascending: true });
-
   const { data: tokens } = await service
     .from("tokens")
     .select("contract_address,symbol,decimals");
@@ -78,14 +68,13 @@ export default async function OverlayPage({
     .eq("creator_profile_id", p.id)
     .maybeSingle();
 
-  const initialDonations = (donations ?? []) as OverlayDonation[];
   const tokenAllowlist = (tokens ?? []) as OverlayToken[];
   const settings = resolveOverlaySettings(settingsRow, tokenAllowlist);
 
   return (
     <OverlayAlerts
       creatorProfileId={p.id}
-      initialDonations={initialDonations}
+      initialDonations={[]}
       tokenAllowlist={tokenAllowlist}
       settings={settings}
     />

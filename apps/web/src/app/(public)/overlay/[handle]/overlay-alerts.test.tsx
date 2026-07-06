@@ -10,10 +10,11 @@ import type { OverlaySettings } from "@/lib/overlay/settings";
 
 /**
  * Overlay client component unit tests. The Supabase browser client is mocked
- * so the Realtime hook captures the `postgres_changes` insert callback; tests
- * drive new donations through that callback to assert live inserts render
- * without a reload. The `window.__STARTIP_OVERLAY_REALTIME_STUB__` seam is
- * also exercised directly to mirror the Playwright E2E path.
+ * so the Realtime hook captures the `postgres_changes` insert/update
+ * callbacks; tests drive new donations through those callbacks to assert live
+ * inserts render without a reload and updates enrich queued alerts. The
+ * `window.__STARTIP_OVERLAY_REALTIME_STUB__` seam is also exercised directly
+ * to mirror the Playwright E2E path.
  *
  * Hidden-donation suppression is asserted at the client boundary: the server
  * component (and the RLS policy on the Realtime channel) filter hidden rows
@@ -43,14 +44,16 @@ const VISIBLE: OverlayDonation[] = [
 
 const TOKENS = [{ contract_address: "CUSDC", symbol: "USDC" }];
 
-let realtimeCb: ((payload: { new: OverlayDonation }) => void) | null = null;
+let realtimeInsertCb: ((payload: { new: unknown }) => void) | null = null;
+let realtimeUpdateCb: ((payload: { new: unknown }) => void) | null = null;
 const removeChannel = vi.fn();
 
 vi.mock("@/lib/supabase/client", () => ({
   createBrowserClient: vi.fn(() => ({
     channel: vi.fn(() => ({
-      on: vi.fn(function (this: unknown, _event: string, _filter: unknown, cb: (p: { new: OverlayDonation }) => void) {
-        realtimeCb = cb;
+      on: vi.fn(function (this: unknown, _event: string, filter: { event?: string }, cb: (p: { new: unknown }) => void) {
+        if (filter.event === "INSERT") realtimeInsertCb = cb;
+        if (filter.event === "UPDATE") realtimeUpdateCb = cb;
         return this;
       }),
       subscribe: vi.fn(function (this: unknown) {
@@ -69,7 +72,8 @@ const audioPlay = vi.fn(() => Promise.resolve());
 const audioInstances: { src: string; volume: number; played: boolean }[] = [];
 
 beforeEach(() => {
-  realtimeCb = null;
+  realtimeInsertCb = null;
+  realtimeUpdateCb = null;
   removeChannel.mockClear();
   audioPlay.mockClear();
   audioInstances.length = 0;
@@ -211,7 +215,7 @@ describe("OverlayAlerts — Realtime inserts", () => {
     expect(screen.queryAllByTestId("overlay-alert")).toHaveLength(0);
 
     await act(async () => {
-      realtimeCb?.({
+      realtimeInsertCb?.({
         new: {
           id: "d9",
           donor_name: "Latecomer",
@@ -248,7 +252,7 @@ describe("OverlayAlerts — Realtime inserts", () => {
     );
 
     await act(async () => {
-      realtimeCb?.({
+      realtimeInsertCb?.({
         new: {
           id: "live",
           donor_name: "LiveDonor",
@@ -267,6 +271,79 @@ describe("OverlayAlerts — Realtime inserts", () => {
     expect(screen.getByTestId("alert-symbol")).toHaveTextContent("XLM");
   });
 
+  it("ignores malformed Realtime inserts instead of rendering donated 0", async () => {
+    render(
+      <OverlayAlerts
+        creatorProfileId="c1"
+        initialDonations={[]}
+        tokenAllowlist={TOKENS}
+      />,
+    );
+
+    await act(async () => {
+      realtimeInsertCb?.({
+        new: {
+          id: "bad",
+          donor_name: "",
+          amount: undefined,
+          token: "",
+          message: "missing required fields",
+          created_at: "t",
+        },
+      });
+    });
+
+    expect(screen.queryAllByTestId("overlay-alert")).toHaveLength(0);
+    expect(screen.queryByText(/donated 0/)).toBeNull();
+    expect(audioInstances).toHaveLength(0);
+  });
+
+  it("updates a queued Realtime donation when the row is enriched", async () => {
+    render(
+      <OverlayAlerts
+        creatorProfileId="c1"
+        initialDonations={[]}
+        tokenAllowlist={TOKENS}
+      />,
+    );
+
+    await act(async () => {
+      realtimeInsertCb?.({
+        new: {
+          id: "indexed-first",
+          donor_name: "Anonymous",
+          amount: "42",
+          token: "CUSDC",
+          message: null,
+          created_at: "t",
+        },
+      });
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("alert-donor-name")).toHaveTextContent("Anonymous");
+    });
+
+    await act(async () => {
+      realtimeUpdateCb?.({
+        new: {
+          id: "indexed-first",
+          donor_name: "Alice",
+          amount: "42",
+          token: "CUSDC",
+          message: "Now enriched",
+          created_at: "t",
+        },
+      });
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("alert-donor-name")).toHaveTextContent("Alice");
+    });
+    expect(screen.getByTestId("alert-message")).toHaveTextContent("\"Now enriched\"");
+    expect(audioInstances).toHaveLength(1);
+  });
+
   it("queues donations and shows them one at a time", async () => {
     render(
       <OverlayAlerts
@@ -278,7 +355,7 @@ describe("OverlayAlerts — Realtime inserts", () => {
     );
     for (let i = 0; i < 3; i++) {
       await act(async () => {
-        realtimeCb?.({
+        realtimeInsertCb?.({
           new: {
             id: `n${i}`,
             donor_name: `Donor${i}`,
@@ -310,7 +387,7 @@ describe("OverlayAlerts — Realtime inserts", () => {
       />,
     );
     await act(async () => {
-      realtimeCb?.({
+      realtimeInsertCb?.({
         new: { id: "d1", donor_name: "Ada", amount: "100", token: "CUSDC", message: "dup", created_at: "t" },
       });
     });
@@ -429,7 +506,7 @@ describe("OverlayAlerts — overlay settings (auto-dismiss, min_amount, sound)",
 
     // Insert below threshold -> suppressed, not rendered, no sound.
     await act(async () => {
-      realtimeCb?.({
+      realtimeInsertCb?.({
         new: {
           id: "small",
           donor_name: "Small",
@@ -447,7 +524,7 @@ describe("OverlayAlerts — overlay settings (auto-dismiss, min_amount, sound)",
 
     // Insert at/above threshold -> rendered.
     await act(async () => {
-      realtimeCb?.({
+      realtimeInsertCb?.({
         new: {
           id: "big",
           donor_name: "Big",
@@ -477,7 +554,7 @@ describe("OverlayAlerts — overlay settings (auto-dismiss, min_amount, sound)",
     expect(audioInstances).toHaveLength(0);
 
     await act(async () => {
-      realtimeCb?.({
+      realtimeInsertCb?.({
         new: {
           id: "d9",
           donor_name: "Latecomer",
@@ -508,7 +585,7 @@ describe("OverlayAlerts — overlay settings (auto-dismiss, min_amount, sound)",
       />,
     );
     await act(async () => {
-      realtimeCb?.({
+      realtimeInsertCb?.({
         new: {
           id: "d9",
           donor_name: "Latecomer",

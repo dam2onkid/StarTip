@@ -142,6 +142,17 @@ export function OverlayAlerts({
     setQueue((prev) => (prev[0]?.id === id ? prev.slice(1) : prev));
   }, []);
 
+  const updateQueuedAlert = React.useCallback((row: OverlayDonation) => {
+    if (!shouldShowAlert(row, resolvedSettings)) return;
+    setQueue((prev) => {
+      const index = prev.findIndex((d) => d.id === row.id);
+      if (index === -1) return [...prev, row];
+      const next = prev.slice();
+      next[index] = row;
+      return next;
+    });
+  }, [resolvedSettings]);
+
   const appendAlert = React.useCallback(
     (row: OverlayDonation) => {
       // Suppress donations below min_amount (in raw units).
@@ -158,7 +169,7 @@ export function OverlayAlerts({
     [resolvedSettings, soundEnabled],
   );
 
-  useOverlayRealtime(creatorProfileId, appendAlert);
+  useOverlayRealtime(creatorProfileId, appendAlert, updateQueuedAlert);
 
   const currentAlert = queue[0] ?? null;
 
@@ -271,23 +282,33 @@ function playAlertSound(): void {
 }
 
 /**
- * Subscribe to Supabase Realtime on `donations` for the given Creator. Only
- * `INSERT` events are handled (new donations). The RLS policy restricts the
- * channel to visible confirmed/indexed rows, so the filter only needs
- * `creator_profile_id`.
+ * Subscribe to Supabase Realtime on `donations` for the given Creator.
+ * `INSERT` enqueues new donations; `UPDATE` refreshes an existing queued alert
+ * when the verify path enriches an indexer-created row with donor content.
+ * The RLS policy restricts the channel to visible confirmed/indexed rows, so
+ * the filter only needs `creator_profile_id`.
  *
  * Test seam: when `window.__STARTIP_OVERLAY_REALTIME_STUB__` is present, the
  * hook registers `onInsert` with the stub instead of opening a channel.
  */
-function useOverlayRealtime(creatorProfileId: string, onInsert: (row: OverlayDonation) => void) {
+function useOverlayRealtime(
+  creatorProfileId: string,
+  onInsert: (row: OverlayDonation) => void,
+  onUpdate: (row: OverlayDonation) => void,
+) {
   const onInsertRef = React.useRef(onInsert);
+  const onUpdateRef = React.useRef(onUpdate);
   React.useEffect(() => {
     onInsertRef.current = onInsert;
-  }, [onInsert]);
+    onUpdateRef.current = onUpdate;
+  }, [onInsert, onUpdate]);
   React.useEffect(() => {
     const stub = typeof window !== "undefined" ? window.__STARTIP_OVERLAY_REALTIME_STUB__ : undefined;
     if (stub) {
-      return stub.subscribe((row) => onInsertRef.current(row));
+      return stub.subscribe((row) => {
+        const normalized = normalizeRealtimeDonation(row);
+        if (normalized) onInsertRef.current(normalized);
+      });
     }
 
     const supabase = createBrowserClient();
@@ -302,8 +323,21 @@ function useOverlayRealtime(creatorProfileId: string, onInsert: (row: OverlayDon
           filter: `creator_profile_id=eq.${creatorProfileId}`,
         },
         (payload) => {
-          const row = payload.new as OverlayDonation;
-          onInsertRef.current(row);
+          const row = normalizeRealtimeDonation(payload.new);
+          if (row) onInsertRef.current(row);
+        },
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "donations",
+          filter: `creator_profile_id=eq.${creatorProfileId}`,
+        },
+        (payload) => {
+          const row = normalizeRealtimeDonation(payload.new);
+          if (row) onUpdateRef.current(row);
         },
       )
       .subscribe();
@@ -311,4 +345,34 @@ function useOverlayRealtime(creatorProfileId: string, onInsert: (row: OverlayDon
       supabase.removeChannel(channel);
     };
   }, [creatorProfileId]);
+}
+
+function normalizeRealtimeDonation(row: unknown): OverlayDonation | null {
+  if (!row || typeof row !== "object") return null;
+  const r = row as Record<string, unknown>;
+  const id = typeof r.id === "string" ? r.id : "";
+  const token = typeof r.token === "string" ? r.token : "";
+  const rawAmount =
+    typeof r.amount === "string" || typeof r.amount === "number" || typeof r.amount === "bigint"
+      ? String(r.amount)
+      : "";
+
+  if (!id || !token || !isIntegerString(rawAmount)) return null;
+
+  const donorName = typeof r.donor_name === "string" && r.donor_name.trim() ? r.donor_name : "Anonymous";
+  const message = typeof r.message === "string" && r.message.trim() ? r.message : null;
+  const createdAt = typeof r.created_at === "string" ? r.created_at : "";
+
+  return {
+    id,
+    donor_name: donorName,
+    amount: rawAmount,
+    token,
+    message,
+    created_at: createdAt,
+  };
+}
+
+function isIntegerString(value: string): boolean {
+  return /^(0|[1-9]\d*)$/.test(value);
 }
