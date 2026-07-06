@@ -6,8 +6,8 @@ import { classifyMessage } from "../donations/moderation";
 /**
  * bytea values travel over the PostgREST API as hex strings with the `\x`
  * prefix: that is how Postgres casts text to bytea and how PostgREST encodes
- * bytea in JSON responses. `handle_hash` and `donation_id_hash` are stored as
- * bytea, so every value we send or filter on must use this format.
+ * bytea in JSON responses. `handle_hash` is stored as bytea, so every value
+ * we send or filter on must use this format.
  */
 export function toByteaHex(buf: Buffer): string {
   return "\\x" + buf.toString("hex");

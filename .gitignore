@@ -47,6 +47,9 @@ contracts/node_modules/
 # CodeGraph runtime index (local-only)
 .codegraph/
 
+# Worker integration test log (apps/worker/tests/integration.sh)
+apps/worker/tests/worker-integration.log
+
 # IDE filename-composition shadow artifacts: truncated-name duplicates with no
 # extension. Real files are .md; re-include .md and directories.
 docs/adr/*

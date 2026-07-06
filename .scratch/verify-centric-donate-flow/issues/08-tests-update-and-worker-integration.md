@@ -1,6 +1,6 @@
 # 08 - Tests: update unit, E2E, add worker integration script
 
-Status: Untriaged
+Status: done
 Role: fullstack
 
 ## Task
@@ -139,3 +139,75 @@ Skip if `SKIP_INTEGRATION=1` (for CI that cannot reach testnet).
 ## Dependencies
 
 - Issues 01-07 must land first. This issue is the verification gate.
+
+## Completion record
+
+The unit, worker, and E2E test layers were already updated as part of
+issues 01-07 (each issue landed its own test changes alongside the code).
+This issue's remaining deliverable was the worker integration script and
+a final audit + cleanup pass.
+
+### Audit results
+
+- `packages/shared/src/donations/confirm.test.ts`: verify-centric, 7-field
+  `DonationReceived` events, no `donation_id_hash` in payloads, all
+  VerifyInput cases covered (happy, indexed promote, confirmed idempotent,
+  tx_not_found, tx_failed, donation_event_not_found, creator_not_found,
+  moderation). 13 tests pass.
+- `packages/shared/src/indexer/dispatch.test.ts`: 7-field event shape,
+  match-by-`tx_hash` only, no `donation_id_hash` match cases. 18 tests
+  pass.
+- `apps/web/src/lib/donations/donate.test.ts`: 4-arg `donate()` call (no
+  `donationIdHash`), simulate/build/sign/submit assertions updated. 12
+  tests pass.
+- `apps/web/src/lib/donations/prepare.test.ts`: deleted (prepare is gone).
+- `apps/worker/src/server.test.ts`: Hono `POST /verify` with mock RPC +
+  mock Supabase, covering 401, 400, 200, 409, 202, and the poll loop. 11
+  tests pass.
+- `apps/worker/src/indexer.test.ts`: loop lifecycle (start, reschedule,
+  stop, error-then-continue). 4 tests pass.
+- `apps/web/tests/donate.spec.ts`: E2E uses `page.route("**/api/donations/
+  verify", ...)`, no prepare/confirm handlers, stub `donateOnChain` takes
+  no `donationIdHash`, descriptions updated to "donate -> verify ->
+  success".
+- `apps/web/tests/fixtures/mock-supabase.mjs`: no `donation_id_hash` in
+  any fixture response.
+
+### Cleanup
+
+- `packages/shared/src/indexer/dispatch.ts`: removed the stale
+  `donation_id_hash` reference from the `toByteaHex` docblock comment
+  (the column was dropped per ADR-0005; the comment still listed it as a
+  bytea column).
+
+### Worker integration script
+
+- `apps/worker/tests/integration.sh` (new): bash script following the
+  `contracts/donation-router/tests/integration.sh` pattern. Deploys a
+  fresh contract (or reuses `DONATION_ROUTER_CONTRACT_ID`), configures it,
+  registers a test creator, submits a real `donate()` tx via the stellar
+  CLI, captures the tx hash, starts the worker (if not running), POSTs
+  `/verify` with `tx_hash` + `message` + `donor_name`, asserts 200
+  `{ status: "confirmed" }`, then queries Supabase to assert the
+  `donations` row exists with `status = confirmed` and matching
+  `message`/`donor_name`. Skips on `SKIP_INTEGRATION=1`. Validates
+  required env (`WORKER_SECRET`, `SUPABASE_URL`,
+  `SUPABASE_SERVICE_ROLE_KEY`). Network-aware friendbot funding
+  (testnet/local). Cleanup trap stops the worker if this script started
+  it.
+- `.gitignore`: added `apps/worker/tests/worker-integration.log` (the
+  script's worker boot log).
+
+### Verification run
+
+- `pnpm turbo run test`: 4/4 packages pass (contracts 35, shared 30, web
+  364, worker 15 = 444 tests total).
+- `pnpm turbo run typecheck`: 3/3 packages pass (shared, worker, web).
+- `bash apps/worker/tests/integration.sh` with `SKIP_INTEGRATION=1`:
+  exits 0 (skip gate works).
+- `bash apps/worker/tests/integration.sh` with no required env: exits 1
+  with a clear `FAIL: WORKER_SECRET is required` message.
+- The full integration path (testnet + Supabase) was not executed in this
+  environment (no testnet Supabase project wired up); it is the secondary
+  seam for environments that have both reachable, per the issue's
+  Verification section.
