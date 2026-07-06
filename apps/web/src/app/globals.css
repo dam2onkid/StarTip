@@ -235,6 +235,10 @@ body {
   position: relative;
 }
 
+.creator-dashboard {
+  width: 100%;
+}
+
 .dashboard .dashboard-overview {
   border-radius: var(--radius-xl);
   background: color-mix(in oklch, var(--card) 58%, transparent);
@@ -587,6 +591,281 @@ body {
   background: color-mix(in oklch, var(--foreground) 3%, transparent);
   padding: 0.65rem 0.75rem;
 }
+.dashboard .creator-copy-value {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+.dashboard .creator-copy-button {
+  color: var(--muted-foreground);
+}
+.dashboard .creator-settings-shell {
+  display: grid;
+  grid-template-columns: minmax(14rem, 17rem) minmax(0, 1fr);
+  align-items: start;
+  gap: 1.25rem;
+}
+.dashboard .creator-settings-sidebar {
+  position: sticky;
+  top: 6rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  border-right: 1px solid color-mix(in oklch, var(--foreground) 8%, transparent);
+  padding-right: 1.25rem;
+}
+.dashboard .creator-settings-profile {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+.dashboard .creator-settings-quick-stats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.5rem;
+}
+.dashboard .creator-settings-quick-stats div {
+  min-width: 0;
+  border-radius: var(--radius-md);
+  border: 1px solid color-mix(in oklch, var(--foreground) 7%, transparent);
+  background: color-mix(in oklch, var(--foreground) 3%, transparent);
+  padding: 0.7rem;
+}
+.dashboard .creator-settings-quick-stats dt {
+  font-family: var(--font-label), monospace;
+  font-size: 0.58rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: color-mix(in oklch, var(--muted-foreground) 78%, transparent);
+}
+.dashboard .creator-settings-quick-stats dd {
+  margin-top: 0.25rem;
+  overflow-wrap: anywhere;
+  font-family: var(--font-display), var(--font-body), sans-serif;
+  font-size: 1.2rem;
+  font-weight: 600;
+  color: var(--foreground);
+  font-variant-numeric: tabular-nums;
+}
+.dashboard .creator-settings-nav {
+  display: flex;
+  width: 100%;
+  height: auto;
+  flex-direction: column;
+  gap: 0.25rem;
+  align-items: stretch;
+  justify-content: flex-start;
+  border-radius: 0;
+  background: transparent;
+  padding: 0;
+}
+.dashboard .creator-settings-tab {
+  display: flex;
+  min-width: 0;
+  width: 100%;
+  height: auto;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: flex-start;
+  gap: 0.18rem;
+  border: 0;
+  border-radius: var(--radius-md);
+  padding: 0.7rem 0.8rem;
+  text-align: left;
+  color: var(--muted-foreground);
+  transition: background 0.2s ease, color 0.2s ease;
+}
+.dashboard .creator-settings-tab span {
+  color: var(--foreground);
+  font-size: 0.88rem;
+  font-weight: 600;
+}
+.dashboard .creator-settings-tab small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.72rem;
+}
+.dashboard .creator-settings-tab[aria-current="page"] {
+  background: color-mix(in oklch, var(--foreground) 7%, transparent);
+}
+.dashboard .creator-settings-tab[data-state="active"] {
+  background: color-mix(in oklch, var(--foreground) 7%, transparent);
+  box-shadow: none;
+}
+.dashboard .creator-settings-tab:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px color-mix(in oklch, var(--primary) 50%, transparent);
+}
+@media (hover: hover) and (pointer: fine) {
+  .dashboard .creator-settings-tab:hover {
+    background: color-mix(in oklch, var(--foreground) 5%, transparent);
+    color: var(--foreground);
+  }
+}
+.dashboard .creator-settings-panel {
+  min-width: 0;
+  max-width: 62rem;
+}
+.dashboard .creator-settings-section {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 1rem;
+}
+.dashboard .creator-settings-section-header {
+  border-bottom: 1px solid color-mix(in oklch, var(--foreground) 8%, transparent);
+  padding-bottom: 1rem;
+}
+.dashboard .creator-settings-section-header span {
+  font-family: var(--font-label), monospace;
+  font-size: 0.65rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+}
+.dashboard .creator-settings-section-header h2 {
+  margin-top: 0.35rem;
+  font-family: var(--font-display), var(--font-body), sans-serif;
+  font-size: clamp(1.35rem, 3vw, 2rem);
+  font-weight: 600;
+  line-height: 1.1;
+  color: var(--foreground);
+  text-wrap: balance;
+}
+.dashboard .creator-settings-section-header p {
+  margin-top: 0.45rem;
+  max-width: 42rem;
+  color: var(--muted-foreground);
+  font-size: 0.92rem;
+  line-height: 1.55;
+  text-wrap: pretty;
+}
+.dashboard .creator-settings-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.85rem;
+}
+.dashboard .creator-settings-list > [data-slot="card"] {
+  min-width: 0;
+}
+.dashboard .creator-settings-list > [data-slot="card"]:has(textarea),
+.dashboard .creator-settings-list > [data-slot="card"]:has([data-testid="moderation-list"]) {
+  grid-column: 1 / -1;
+}
+.dashboard .creator-profile-editor {
+  overflow: hidden;
+  border-radius: var(--radius-lg);
+  border: 1px solid color-mix(in oklch, var(--foreground) 8%, transparent);
+  background: color-mix(in oklch, var(--foreground) 3%, transparent);
+}
+.dashboard .creator-profile-cover {
+  position: relative;
+  min-height: 11rem;
+  overflow: hidden;
+  background: color-mix(in oklch, var(--foreground) 5%, transparent);
+}
+.dashboard .creator-profile-cover-actions {
+  position: absolute;
+  right: 0.75rem;
+  top: 0.75rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.dashboard .creator-background-fallback {
+  height: 100%;
+  min-height: 11rem;
+  background:
+    radial-gradient(circle at 18% 16%, color-mix(in oklch, var(--primary) 28%, transparent), transparent 28%),
+    radial-gradient(circle at 72% 18%, color-mix(in oklch, var(--tertiary) 22%, transparent), transparent 26%),
+    linear-gradient(135deg, color-mix(in oklch, var(--foreground) 8%, transparent), color-mix(in oklch, var(--card) 82%, transparent));
+}
+.dashboard .creator-profile-photo-row {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem;
+  padding-left: 6.35rem;
+}
+.dashboard .creator-profile-avatar {
+  position: absolute;
+  left: 1rem;
+  top: -2.25rem;
+  display: grid;
+  width: 4.8rem;
+  height: 4.8rem;
+  place-items: center;
+  overflow: hidden;
+  border-radius: 9999px;
+  border: 3px solid var(--background);
+  background: color-mix(in oklch, var(--card) 90%, transparent);
+  color: var(--foreground);
+  font-family: var(--font-display), var(--font-body), sans-serif;
+  font-size: 1.25rem;
+  font-weight: 600;
+  box-shadow: 0 18px 44px -20px rgba(0, 0, 0, 0.65);
+}
+.dashboard .creator-avatar-action {
+  position: absolute;
+  right: 0.1rem;
+  bottom: 0.1rem;
+  display: grid;
+  width: 1.7rem;
+  height: 1.7rem;
+  cursor: pointer;
+  place-items: center;
+  border-radius: 9999px;
+  border: 1px solid color-mix(in oklch, var(--foreground) 14%, transparent);
+  background: color-mix(in oklch, var(--background) 88%, transparent);
+  color: var(--foreground);
+  transition: background 0.2s ease, transform 0.2s ease;
+}
+.dashboard .creator-profile-photo-copy {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+.dashboard .creator-profile-photo-copy strong {
+  font-size: 0.95rem;
+  color: var(--foreground);
+}
+.dashboard .creator-profile-photo-copy span {
+  font-size: 0.82rem;
+  line-height: 1.4;
+  color: var(--muted-foreground);
+}
+.dashboard .creator-file-action {
+  display: inline-flex;
+  min-height: 2rem;
+  cursor: pointer;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  border-radius: var(--radius-md);
+  border: 1px solid color-mix(in oklch, var(--foreground) 10%, transparent);
+  background: color-mix(in oklch, var(--foreground) 6%, transparent);
+  padding: 0.45rem 0.7rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--foreground);
+  transition: background 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
+}
+@media (hover: hover) and (pointer: fine) {
+  .dashboard .creator-file-action:hover,
+  .dashboard .creator-avatar-action:hover {
+    background: color-mix(in oklch, var(--foreground) 11%, transparent);
+    border-color: color-mix(in oklch, var(--foreground) 20%, transparent);
+    transform: translateY(-1px);
+  }
+}
 .dashboard .creator-session-tabs {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -687,6 +966,54 @@ body {
   .dashboard .creator-address-row {
     grid-template-columns: 1fr;
     gap: 0.35rem;
+  }
+
+  .dashboard .creator-copy-value {
+    align-items: flex-start;
+  }
+
+  .dashboard .creator-settings-shell {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .dashboard .creator-settings-sidebar {
+    position: static;
+    border-right: 0;
+    border-bottom: 1px solid color-mix(in oklch, var(--foreground) 8%, transparent);
+    padding-right: 0;
+    padding-bottom: 1rem;
+  }
+
+  .dashboard .creator-settings-nav {
+    margin-inline: -0.25rem;
+    flex-direction: row;
+    overflow-x: auto;
+    padding: 0.25rem;
+  }
+
+  .dashboard .creator-settings-tab {
+    min-width: 10rem;
+    width: auto;
+  }
+
+  .dashboard .creator-settings-list {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .dashboard .creator-profile-cover-actions {
+    left: 0.75rem;
+    right: 0.75rem;
+  }
+
+  .dashboard .creator-profile-photo-row {
+    align-items: flex-start;
+    flex-direction: column;
+    padding-left: 1rem;
+    padding-top: 3rem;
+  }
+
+  .dashboard .creator-profile-avatar {
+    top: -2.4rem;
   }
 
   .dashboard .creator-section-header {

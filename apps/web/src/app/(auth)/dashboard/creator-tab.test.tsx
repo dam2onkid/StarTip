@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, fireEvent, waitFor, act } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor, act, within } from "@testing-library/react";
 import type { CreatorProfile, CreatorActiveData } from "@/app/(auth)/dashboard/creator-tab";
 
 /**
@@ -135,7 +135,7 @@ vi.mock("@/lib/supabase/client", () => ({
       };
       return self;
     }),
-    storage: vi.fn(() => ({
+    storage: {
       from(bucket: string) {
         return {
           upload(path: string) {
@@ -148,7 +148,7 @@ vi.mock("@/lib/supabase/client", () => ({
           },
         };
       },
-    })),
+    },
   })),
 }));
 
@@ -158,6 +158,7 @@ function profile(over: Partial<CreatorProfile> = {}): CreatorProfile {
     user_id: "u1",
     display_name: "Anonymous",
     avatar_url: null,
+    banner_url: null,
     bio: null,
     handle: null,
     owner_address: null,
@@ -266,7 +267,7 @@ describe("CreatorTab — gate rendering", () => {
     render(
       <CreatorTab profile={profile({ handle: "ada", owner_address: STUB_ADDRESS })} />,
     );
-    expect(screen.getByRole("button", { name: /register on-chain/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /register creator/i })).toBeInTheDocument();
     expect(screen.getByPlaceholderText("G…")).toBeInTheDocument();
   });
 
@@ -282,7 +283,7 @@ describe("CreatorTab — gate rendering", () => {
       />,
     );
     expect(screen.getByTestId("creator-active")).toBeInTheDocument();
-    expect(screen.getByText(/On-chain status/i)).toBeInTheDocument();
+    expect(screen.getByText(/Creator Status/i)).toBeInTheDocument();
   });
 });
 
@@ -356,7 +357,7 @@ describe("CreatorTab — gate 2 wallet link", () => {
       fireEvent.click(screen.getByRole("button", { name: /sign challenge & link/i }));
     });
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: /register on-chain/i })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /register creator/i })).toBeInTheDocument();
     });
     expect(signWalletMessage).toHaveBeenCalled();
   });
@@ -396,12 +397,12 @@ describe("CreatorTab — gate 3 on-chain register", () => {
       fireEvent.change(input, { target: { value: "GBPAYOUT" } });
     });
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: /register on-chain/i }));
+      fireEvent.click(screen.getByRole("button", { name: /register creator/i }));
     });
     await waitFor(() => {
       expect(screen.getByText(/Registration submitted/i)).toBeInTheDocument();
     });
-    const pendingButton = screen.getByRole("button", { name: /registration pending/i });
+    const pendingButton = screen.getByRole("button", { name: /confirming registration/i });
     expect(pendingButton).toBeDisabled();
     expect(pendingButton.querySelector("svg.animate-spin")).not.toBeNull();
     expect(input).toBeDisabled();
@@ -426,10 +427,10 @@ describe("CreatorTab — gate 3 on-chain register", () => {
       fireEvent.change(screen.getByPlaceholderText("G…"), { target: { value: "GBPAYOUT" } });
     });
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: /register on-chain/i }));
+      fireEvent.click(screen.getByRole("button", { name: /register creator/i }));
     });
 
-    const submittingButton = screen.getByRole("button", { name: /register on-chain/i });
+    const submittingButton = screen.getByRole("button", { name: /register creator/i });
     expect(submittingButton).toBeDisabled();
     expect(submittingButton.querySelector("svg.animate-spin")).not.toBeNull();
 
@@ -468,7 +469,7 @@ describe("CreatorTab — Realtime flip to active", () => {
       fireEvent.change(screen.getByPlaceholderText("G…"), { target: { value: "GBPAYOUT" } });
     });
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: /register on-chain/i }));
+      fireEvent.click(screen.getByRole("button", { name: /register creator/i }));
     });
     await waitFor(() => {
       expect(realtimeCb).not.toBeNull();
@@ -535,11 +536,25 @@ describe("CreatorTab — active features", () => {
     };
   }
 
+  async function openCreatorTab(name: RegExp) {
+    const tablist = screen.getByRole("tablist", { name: /creator tabs/i });
+    await act(async () => {
+      fireEvent.click(within(tablist).getByRole("tab", { name }));
+    });
+  }
+
   it("renders stats (total + count) from activeData", async () => {
     const { CreatorTab } = await import("@/app/(auth)/dashboard/creator-tab");
     render(<CreatorTab profile={activeProfile()} activeData={activeData()} />);
     expect(screen.getByTestId("creator-total-received")).toHaveTextContent("900");
     expect(screen.getByTestId("creator-donation-count")).toHaveTextContent("3");
+  });
+
+  it("hides the onboarding stepper after creator setup is complete", async () => {
+    const { CreatorTab } = await import("@/app/(auth)/dashboard/creator-tab");
+    render(<CreatorTab profile={activeProfile()} activeData={activeData()} />);
+    expect(screen.queryByTestId("gate-stepper")).not.toBeInTheDocument();
+    expect(screen.getByRole("tablist", { name: /creator tabs/i })).toBeInTheDocument();
   });
 
   it("renders the per-creator leaderboard from activeData", async () => {
@@ -555,12 +570,13 @@ describe("CreatorTab — active features", () => {
     render(<CreatorTab profile={activeProfile()} activeData={activeData()} />);
     expect(screen.getByTestId("onchain-owner")).toHaveTextContent(STUB_ADDRESS);
     expect(screen.getByTestId("onchain-payout")).toHaveTextContent("GBPAYOUT");
-    expect(screen.getByTestId("onchain-paused")).toHaveTextContent("active");
+    expect(screen.getByTestId("onchain-paused")).toHaveTextContent(/active/i);
   });
 
   it("renders the overlay URL with the handle", async () => {
     const { CreatorTab } = await import("@/app/(auth)/dashboard/creator-tab");
     render(<CreatorTab profile={activeProfile()} activeData={activeData()} />);
+    await openCreatorTab(/overlay/i);
     expect(screen.getByTestId("overlay-url")).toHaveTextContent(/\/overlay\/ada/);
     expect(screen.getByTestId("overlay-copy")).toBeInTheDocument();
   });
@@ -568,6 +584,7 @@ describe("CreatorTab — active features", () => {
   it("renders a QR card encoding the creator's donate URL with a Download PNG button", async () => {
     const { CreatorTab } = await import("@/app/(auth)/dashboard/creator-tab");
     render(<CreatorTab profile={activeProfile()} activeData={activeData()} />);
+    await openCreatorTab(/profile & links/i);
     // The QR image is present and encodes the donate URL for the handle.
     const qr = await screen.findByTestId("qr-svg");
     expect(qr.getAttribute("data-qr-value")).toMatch(/\/creator\/ada\/donate/);
@@ -581,6 +598,7 @@ describe("CreatorTab — active features", () => {
     const { CreatorTab } = await import("@/app/(auth)/dashboard/creator-tab");
     updateCreatorPayoutOnChain.mockResolvedValue({ status: "PENDING", hash: "tx2" });
     render(<CreatorTab profile={activeProfile()} activeData={activeData()} />);
+    await openCreatorTab(/payout/i);
     await act(async () => {
       fireEvent.change(screen.getByTestId("payout-update-input"), { target: { value: "GBNEW" } });
     });
@@ -601,6 +619,7 @@ describe("CreatorTab — active features", () => {
     const { CreatorTab } = await import("@/app/(auth)/dashboard/creator-tab");
     payoutAddressWarning.mockReturnValue("contract");
     render(<CreatorTab profile={activeProfile()} activeData={activeData()} />);
+    await openCreatorTab(/payout/i);
     await act(async () => {
       fireEvent.change(screen.getByTestId("payout-update-input"), { target: { value: "C-TEST" } });
     });
@@ -613,6 +632,7 @@ describe("CreatorTab — active features", () => {
     const { CreatorTab } = await import("@/app/(auth)/dashboard/creator-tab");
     setCreatorActiveOnChain.mockResolvedValue({ status: "PENDING", hash: "tx3" });
     render(<CreatorTab profile={activeProfile()} activeData={activeData()} />);
+    await openCreatorTab(/payout/i);
     // Currently active -> button says "Pause".
     expect(screen.getByTestId("pause-toggle")).toHaveTextContent("Pause");
     await act(async () => {
@@ -631,6 +651,7 @@ describe("CreatorTab — active features", () => {
   it("edits display_name + bio via the owner UPDATE RLS path", async () => {
     const { CreatorTab } = await import("@/app/(auth)/dashboard/creator-tab");
     render(<CreatorTab profile={activeProfile()} activeData={activeData()} />);
+    await openCreatorTab(/profile & links/i);
     const nameInput = screen.getByLabelText(/display name/i);
     const bioInput = screen.getByLabelText(/bio/i);
     await act(async () => {
@@ -658,13 +679,65 @@ describe("CreatorTab — active features", () => {
   it("renders the avatar input and placeholder when no avatar is set", async () => {
     const { CreatorTab } = await import("@/app/(auth)/dashboard/creator-tab");
     render(<CreatorTab profile={activeProfile({ avatar_url: null })} activeData={activeData()} />);
+    await openCreatorTab(/profile & links/i);
     expect(screen.getByTestId("creator-avatar-placeholder")).toBeInTheDocument();
     expect(screen.getByTestId("creator-avatar-input")).toBeInTheDocument();
+  });
+
+  it("uploads and saves a creator background image", async () => {
+    const { CreatorTab } = await import("@/app/(auth)/dashboard/creator-tab");
+    render(<CreatorTab profile={activeProfile()} activeData={activeData()} />);
+    await openCreatorTab(/profile & links/i);
+    const file = new File(["banner"], "cover.png", { type: "image/png" });
+    await act(async () => {
+      fireEvent.change(screen.getByTestId("creator-background-input"), {
+        target: { files: [file] },
+      });
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("creator-profile-save"));
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId("creator-save-status")).toHaveTextContent(/saved/i);
+    });
+    expect(supabaseStorageCalls.some((c) => c.bucket === "avatars" && c.path.includes("banner-"))).toBe(true);
+    const bannerPatch = supabaseFromCalls.find(
+      (c) => c.table === "profiles" && c.payload && "banner_url" in (c.payload as Record<string, unknown>),
+    );
+    expect(bannerPatch?.payload).toMatchObject({
+      display_name: "Ada",
+      bio: "Pioneer programmer.",
+      banner_url: expect.stringMatching(/\/avatars\/u1\/banner-\d+\.png$/),
+    });
+    expect(bannerPatch?.filters.user_id).toBe("u1");
+  });
+
+  it("removes the creator background image", async () => {
+    const { CreatorTab } = await import("@/app/(auth)/dashboard/creator-tab");
+    render(
+      <CreatorTab
+        profile={activeProfile({ banner_url: "https://stub/banner.png" })}
+        activeData={activeData()}
+      />,
+    );
+    await openCreatorTab(/profile & links/i);
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("creator-background-remove"));
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId("creator-save-status")).toHaveTextContent(/saved/i);
+    });
+    const bannerPatch = supabaseFromCalls.find(
+      (c) => c.table === "profiles" && c.payload && "banner_url" in (c.payload as Record<string, unknown>),
+    );
+    expect(bannerPatch?.payload).toEqual({ banner_url: null });
+    expect(bannerPatch?.filters.user_id).toBe("u1");
   });
 
   it("lists donations including hidden in the moderation list", async () => {
     const { CreatorTab } = await import("@/app/(auth)/dashboard/creator-tab");
     render(<CreatorTab profile={activeProfile()} activeData={activeData()} />);
+    await openCreatorTab(/moderation/i);
     const list = screen.getByTestId("moderation-list");
     expect(list.textContent).toContain("Bob");
     expect(list.textContent).toContain("Troll");
@@ -674,6 +747,7 @@ describe("CreatorTab — active features", () => {
     const { CreatorTab } = await import("@/app/(auth)/dashboard/creator-tab");
     updateDonationModerationStatus.mockResolvedValue({ ok: true });
     render(<CreatorTab profile={activeProfile()} activeData={activeData()} />);
+    await openCreatorTab(/moderation/i);
     // d1 is visible -> button says "Hide".
     const toggle = screen.getByTestId("moderation-toggle-d1");
     expect(toggle).toHaveTextContent("Hide");
@@ -698,6 +772,7 @@ describe("CreatorTab — active features", () => {
       }),
     ]);
     render(<CreatorTab profile={activeProfile()} activeData={activeData()} />);
+    await openCreatorTab(/overlay/i);
     const card = await screen.findByTestId("overlay-settings-card");
     expect(card).toBeInTheDocument();
     await waitFor(() => {
@@ -710,6 +785,7 @@ describe("CreatorTab — active features", () => {
   it("renders the Overlay Settings card with default values when the API returns defaults", async () => {
     const { CreatorTab } = await import("@/app/(auth)/dashboard/creator-tab");
     render(<CreatorTab profile={activeProfile()} activeData={activeData()} />);
+    await openCreatorTab(/overlay/i);
     await screen.findByTestId("overlay-settings-card");
     await waitFor(() => {
       expect(screen.getByTestId("overlay-duration-input")).toHaveValue(6000);
@@ -731,6 +807,7 @@ describe("CreatorTab — active features", () => {
       },
     ]);
     render(<CreatorTab profile={activeProfile()} activeData={activeData()} />);
+    await openCreatorTab(/overlay/i);
     const durationInput = await screen.findByTestId("overlay-duration-input");
     await act(async () => {
       fireEvent.change(durationInput, { target: { value: "3000" } });
@@ -765,6 +842,7 @@ describe("CreatorTab — active features", () => {
       () => jsonRes(400, { error: "not_creator" }),
     ]);
     render(<CreatorTab profile={activeProfile()} activeData={activeData()} />);
+    await openCreatorTab(/overlay/i);
     await screen.findByTestId("overlay-settings-card");
     await act(async () => {
       fireEvent.click(screen.getByTestId("overlay-settings-save"));
@@ -777,6 +855,7 @@ describe("CreatorTab — active features", () => {
   it("renders the Donation Goal card empty state when no goal is set", async () => {
     const { CreatorTab } = await import("@/app/(auth)/dashboard/creator-tab");
     render(<CreatorTab profile={activeProfile()} activeData={activeData({ goal: null })} />);
+    await openCreatorTab(/overlay/i);
     const card = await screen.findByTestId("donation-goal-card");
     expect(card).toBeInTheDocument();
     expect(screen.getByTestId("donation-goal-empty")).toBeInTheDocument();
@@ -813,6 +892,7 @@ describe("CreatorTab — active features", () => {
         })}
       />,
     );
+    await openCreatorTab(/overlay/i);
     await screen.findByTestId("donation-goal-card");
     // The progress readout renders with the server snapshot's current (350)
     // and the target (1000), and the live pct (35%).
@@ -844,6 +924,7 @@ describe("CreatorTab — active features", () => {
       throw new Error(`unexpected fetch ${u}`);
     }) as unknown as typeof fetch;
     render(<CreatorTab profile={activeProfile()} activeData={activeData({ goal: null })} />);
+    await openCreatorTab(/overlay/i);
     const targetInput = await screen.findByTestId("donation-goal-target-input");
     await act(async () => {
       fireEvent.change(targetInput, { target: { value: "5000" } });
@@ -895,6 +976,7 @@ describe("CreatorTab — active features", () => {
         })}
       />,
     );
+    await openCreatorTab(/overlay/i);
     await screen.findByTestId("donation-goal-progress");
     await act(async () => {
       fireEvent.click(screen.getByTestId("donation-goal-clear"));

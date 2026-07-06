@@ -54,7 +54,7 @@ export default async function DashboardPage() {
   const { data: profile } = await supabase
     .from("profiles")
     .select(
-      "id,user_id,display_name,avatar_url,bio,handle,owner_address,onchain_registered,payout_address,paused",
+      "id,user_id,display_name,avatar_url,banner_url,bio,handle,owner_address,onchain_registered,payout_address,paused",
     )
     .eq("user_id", user.id)
     .maybeSingle();
@@ -64,6 +64,7 @@ export default async function DashboardPage() {
     user_id: string;
     display_name: string;
     avatar_url: string | null;
+    banner_url: string | null;
     bio: string | null;
     handle: string | null;
     owner_address: string | null;
@@ -78,6 +79,7 @@ export default async function DashboardPage() {
         user_id: p.user_id,
         display_name: p.display_name,
         avatar_url: p.avatar_url,
+        banner_url: p.banner_url,
         bio: p.bio,
         handle: p.handle,
         owner_address: p.owner_address,
@@ -92,6 +94,7 @@ export default async function DashboardPage() {
         user_id: user.id,
         display_name: "Anonymous",
         avatar_url: null,
+        banner_url: null,
         bio: null,
         handle: null,
         owner_address: null,

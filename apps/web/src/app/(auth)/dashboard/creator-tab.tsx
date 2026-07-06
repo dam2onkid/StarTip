@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { InfoIcon } from "lucide-react";
+import { CheckIcon, ClipboardIcon, ImageIcon, InfoIcon, Trash2Icon } from "lucide-react";
 import { createBrowserClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import {
@@ -12,14 +12,13 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   deriveOnboardingState,
   type OnboardingProfile,
@@ -73,6 +72,7 @@ export interface CreatorProfile extends OnboardingProfile {
   user_id: string;
   display_name: string;
   avatar_url: string | null;
+  banner_url?: string | null;
   bio: string | null;
   /** On-chain payout address; set by the indexer after `CreatorRegistered`. */
   payout_address?: string | null;
@@ -127,8 +127,8 @@ export function CreatorTab({ profile, activeData }: CreatorTabProps) {
 
   return (
     <TooltipProvider>
-      <div className="creator-dashboard flex flex-col gap-6">
-        <GateStepper state={state} />
+      <div className="dashboard creator-dashboard flex flex-col gap-6">
+        {state !== "active" && <GateStepper state={state} />}
         {state === "profile_pending" && (
           <ProfilePendingGate
             current={current}
@@ -155,7 +155,7 @@ export function CreatorTab({ profile, activeData }: CreatorTabProps) {
             onSubmitted={() =>
               setStatus({
                 kind: "info",
-                message: "Registration submitted. Waiting for the indexer to mirror it.",
+                message: "Registration submitted. Your creator page will be ready shortly.",
               })
             }
             onReconciled={(next) => {
@@ -669,8 +669,8 @@ function OnchainPendingGate(args: {
       <CardHeader>
         <CardTitle>Register on-chain</CardTitle>
         <CardDescription>
-          Set a Payout Address and sign <span className="font-mono">register_creator</span> with
-          your wallet. The indexer will flip you to active once it mirrors the event.
+          Set the wallet address where tips should be paid. You will approve this once
+          with your wallet.
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
@@ -708,7 +708,7 @@ function OnchainPendingGate(args: {
           disabled={isRegisterLocked || payout.trim().length === 0}
           className="self-start"
         >
-          {isAwaitingIndexer ? "Registration pending" : "Register on-chain"}
+          {isAwaitingIndexer ? "Confirming registration" : "Register Creator"}
         </Button>
         <StatusLine status={status} />
       </CardContent>
@@ -737,6 +737,7 @@ function ActiveGate(args: {
   onUpdate: (updater: (prev: CreatorProfile) => CreatorProfile) => void;
 }) {
   const { current, activeData, onUpdate } = args;
+  const [tab, setTab] = useState<CreatorSettingsTab>("overview");
   // Subscribe to Realtime on the profile row so `payout_address` and `paused`
   // flips (mirrored by the indexer after `update_creator_payout` /
   // `set_creator_active_owner`) land without a manual refresh.
@@ -745,162 +746,251 @@ function ActiveGate(args: {
   });
 
   return (
-    <div className="flex flex-col gap-10" data-testid="creator-active">
-      <CreatorCommandPanel current={current} activeData={activeData} />
-      <CreatorSessionTabs />
-
-      <CreatorSection
-        id="creator-session-overview"
-        eyebrow="Overview"
-        title="Signal & Supporters"
-        description="Your on-chain identity, current volume, and top donors."
-        count={3}
-      >
-        <OnchainStatusCard current={current} />
-        <StatsCard activeData={activeData} />
-        <LeaderboardCard activeData={activeData} />
-      </CreatorSection>
-
-      <CreatorSection
-        id="creator-session-controls"
-        eyebrow="Controls"
-        title="Payout, status & profile"
-        description="Wallet-signed actions plus your public identity, donate QR, stream overlay, and donation goal."
-        count={7}
-      >
-        <PayoutUpdateCard current={current} />
-        <PauseCard current={current} />
-        <ProfileEditCard current={current} onUpdate={onUpdate} />
-        <OverlayUrlCard handle={current.handle} />
-        <OverlaySettingsCard handle={current.handle} />
-        <QrCodeCard handle={current.handle} />
-        <DonationGoalCard handle={current.handle} goal={activeData?.goal ?? null} />
-      </CreatorSection>
-
-      <CreatorSection
-        id="creator-session-moderation"
-        eyebrow="Moderation"
-        title="Incoming donations"
-        description="Toggle visibility of received donations on the overlay."
-        count={1}
-      >
-        <ModerationCard activeData={activeData} />
-      </CreatorSection>
-    </div>
+    <Tabs
+      value={tab}
+      onValueChange={(value) => setTab(value as CreatorSettingsTab)}
+      className="creator-settings-shell"
+      data-testid="creator-active"
+    >
+      <CreatorSettingsSidebar
+        current={current}
+        activeData={activeData}
+        tab={tab}
+        onTabChange={setTab}
+      />
+      <div className="creator-settings-panel">
+        <TabsContent value="overview" className="m-0">
+          <CreatorSettingsSection
+            eyebrow="Overview"
+            title="Creator Overview"
+            description="Track tips, supporter activity, and the public status donors see."
+          >
+            <StatsCard activeData={activeData} />
+            <LeaderboardCard activeData={activeData} />
+            <CreatorStatusCard current={current} />
+          </CreatorSettingsSection>
+        </TabsContent>
+        <TabsContent value="profile" className="m-0">
+          <CreatorSettingsSection
+            eyebrow="Profile & Links"
+            title="Public Profile"
+            description="Keep your creator page ready to share."
+          >
+            <ProfileEditCard current={current} onUpdate={onUpdate} />
+            <PublicLinksCard handle={current.handle} />
+            <QrCodeCard handle={current.handle} />
+          </CreatorSettingsSection>
+        </TabsContent>
+        <TabsContent value="payout" className="m-0">
+          <CreatorSettingsSection
+            eyebrow="Payout"
+            title="Payout & Availability"
+            description="Update where tips are paid and pause receiving tips when needed."
+          >
+            <PayoutSummaryCard current={current} />
+            <PayoutUpdateCard current={current} />
+            <PauseCard current={current} />
+          </CreatorSettingsSection>
+        </TabsContent>
+        <TabsContent value="overlay" className="m-0">
+          <CreatorSettingsSection
+            eyebrow="Overlay"
+            title="Stream Overlay"
+            description="Copy your overlay URL and tune how alerts appear on stream."
+          >
+            <OverlayUrlCard handle={current.handle} />
+            <OverlaySettingsCard handle={current.handle} />
+            <DonationGoalCard handle={current.handle} goal={activeData?.goal ?? null} />
+          </CreatorSettingsSection>
+        </TabsContent>
+        <TabsContent value="moderation" className="m-0">
+          <CreatorSettingsSection
+            eyebrow="Moderation"
+            title="Donation Visibility"
+            description="Hide or restore donations shown on your public surfaces."
+          >
+            <ModerationCard activeData={activeData} />
+          </CreatorSettingsSection>
+        </TabsContent>
+      </div>
+    </Tabs>
   );
 }
 
-function CreatorSessionTabs() {
-  const sessions = [
-    {
-      href: "#creator-session-overview",
-      label: "Overview",
-      detail: "Identity, totals, supporters",
-    },
-    {
-      href: "#creator-session-controls",
-      label: "Controls",
-      detail: "Payout, status, profile, overlay",
-    },
-    {
-      href: "#creator-session-moderation",
-      label: "Moderation",
-      detail: "Donation visibility",
-    },
-  ];
+type CreatorSettingsTab =
+  | "overview"
+  | "profile"
+  | "payout"
+  | "overlay"
+  | "moderation";
 
-  return (
-    <nav className="creator-session-tabs" aria-label="Creator sections">
-      {sessions.map((session) => (
-        <Button key={session.href} asChild variant="ghost" className="creator-session-tab">
-          <a href={session.href}>
-            <span>{session.label}</span>
-            <span>{session.detail}</span>
-          </a>
-        </Button>
-      ))}
-    </nav>
-  );
-}
-
-function CreatorCommandPanel({
+function CreatorSettingsSidebar({
   current,
   activeData,
+  tab,
+  onTabChange,
 }: {
   current: CreatorProfile;
   activeData?: CreatorActiveData;
+  tab: CreatorSettingsTab;
+  onTabChange: (tab: CreatorSettingsTab) => void;
 }) {
   const paused = current.paused ?? false;
-  const overlayPath = current.handle ? `/overlay/${current.handle}` : "Not claimed";
+  const items: { id: CreatorSettingsTab; label: string; detail: string }[] = [
+    { id: "overview", label: "Overview", detail: "Tips and supporters" },
+    { id: "profile", label: "Profile & Links", detail: "Public page and QR" },
+    { id: "payout", label: "Payout", detail: "Address and availability" },
+    { id: "overlay", label: "Overlay", detail: "Stream alerts and goal" },
+    { id: "moderation", label: "Moderation", detail: "Donation visibility" },
+  ];
   return (
-    <section className="creator-command-panel" aria-label="Creator command center">
-      <div className="creator-signal-rail" aria-hidden>
-        <span />
-        <span />
-        <span />
-      </div>
-      <div className="flex min-w-0 flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+    <aside className="creator-settings-sidebar" aria-label="Creator settings">
+      <div className="creator-settings-profile">
         <div className="min-w-0">
           <span className="font-mono text-[0.65rem] uppercase tracking-[0.12em] text-muted-foreground/80">
-            Creator Console
+            Creator
           </span>
-          <div className="mt-2 flex min-w-0 flex-wrap items-center gap-3">
-            <h2 className="font-display text-3xl font-semibold tracking-tight text-foreground text-pretty sm:text-4xl">
-              {current.display_name}
-            </h2>
-            <span className="status-pill" data-tone={paused ? "paused" : "active"}>
-              <span className="dot" aria-hidden />
-              {paused ? "Paused" : "Active"}
-            </span>
-          </div>
-          <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground text-pretty">
-            @{current.handle} is registered on-chain. Use this panel to keep payout,
-            overlay, and supporter visibility aligned before you go live.
-          </p>
+          <h2 className="mt-1 truncate font-display text-xl font-semibold text-foreground">
+            {current.display_name}
+          </h2>
+          <p className="truncate text-sm text-muted-foreground">@{current.handle}</p>
         </div>
-
-        <div className="creator-command-metrics">
-          <MetricTile
-            label="Received"
-            value={activeData?.stats.total ?? "0"}
-            testId="creator-command-total"
-          />
-          <MetricTile
-            label="Donations"
-            value={String(activeData?.stats.count ?? 0)}
-            testId="creator-command-count"
-          />
-          <MetricTile
-            label="Overlay"
-            value={overlayPath}
-            compact
-            testId="creator-command-overlay"
-          />
-        </div>
+        <span className="status-pill" data-tone={paused ? "paused" : "active"}>
+          <span className="dot" aria-hidden />
+          {paused ? "Paused" : "Active"}
+        </span>
       </div>
+      <dl className="creator-settings-quick-stats">
+        <div>
+          <dt>Total Received</dt>
+          <dd>{activeData?.stats.total ?? "0"}</dd>
+        </div>
+        <div>
+          <dt>Donations</dt>
+          <dd>{activeData?.stats.count ?? 0}</dd>
+        </div>
+      </dl>
+      <TabsList className="creator-settings-nav" aria-label="Creator tabs">
+        {items.map((item) => (
+          <TabsTrigger
+            key={item.id}
+            value={item.id}
+            className="creator-settings-tab"
+            aria-current={tab === item.id ? "page" : undefined}
+            onClick={() => onTabChange(item.id)}
+          >
+            <span>{item.label}</span>
+            <small>{item.detail}</small>
+          </TabsTrigger>
+      ))}
+      </TabsList>
+    </aside>
+  );
+}
+
+function CreatorSettingsSection({
+  eyebrow,
+  title,
+  description,
+  children,
+}: {
+  eyebrow: string;
+  title: string;
+  description: string;
+  children: ReactNode;
+}) {
+  return (
+    <section className="creator-settings-section">
+      <header className="creator-settings-section-header">
+        <span>{eyebrow}</span>
+        <h2>{title}</h2>
+        <p>{description}</p>
+      </header>
+      <div className="creator-settings-list">{children}</div>
     </section>
   );
 }
 
-function MetricTile({
-  label,
-  value,
-  compact = false,
-  testId,
-}: {
-  label: string;
-  value: string;
-  compact?: boolean;
-  testId?: string;
-}) {
+function CreatorStatusCard({ current }: { current: CreatorProfile }) {
+  const paused = current.paused ?? false;
   return (
-    <div className="creator-metric-tile">
-      <span>{label}</span>
-      <strong className={compact ? "creator-metric-compact" : undefined} data-testid={testId}>
-        {value}
-      </strong>
-    </div>
+    <Card>
+      <CardHeader>
+        <CardTitleWithInfo
+          title="Creator Status"
+          info="This is the availability donors see when they visit your page."
+        />
+      </CardHeader>
+      <CardContent className="flex flex-col gap-3 text-xs text-muted-foreground">
+        <p className="creator-address-row" data-testid="onchain-paused">
+          <span>Status</span>
+          <span className="status-pill" data-tone={paused ? "paused" : "active"}>
+            <span className="dot" aria-hidden />
+            {paused ? "Paused" : "Active"}
+          </span>
+        </p>
+        <AddressRow label="Wallet" value={current.owner_address} testId="onchain-owner" />
+        <AddressRow
+          label="Payout"
+          value={current.payout_address ?? null}
+          fallback="Not set"
+          testId="onchain-payout"
+        />
+      </CardContent>
+    </Card>
   );
+}
+
+function PayoutSummaryCard({ current }: { current: CreatorProfile }) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitleWithInfo
+          title="Current Payout"
+          info="Tips are sent to this payout address."
+        />
+      </CardHeader>
+      <CardContent className="flex flex-col gap-3 text-xs text-muted-foreground">
+        <AddressRow
+          label="Payout"
+          value={current.payout_address ?? null}
+          fallback="Not set"
+          testId="payout-current-address"
+        />
+        <AddressRow label="Wallet" value={current.owner_address} testId="payout-owner-address" />
+      </CardContent>
+    </Card>
+  );
+}
+
+function PublicLinksCard({ handle }: { handle: string | null }) {
+  if (!handle) return null;
+  const path = `/creator/${handle}/donate`;
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitleWithInfo
+          title="Donate Page"
+          info="Share this link anywhere supporters already follow you."
+        />
+      </CardHeader>
+      <CardContent className="flex flex-col gap-3">
+        <CopyValueRow
+          label="Donate URL"
+          value={path}
+          copyValue={path}
+          absoluteUrl
+          testId="creator-donate-url"
+        />
+      </CardContent>
+    </Card>
+  );
+}
+
+function initials(name: string): string {
+  const words = name.trim().split(/\s+/).filter(Boolean);
+  if (words.length === 0) return "C";
+  return words.slice(0, 2).map((word) => word[0]?.toUpperCase() ?? "").join("") || "C";
 }
 
 function EmptyState({
@@ -958,97 +1048,100 @@ function CardTitleWithInfo({
   );
 }
 
-/** A labeled group of creator rows. Section details live behind the info icon
- * so the dashboard stays dense while remaining explainable on demand. */
-function CreatorSection({
-  id,
-  eyebrow,
-  title,
-  description,
-  count,
-  children,
-}: {
-  id: string;
-  eyebrow: string;
-  title: string;
-  description: string;
-  count: number;
-  children: ReactNode;
-}) {
-  return (
-    <section id={id} className="creator-section flex scroll-mt-28 flex-col gap-4">
-      <header className="creator-section-header">
-        <div className="flex min-w-0 flex-col gap-1">
-          <span className="font-mono text-[0.65rem] uppercase tracking-[0.12em] text-muted-foreground/80">
-            {eyebrow}
-          </span>
-          <div className="flex items-center gap-2">
-            <h2 className="font-display text-lg font-semibold tracking-tight text-foreground">
-              {title}
-            </h2>
-            <InfoTooltip label={`${title} section info`}>{description}</InfoTooltip>
-          </div>
-        </div>
-        <Badge variant="outline" className="creator-section-count">
-          {count} items
-        </Badge>
-      </header>
-      <Separator />
-      <div className="creator-section-list">{children}</div>
-    </section>
-  );
-}
-
-/** On-chain registration status: owner address, payout address, paused/active. */
-function OnchainStatusCard({ current }: { current: CreatorProfile }) {
-  const paused = current.paused ?? false;
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitleWithInfo
-          title="On-chain status"
-          info="Your registration as mirrored by the indexer."
-        />
-      </CardHeader>
-      <CardContent className="flex flex-col gap-3 text-xs text-muted-foreground">
-        <p className="creator-address-row" data-testid="onchain-registered">
-          <span>Registered</span>
-          <span className="font-mono text-foreground">
-            {current.onchain_registered ? "yes" : "no"}
-          </span>
-        </p>
-        <AddressRow label="Owner" value={current.owner_address} testId="onchain-owner" />
-        <AddressRow
-          label="Payout"
-          value={current.payout_address ?? "Not mirrored yet"}
-          testId="onchain-payout"
-        />
-        <p className="creator-address-row" data-testid="onchain-paused">
-          <span>Status</span>
-          <span className="status-pill" data-tone={paused ? "paused" : "active"}>
-            <span className="dot" aria-hidden />
-            {paused ? "paused" : "active"}
-          </span>
-        </p>
-      </CardContent>
-    </Card>
-  );
-}
-
 function AddressRow({
   label,
   value,
+  fallback = "Not set",
   testId,
 }: {
   label: string;
   value: string | null | undefined;
+  fallback?: string;
   testId: string;
 }) {
   return (
-    <p className="creator-address-row" data-testid={testId}>
+    <CopyValueRow label={label} value={value || fallback} copyValue={value || ""} testId={testId} />
+  );
+}
+
+function CopyValueRow({
+  label,
+  value,
+  copyValue,
+  absoluteUrl = false,
+  testId,
+  copyTestId,
+}: {
+  label: string;
+  value: string;
+  copyValue: string;
+  absoluteUrl?: boolean;
+  testId: string;
+  copyTestId?: string;
+}) {
+  return (
+    <div className="creator-address-row" data-testid={testId}>
       <span>{label}</span>
-      <span className="min-w-0 break-all font-mono text-foreground">{value || "Not set"}</span>
-    </p>
+      <span className="creator-copy-value">
+        <span className="min-w-0 break-all font-mono text-foreground">{value}</span>
+        {copyValue ? (
+          <CopyValueButton
+            label={`Copy ${label}`}
+            value={copyValue}
+            absoluteUrl={absoluteUrl}
+            testId={copyTestId}
+          />
+        ) : null}
+      </span>
+    </div>
+  );
+}
+
+function CopyValueButton({
+  label,
+  value,
+  absoluteUrl = false,
+  testId,
+}: {
+  label: string;
+  value: string;
+  absoluteUrl?: boolean;
+  testId?: string;
+}) {
+  const [copied, setCopied] = useState(false);
+  const [copying, setCopying] = useState(false);
+
+  async function copy() {
+    setCopying(true);
+    try {
+      const text =
+        absoluteUrl && typeof window !== "undefined"
+          ? new URL(value, window.location.origin).toString()
+          : value;
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 2000);
+    } catch {
+      setCopied(false);
+    } finally {
+      setCopying(false);
+    }
+  }
+
+  return (
+    <Button
+      type="button"
+      size="icon-sm"
+      variant="ghost"
+      onClick={copy}
+      loading={copying}
+      disabled={copying}
+      aria-label={copied ? "Copied" : label}
+      className="creator-copy-button"
+      data-testid={testId}
+    >
+      {copying ? null : copied ? <CheckIcon aria-hidden /> : <ClipboardIcon aria-hidden />}
+    </Button>
   );
 }
 
@@ -1166,7 +1259,7 @@ function PayoutUpdateCard({ current }: { current: CreatorProfile }) {
       });
       setStatus({
         kind: "info",
-        message: "Payout update submitted. Waiting for the indexer to mirror it.",
+        message: "Payout update submitted. Your new address will appear shortly.",
       });
     } catch (e) {
       setStatus({ kind: "error", message: errorMessage(e, "Payout update failed.") });
@@ -1177,13 +1270,8 @@ function PayoutUpdateCard({ current }: { current: CreatorProfile }) {
     <Card>
       <CardHeader>
         <CardTitleWithInfo
-          title="Update payout address"
-          info={
-            <>
-              Sign <span className="font-mono">update_creator_payout</span> with your wallet.
-              The indexer will mirror the new address.
-            </>
-          }
+          title="Update Payout Address"
+          info="Approve this change with your wallet. New tips will use the updated address once confirmed."
         />
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
@@ -1219,7 +1307,7 @@ function PayoutUpdateCard({ current }: { current: CreatorProfile }) {
           className="self-start"
           data-testid="payout-update-submit"
         >
-          {status.kind === "info" ? "Payout update pending" : "Update payout"}
+          {status.kind === "info" ? "Payout Update Pending" : "Update Payout"}
         </Button>
         <StatusLine status={status} />
       </CardContent>
@@ -1244,8 +1332,8 @@ function PauseCard({ current }: { current: CreatorProfile }) {
       setStatus({
         kind: "info",
         message: paused
-          ? "Unpause submitted. Waiting for the indexer to mirror it."
-          : "Pause submitted. Waiting for the indexer to mirror it.",
+          ? "Unpause submitted. Donations will resume shortly."
+          : "Pause submitted. Donations will stop shortly.",
       });
     } catch (e) {
       setStatus({ kind: "error", message: errorMessage(e, "Pause/unpause failed.") });
@@ -1256,13 +1344,8 @@ function PauseCard({ current }: { current: CreatorProfile }) {
     <Card>
       <CardHeader>
         <CardTitleWithInfo
-          title="Pause / unpause"
-          info={
-            <>
-              Sign <span className="font-mono">set_creator_active_owner</span> to stop or resume
-              receiving donations.
-            </>
-          }
+          title="Pause Donations"
+          info="Pause when you do not want to receive new tips. You can resume any time."
         />
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
@@ -1304,6 +1387,7 @@ function ProfileEditCard(args: {
   const [displayName, setDisplayName] = useState(current.display_name);
   const [bio, setBio] = useState(current.bio ?? "");
   const [avatarUrl, setAvatarUrl] = useState<string | null>(current.avatar_url);
+  const [bannerUrl, setBannerUrl] = useState<string | null>(current.banner_url ?? null);
   const [status, setStatus] = useState<
     | { kind: "idle" }
     | { kind: "saving" }
@@ -1311,12 +1395,14 @@ function ProfileEditCard(args: {
     | { kind: "error"; message: string }
   >({ kind: "idle" });
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const bannerInputRef = useRef<HTMLInputElement>(null);
 
   async function save() {
     setStatus({ kind: "saving" });
     try {
       const supabase = createBrowserClient();
       let nextAvatarUrl = avatarUrl;
+      let nextBannerUrl = bannerUrl;
       const file = fileInputRef.current?.files?.[0];
       if (file) {
         const ext = file.name.split(".").pop() ?? "png";
@@ -1328,22 +1414,44 @@ function ProfileEditCard(args: {
         if (up.error) throw up.error;
         nextAvatarUrl = supabase.storage.from("avatars").getPublicUrl(path).data.publicUrl;
       }
-      const update: { display_name: string; bio: string; avatar_url?: string | null } = {
+      const bannerFile = bannerInputRef.current?.files?.[0];
+      if (bannerFile) {
+        const ext = bannerFile.name.split(".").pop() ?? "png";
+        const path = `${current.user_id}/banner-${Date.now()}.${ext}`;
+        const up = await supabase.storage.from("avatars").upload(path, bannerFile, {
+          cacheControl: "3600",
+          upsert: false,
+        });
+        if (up.error) throw up.error;
+        nextBannerUrl = supabase.storage.from("avatars").getPublicUrl(path).data.publicUrl;
+      }
+      const update: {
+        display_name: string;
+        bio: string;
+        avatar_url?: string | null;
+        banner_url?: string | null;
+      } = {
         display_name: displayName.trim() || "Anonymous",
         bio: bio.trim(),
       };
       if (nextAvatarUrl !== current.avatar_url) {
         update.avatar_url = nextAvatarUrl;
       }
+      if (nextBannerUrl !== (current.banner_url ?? null)) {
+        update.banner_url = nextBannerUrl;
+      }
       const res = await supabase.from("profiles").update(update).eq("user_id", current.user_id);
       if (res.error) throw res.error;
       setAvatarUrl(nextAvatarUrl);
+      setBannerUrl(nextBannerUrl);
       if (fileInputRef.current) fileInputRef.current.value = "";
+      if (bannerInputRef.current) bannerInputRef.current.value = "";
       onUpdate((prev) => ({
         ...prev,
         display_name: update.display_name,
         bio: update.bio,
         avatar_url: nextAvatarUrl,
+        banner_url: nextBannerUrl,
       }));
       setStatus({ kind: "saved" });
     } catch (e) {
@@ -1352,6 +1460,24 @@ function ProfileEditCard(args: {
       else if (e && typeof e === "object" && "message" in e && typeof (e as { message: unknown }).message === "string")
         message = (e as { message: string }).message;
       setStatus({ kind: "error", message });
+    }
+  }
+
+  async function removeBackground() {
+    setStatus({ kind: "saving" });
+    try {
+      const supabase = createBrowserClient();
+      const res = await supabase
+        .from("profiles")
+        .update({ banner_url: null })
+        .eq("user_id", current.user_id);
+      if (res.error) throw res.error;
+      setBannerUrl(null);
+      if (bannerInputRef.current) bannerInputRef.current.value = "";
+      onUpdate((prev) => ({ ...prev, banner_url: null }));
+      setStatus({ kind: "saved" });
+    } catch (e) {
+      setStatus({ kind: "error", message: errorMessage(e, "Could not remove background.") });
     }
   }
 
@@ -1364,27 +1490,69 @@ function ProfileEditCard(args: {
         />
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
-        <div className="flex items-center gap-4">
-          {avatarUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={avatarUrl}
-              alt=""
-              width={48}
-              height={48}
-              className="h-12 w-12 rounded-full object-cover"
-              data-testid="creator-avatar-preview"
+        <div className="creator-profile-editor">
+          <div className="creator-profile-cover">
+            {bannerUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={bannerUrl} alt="" className="h-full w-full object-cover" />
+            ) : (
+              <div className="creator-background-fallback" aria-hidden />
+            )}
+            <div className="creator-profile-cover-actions">
+              <label className="creator-file-action" htmlFor="creator-background-input">
+                <ImageIcon data-icon="inline-start" aria-hidden />
+                Change background
+              </label>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={removeBackground}
+                loading={status.kind === "saving"}
+                disabled={status.kind === "saving" || !bannerUrl}
+                data-testid="creator-background-remove"
+              >
+                <Trash2Icon data-icon="inline-start" aria-hidden />
+                Remove
+              </Button>
+            </div>
+            <input
+              id="creator-background-input"
+              ref={bannerInputRef}
+              type="file"
+              accept="image/png,image/jpeg,image/gif,image/webp"
+              className="sr-only"
+              data-testid="creator-background-input"
+              onChange={() => setStatus({ kind: "idle" })}
             />
-          ) : (
-            <div
-              aria-hidden
-              className="h-12 w-12 rounded-full bg-foreground/10"
-              data-testid="creator-avatar-placeholder"
-            />
-          )}
-          <div className="flex flex-col gap-1">
-            <label className="text-xs text-muted-foreground" htmlFor="creator-avatar-input">
-              Avatar
+          </div>
+          <div className="creator-profile-photo-row">
+            <div className="creator-profile-avatar">
+              {avatarUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={avatarUrl}
+                  alt=""
+                  width={72}
+                  height={72}
+                  className="h-full w-full object-cover"
+                  data-testid="creator-avatar-preview"
+                />
+              ) : (
+                <span data-testid="creator-avatar-placeholder">{initials(displayName)}</span>
+              )}
+              <label className="creator-avatar-action" htmlFor="creator-avatar-input">
+                <ImageIcon aria-hidden />
+                <span className="sr-only">Change avatar</span>
+              </label>
+            </div>
+            <div className="creator-profile-photo-copy">
+              <strong>Edit your photo</strong>
+              <span>PNG, JPG, GIF, or WebP. Wide images work best for the background.</span>
+            </div>
+            <label className="creator-file-action" htmlFor="creator-avatar-input">
+              <ImageIcon data-icon="inline-start" aria-hidden />
+              Change photo
             </label>
             <input
               id="creator-avatar-input"
@@ -1392,8 +1560,9 @@ function ProfileEditCard(args: {
               ref={fileInputRef}
               type="file"
               accept="image/*"
-              className="text-xs text-muted-foreground"
+              className="sr-only"
               data-testid="creator-avatar-input"
+              onChange={() => setStatus({ kind: "idle" })}
             />
           </div>
         </div>
@@ -1453,23 +1622,8 @@ function ProfileEditCard(args: {
 
 /** Overlay URL: show `/overlay/[handle]` with a copy action. */
 function OverlayUrlCard({ handle }: { handle: string | null }) {
-  const [copied, setCopied] = useState(false);
-  const [copying, setCopying] = useState(false);
   const path = handle ? `/overlay/${handle}` : "";
   if (!handle) return null;
-  async function copy() {
-    setCopying(true);
-    try {
-      const absoluteUrl = new URL(path, window.location.origin).toString();
-      await navigator.clipboard.writeText(absoluteUrl);
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 2000);
-    } catch {
-      setCopied(false);
-    } finally {
-      setCopying(false);
-    }
-  }
   return (
     <Card>
       <CardHeader>
@@ -1479,21 +1633,14 @@ function OverlayUrlCard({ handle }: { handle: string | null }) {
         />
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
-        <p className="font-mono text-sm text-foreground break-all" data-testid="overlay-url">
-          {path}
-        </p>
-        <Button
-          type="button"
-          size="sm"
-          variant="outline"
-          onClick={copy}
-          loading={copying}
-          disabled={copying || !path}
-          className="self-start"
-          data-testid="overlay-copy"
-        >
-          {copied ? "Copied" : "Copy URL"}
-        </Button>
+        <CopyValueRow
+          label="Overlay URL"
+          value={path}
+          copyValue={path}
+          absoluteUrl
+          testId="overlay-url"
+          copyTestId="overlay-copy"
+        />
       </CardContent>
     </Card>
   );
@@ -1515,7 +1662,7 @@ function OverlaySettingsCard({ handle }: { handle: string | null }) {
   const [durationMs, setDurationMs] = useState<number>(6000);
   const [minAmount, setMinAmount] = useState<string>("0");
   const [soundEnabled, setSoundEnabled] = useState<boolean>(true);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState<Status>({ kind: "idle" });
 
@@ -1523,7 +1670,6 @@ function OverlaySettingsCard({ handle }: { handle: string | null }) {
   useEffect(() => {
     if (!handle) return;
     let alive = true;
-    setLoading(true);
     fetch(`/api/overlay-settings?handle=${encodeURIComponent(handle)}`)
       .then(async (res) => {
         if (!res.ok) return;
