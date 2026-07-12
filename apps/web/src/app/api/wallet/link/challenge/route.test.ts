@@ -1,6 +1,5 @@
 // @vitest-environment node
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { NextRequest } from "next/server";
 
 /**
  * POST /api/wallet/link/challenge — generate a 32-byte nonce with a 10-minute
@@ -36,12 +35,6 @@ vi.mock("@/lib/stellar/client", () => ({
   networkPassphrase: "Test SDF Network ; September 2015",
 }));
 
-function req() {
-  return new NextRequest("http://localhost/api/wallet/link/challenge", {
-    method: "POST",
-  });
-}
-
 function profileChain(data: unknown) {
   const chain: Record<string, unknown> = {};
   chain.select = vi.fn(() => chain);
@@ -72,7 +65,7 @@ describe("POST /api/wallet/link/challenge", () => {
   it("returns 401 when there is no session", async () => {
     getUser.mockResolvedValue({ data: { user: null }, error: null });
     const { POST } = await import("@/app/api/wallet/link/challenge/route");
-    const res = await POST(req());
+    const res = await POST();
     expect(res.status).toBe(401);
     expect(await res.json()).toEqual({ error: "unauthorized" });
   });
@@ -81,7 +74,7 @@ describe("POST /api/wallet/link/challenge", () => {
     getUser.mockResolvedValue({ data: { user: { id: USER_ID } }, error: null });
     serverFrom.mockImplementation(() => profileChain(null));
     const { POST } = await import("@/app/api/wallet/link/challenge/route");
-    const res = await POST(req());
+    const res = await POST();
     expect(res.status).toBe(404);
     expect(await res.json()).toEqual({ error: "profile_not_found" });
   });
@@ -92,7 +85,7 @@ describe("POST /api/wallet/link/challenge", () => {
       profileChain({ id: "p1", user_id: USER_ID, handle: null, handle_hash: null, owner_address: null, onchain_registered: false }),
     );
     const { POST } = await import("@/app/api/wallet/link/challenge/route");
-    const res = await POST(req());
+    const res = await POST();
     expect(res.status).toBe(400);
     expect(await res.json()).toEqual({ error: "no_handle" });
   });
@@ -107,7 +100,7 @@ describe("POST /api/wallet/link/challenge", () => {
       }),
     );
     const { POST } = await import("@/app/api/wallet/link/challenge/route");
-    const res = await POST(req());
+    const res = await POST();
     expect(res.status).toBe(409);
     expect(await res.json()).toEqual({ error: "already_linked" });
   });
@@ -123,7 +116,7 @@ describe("POST /api/wallet/link/challenge", () => {
     const recorder = { payload: null as unknown, filter: null as unknown };
     serviceFrom.mockImplementation(() => updateChain(recorder));
     const { POST } = await import("@/app/api/wallet/link/challenge/route");
-    const res = await POST(req());
+    const res = await POST();
     expect(res.status).toBe(200);
     const body = await res.json();
     // Challenge is human-readable and carries handle, handle_hash hex, and nonce.
@@ -148,7 +141,7 @@ describe("POST /api/wallet/link/challenge", () => {
     );
     serviceFrom.mockImplementation(() => updateChain({ payload: null, filter: null }));
     const { POST } = await import("@/app/api/wallet/link/challenge/route");
-    const res = await POST(req());
+    const res = await POST();
     expect(res.status).toBe(200);
   });
 });

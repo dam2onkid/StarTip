@@ -1,4 +1,4 @@
-import { NextResponse, type NextRequest } from "next/server";
+import { NextResponse } from "next/server";
 import { randomBytes } from "node:crypto";
 import { requireAuthedProfile } from "@/lib/auth/context";
 import { createServiceClient } from "@startip/shared/supabase/service";
@@ -18,7 +18,7 @@ const NONCE_TTL_MS = 10 * 60 * 1000;
  * Profile with a 10-minute expiry (service role), and returns the
  * human-readable challenge string the wallet will sign with `signMessage`.
  */
-export async function POST(_request: NextRequest) {
+export async function POST() {
   const auth = await requireAuthedProfile();
   if (!auth.ok) return auth.response;
   const { user, profile } = auth.context;
