@@ -1,12 +1,12 @@
 import { NextResponse } from "next/server";
-import { createServerClient } from "@/lib/supabase/server";
+import { requireAuthedProfile } from "@/lib/auth/context";
 import { createServiceClient } from "@startip/shared/supabase/service";
 import { rpc } from "@startip/shared/stellar/server";
 import { contractId } from "@/lib/stellar/client";
 import { readCreatorOnChain } from "@/lib/creators/handle";
 
 /**
- * POST /api/creators/reconcile — recover a Creator whose on-chain
+ * POST /api/creators/reconcile - recover a Creator whose on-chain
  * `register_creator` succeeded but whose `CreatorRegistered` event was never
  * mirrored by the indexer (e.g. the event was emitted before the indexer's
  * first poll, so the bootstrap skipped it, or the indexer was not running).
@@ -17,25 +17,15 @@ import { readCreatorOnChain } from "@/lib/creators/handle";
  * the deterministic recovery path that does not depend on event history.
  *
  * Returns:
- *   200 { onchain_registered: true, payout_address }  — flipped (or already was)
- *   200 { onchain_registered: false }                 — not registered yet
- *   409 { error: "owner_mismatch" }                   — registered to another wallet
- *   409 { error: "not_ready" }                        — no handle / wallet linked yet
+ *   200 { onchain_registered: true, payout_address }  - flipped (or already was)
+ *   200 { onchain_registered: false }                 - not registered yet
+ *   409 { error: "owner_mismatch" }                   - registered to another wallet
+ *   409 { error: "not_ready" }                        - no handle / wallet linked yet
  */
 export async function POST() {
-  const supabase = await createServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-
-  const { data: profile, error: profileErr } = await supabase
-    .from("profiles")
-    .select("id,user_id,handle,owner_address,onchain_registered")
-    .eq("user_id", user.id)
-    .maybeSingle();
-  if (profileErr) return NextResponse.json({ error: "db_error" }, { status: 500 });
-  if (!profile) return NextResponse.json({ error: "profile_not_found" }, { status: 404 });
+  const auth = await requireAuthedProfile();
+  if (!auth.ok) return auth.response;
+  const { user, profile } = auth.context;
 
   if (profile.onchain_registered) {
     return NextResponse.json({ onchain_registered: true });

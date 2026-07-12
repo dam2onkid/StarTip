@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { createServerClient } from "@/lib/supabase/server";
+import { requireAuthedProfile } from "@/lib/auth/context";
 import { createServiceClient } from "@startip/shared/supabase/service";
 import { rpc } from "@startip/shared/stellar/server";
 import { contractId } from "@/lib/stellar/client";
@@ -10,7 +10,7 @@ import {
 } from "@/lib/creators/handle";
 
 /**
- * POST /api/creators — claim a Handle (reserve it off-chain).
+ * POST /api/creators - claim a Handle (reserve it off-chain).
  *
  * Authed via the SSR server client. Validates the Handle, checks both the
  * `profiles` table (off-chain reservation) and the on-chain
@@ -40,25 +40,14 @@ export async function POST(request: NextRequest) {
     : "";
   const dryRun = (body as { dryRun?: unknown })?.dryRun === true;
 
-  const supabase = await createServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-
   const normalized = normalizeHandle(handle);
   if (!normalized.ok || !normalized.value) {
     return NextResponse.json({ error: "invalid_handle" }, { status: 400 });
   }
 
-  // Load the caller's profile.
-  const { data: profile, error: profileErr } = await supabase
-    .from("profiles")
-    .select("id,user_id,handle,onchain_registered")
-    .eq("user_id", user.id)
-    .maybeSingle();
-  if (profileErr) return NextResponse.json({ error: "db_error" }, { status: 500 });
-  if (!profile) return NextResponse.json({ error: "profile_not_found" }, { status: 404 });
+  const auth = await requireAuthedProfile();
+  if (!auth.ok) return auth.response;
+  const { user, profile, supabase } = auth.context;
 
   if (profile.onchain_registered) {
     return NextResponse.json({ error: "already_registered" }, { status: 409 });

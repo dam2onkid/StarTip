@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { createServerClient } from "@/lib/supabase/server";
+import { requireAuthedCreator } from "@/lib/auth/context";
 import { createServiceClient } from "@startip/shared/supabase/service";
 import {
   DEFAULT_ALERT_DURATION_MS,
@@ -8,16 +8,16 @@ import {
 } from "@/lib/overlay/settings";
 
 /**
- * `/api/overlay-settings` — public read and authed owner write of a
+ * `/api/overlay-settings` - public read and authed owner write of a
  * Creator's Overlay settings (spec §11.3).
  *
- * GET `?handle=<handle>` — public. Resolves the handle to a registered,
+ * GET `?handle=<handle>` - public. Resolves the handle to a registered,
  * not-paused Creator profile (service role, bypasses RLS), reads the
  * `overlay_settings` row by `creator_profile_id`, and returns it. When no
  * row exists, returns the column defaults (10000ms, 0, true, 'default') so
  * the Overlay works out of the box before the Creator configures it.
  *
- * PUT (authed) — upserts the caller's row. Body:
+ * PUT (authed) - upserts the caller's row. Body:
  * `{ alert_duration_ms, min_amount, sound_enabled }`. Validates
  * `alert_duration_ms` (1000-60000), `min_amount` (>= 0), `sound_enabled`
  * (boolean). The upsert goes through the SSR server client (carrying the
@@ -104,26 +104,14 @@ export async function PUT(request: NextRequest) {
     return NextResponse.json({ error: "invalid_sound_enabled" }, { status: 400 });
   }
 
-  const supabase = await createServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-
-  const { data: profile, error: profileErr } = await supabase
-    .from("profiles")
-    .select("id,user_id,handle")
-    .eq("user_id", user.id)
-    .maybeSingle();
-  if (profileErr) return NextResponse.json({ error: "db_error" }, { status: 500 });
-  const p = profile as { id: string; user_id: string; handle: string | null } | null;
-  if (!p) return NextResponse.json({ error: "profile_not_found" }, { status: 404 });
-  if (!p.handle) return NextResponse.json({ error: "not_creator" }, { status: 400 });
+  const auth = await requireAuthedCreator();
+  if (!auth.ok) return auth.response;
+  const { supabase, profile } = auth.context;
 
   // Upsert through the session client so the owner-write RLS policies apply.
   // The unique index on creator_profile_id makes this converge to one row.
   const payload = {
-    creator_profile_id: p.id,
+    creator_profile_id: profile.id,
     alert_duration_ms: alertDurationMs,
     min_amount: minAmount,
     sound_enabled: soundEnabled,

@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { randomBytes } from "node:crypto";
-import { createServerClient } from "@/lib/supabase/server";
+import { requireAuthedProfile } from "@/lib/auth/context";
 import { createServiceClient } from "@startip/shared/supabase/service";
 import { handleHashHex } from "@/lib/creators/handle";
 
@@ -8,7 +8,7 @@ import { handleHashHex } from "@/lib/creators/handle";
 const NONCE_TTL_MS = 10 * 60 * 1000;
 
 /**
- * POST /api/wallet/link/challenge — generate a fresh wallet-link challenge.
+ * POST /api/wallet/link/challenge - generate a fresh wallet-link challenge.
  *
  * Authed. Loads the caller's Profile. If a wallet is already linked
  * (`owner_address` set) AND the Creator is registered on-chain, returns 409
@@ -19,19 +19,9 @@ const NONCE_TTL_MS = 10 * 60 * 1000;
  * human-readable challenge string the wallet will sign with `signMessage`.
  */
 export async function POST(_request: NextRequest) {
-  const supabase = await createServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-
-  const { data: profile, error } = await supabase
-    .from("profiles")
-    .select("id,user_id,handle,handle_hash,owner_address,onchain_registered")
-    .eq("user_id", user.id)
-    .maybeSingle();
-  if (error) return NextResponse.json({ error: "db_error" }, { status: 500 });
-  if (!profile) return NextResponse.json({ error: "profile_not_found" }, { status: 404 });
+  const auth = await requireAuthedProfile();
+  if (!auth.ok) return auth.response;
+  const { user, profile } = auth.context;
 
   if (!profile.handle) {
     return NextResponse.json({ error: "no_handle" }, { status: 400 });

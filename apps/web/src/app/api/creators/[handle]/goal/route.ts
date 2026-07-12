@@ -1,18 +1,18 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { createServerClient } from "@/lib/supabase/server";
+import { requireAuthedCreator } from "@/lib/auth/context";
 import { createServiceClient } from "@startip/shared/supabase/service";
 
 /**
- * `/api/creators/[handle]/goal` — public read and authed owner write of a
+ * `/api/creators/[handle]/goal` - public read and authed owner write of a
  * Creator's donation goal (spec §6.2, PRD "Donation goal").
  *
- * GET — public. Resolves the handle to a registered, not-paused Creator
+ * GET - public. Resolves the handle to a registered, not-paused Creator
  * profile (service role, bypasses RLS), reads the `donation_goals` row by
  * `creator_profile_id`, and returns `{ target_amount, token }` or `null` when
  * no row exists (no goal displayed). `target_amount` is the raw numeric
  * string stored on the row.
  *
- * PUT (authed owner) — upserts the caller's row. Body:
+ * PUT (authed owner) - upserts the caller's row. Body:
  * `{ target_amount, token }`. Validates `target_amount` (>= 0, numeric) and
  * `token` (non-empty, in the `tokens` allowlist). The upsert goes through the
  * SSR server client (carrying the caller's JWT) so the
@@ -88,28 +88,9 @@ export async function PUT(request: NextRequest, context: { params: Promise<{ han
     return NextResponse.json({ error: "invalid_token" }, { status: 400 });
   }
 
-  const supabase = await createServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-
-  // Resolve the caller's own profile (session client, owner RLS read).
-  const { data: profile, error: profileErr } = await supabase
-    .from("profiles")
-    .select("id,user_id,handle")
-    .eq("user_id", user.id)
-    .maybeSingle();
-  if (profileErr) return NextResponse.json({ error: "db_error" }, { status: 500 });
-  const p = profile as { id: string; user_id: string; handle: string | null } | null;
-  if (!p) return NextResponse.json({ error: "profile_not_found" }, { status: 404 });
-  if (!p.handle) return NextResponse.json({ error: "not_creator" }, { status: 400 });
-  // The path handle must match the caller's handle (owner check). RLS also
-  // enforces owner-write via the profiles.user_id join, but this stops a
-  // caller from silently writing their own goal under someone else's path.
-  if (p.handle.trim().toLowerCase() !== normalized) {
-    return NextResponse.json({ error: "forbidden" }, { status: 403 });
-  }
+  const auth = await requireAuthedCreator(normalized);
+  if (!auth.ok) return auth.response;
+  const { supabase, profile } = auth.context;
 
   const targetNum = Number(targetAmount);
 
@@ -118,7 +99,7 @@ export async function PUT(request: NextRequest, context: { params: Promise<{ han
     const { error: delErr } = await supabase
       .from("donation_goals")
       .delete()
-      .eq("creator_profile_id", p.id);
+      .eq("creator_profile_id", profile.id);
     if (delErr) return NextResponse.json({ error: "db_error" }, { status: 500 });
     return NextResponse.json({ target_amount: 0, token }, { status: 200 });
   }
@@ -135,7 +116,7 @@ export async function PUT(request: NextRequest, context: { params: Promise<{ han
   }
 
   const payload = {
-    creator_profile_id: p.id,
+    creator_profile_id: profile.id,
     target_amount: targetAmount,
     token,
   };

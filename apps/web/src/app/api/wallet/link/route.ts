@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import * as StellarSdk from "@stellar/stellar-sdk";
-import { createServerClient } from "@/lib/supabase/server";
+import { requireAuthedProfile } from "@/lib/auth/context";
 import { createServiceClient } from "@startip/shared/supabase/service";
 import { handleHashHex } from "@/lib/creators/handle";
 
@@ -11,7 +11,7 @@ interface LinkBody {
 }
 
 /**
- * POST /api/wallet/link — verify a `signMessage` signature and link the wallet.
+ * POST /api/wallet/link - verify a `signMessage` signature and link the wallet.
  *
  * Authed. Body `{ address, signedMessage, signerAddress? }`. Reconstructs the
  * challenge from the caller's Profile (handle + handle_hash + stored nonce),
@@ -40,21 +40,9 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "invalid_body" }, { status: 400 });
   }
 
-  const supabase = await createServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-
-  const { data: profile, error } = await supabase
-    .from("profiles")
-    .select(
-      "id,user_id,handle,handle_hash,owner_address,onchain_registered,wallet_link_nonce,wallet_link_nonce_expires_at",
-    )
-    .eq("user_id", user.id)
-    .maybeSingle();
-  if (error) return NextResponse.json({ error: "db_error" }, { status: 500 });
-  if (!profile) return NextResponse.json({ error: "profile_not_found" }, { status: 404 });
+  const auth = await requireAuthedProfile();
+  if (!auth.ok) return auth.response;
+  const { user, profile } = auth.context;
 
   if (!profile.handle) {
     return NextResponse.json({ error: "no_handle" }, { status: 400 });
