@@ -20,6 +20,8 @@ export interface DonorRankRow {
   donor_name: string;
   amount: string;
   user_id: string | null;
+  /** SAC contract address; used by the UI to convert the raw total to display units. */
+  token?: string;
   /** Creator profile id; used by the dashboard to group rows per creator for
    * per-creator rank computation. Optional so the rank helper can accept rows
    * without it (e.g. the global leaderboard). */
@@ -32,6 +34,8 @@ export interface DonorRank {
   rank: number | null;
   /** The user's total donated amount as a raw integer string. */
   total: string;
+  /** SAC contract address for the aggregated total; the UI uses this to pick the token's decimals/symbol. */
+  token?: string;
 }
 
 /**
@@ -40,6 +44,10 @@ export interface DonorRank {
  * `amount` per `user_id` with `BigInt`, then derives the caller's rank as
  * the number of donors with a strictly greater total plus one (competition
  * ranking: tied donors share the same rank).
+ *
+ * The `token` from the first valid row for the caller is returned on the
+ * result so the UI can convert the raw total to display units. This is safe
+ * for the single-token allowlist MVP.
  */
 export function computeDonorRank(
   rows: DonorRankRow[] | null | undefined,
@@ -48,6 +56,7 @@ export function computeDonorRank(
   if (!rows || rows.length === 0) return { rank: null, total: "0" };
 
   const totals = new Map<string, bigint>();
+  const tokens = new Map<string, string>();
   for (const row of rows) {
     if (row.user_id === null || row.user_id === undefined) continue;
     let amount: bigint;
@@ -57,6 +66,9 @@ export function computeDonorRank(
       continue;
     }
     totals.set(row.user_id, (totals.get(row.user_id) ?? BigInt(0)) + amount);
+    if (!tokens.has(row.user_id) && row.token) {
+      tokens.set(row.user_id, row.token);
+    }
   }
 
   const userTotal = totals.get(userId);
@@ -67,5 +79,5 @@ export function computeDonorRank(
     if (uid === userId) continue;
     if (total > userTotal) rank += 1;
   }
-  return { rank, total: userTotal.toString() };
+  return { rank, total: userTotal.toString(), token: tokens.get(userId) };
 }

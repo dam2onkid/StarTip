@@ -25,6 +25,7 @@ import {
   type DonorDonation,
   type DonorPerCreatorRank,
 } from "@/app/(auth)/dashboard/donor-tab";
+import { type TokenAllowlistEntry } from "@/lib/donations/token";
 
 /**
  * Interactive shell for `/dashboard`. Owns the active-tab state, the identity
@@ -60,16 +61,18 @@ export interface DashboardTabsProps {
   donorData?: {
     profile: DonorProfile;
     donations: DonorDonation[];
-    globalRank: { rank: number | null; total: string };
+    globalRank: { rank: number | null; total: string; token?: string };
     perCreatorRanks: DonorPerCreatorRank[];
   };
   creatorActiveData?: CreatorActiveData;
+  tokens?: TokenAllowlistEntry[];
 }
 
 export function DashboardTabs({
   creatorProfile,
   donorData,
   creatorActiveData,
+  tokens = [],
 }: DashboardTabsProps) {
   const [active, setActive] = React.useState<TabId>("donor");
   const tabRefs = React.useRef<Record<TabId, HTMLButtonElement | null>>({
@@ -402,6 +405,7 @@ export function DashboardTabs({
                 donations={donorData.donations}
                 globalRank={donorData.globalRank}
                 perCreatorRanks={donorData.perCreatorRanks}
+                tokens={tokens}
               />
             ) : (
               <p className="text-sm text-muted-foreground">
@@ -415,6 +419,7 @@ export function DashboardTabs({
             <CreatorTab
               profile={editableCreatorProfile}
               activeData={creatorActiveData}
+              tokens={tokens}
             />
           </div>
         )}
@@ -621,7 +626,7 @@ function ProfileEditDialog({
             <label
               htmlFor="display-name-input"
             >
-              Name
+              Display name
             </label>
             <Input
               id="display-name-input"
@@ -645,7 +650,7 @@ function ProfileEditDialog({
             />
           </div>
           {status.kind === "saved" && (
-            <p className="creator-profile-status text-tertiary" aria-live="polite" data-testid="save-status">
+            <p className="creator-profile-status text-primary" aria-live="polite" data-testid="creator-save-status">
               Profile saved.
             </p>
           )}
@@ -654,7 +659,7 @@ function ProfileEditDialog({
               className="creator-profile-status text-destructive"
               aria-live="polite"
               role="alert"
-              data-testid="save-status"
+              data-testid="creator-save-status"
             >
               {status.message}
             </p>

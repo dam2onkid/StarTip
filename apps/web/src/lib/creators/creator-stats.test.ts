@@ -3,7 +3,7 @@ import { describe, it, expect, vi } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 /**
- * lib/creators/creator-stats — `loadCreatorDashboardData`.
+ * lib/creators/creator-stats - `loadCreatorDashboardData`.
  *
  * Loads the Creator's received donations via the creator RLS path
  * (`auth.uid() = profiles.user_id` join on `creator_profile_id`), which
@@ -174,6 +174,7 @@ describe("loadCreatorDashboardData", () => {
     // d4 is pending and excluded from stats. Hidden d2 IS counted.
     expect(data.stats.total).toBe("10599");
     expect(data.stats.count).toBe(3);
+    expect(data.stats.token).toBe("USDC");
   });
 
   it("leaderboard aggregates visible confirmed/indexed donations with logged-in donors only", async () => {
@@ -182,7 +183,9 @@ describe("loadCreatorDashboardData", () => {
     const data = await loadCreatorDashboardData(supabase, CREATOR_PROFILE_ID);
     // Visible confirmed: d1 (Ada 100, logged-in), d3 (Anonymous 9999, null user_id -> excluded).
     // d2 is hidden -> excluded from leaderboard. d4 is pending -> excluded.
-    expect(data.leaderboard).toEqual([{ donor_name: "Ada", total_amount: "100" }]);
+    expect(data.leaderboard).toEqual([
+      { donor_name: "Ada", total_amount: "100", token: "USDC" },
+    ]);
   });
 
   it("recent donations are the raw rows in the order returned (newest first), including hidden", async () => {

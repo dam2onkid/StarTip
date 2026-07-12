@@ -43,11 +43,13 @@ export interface CreatorDonationRow {
 export interface CreatorStats {
   total: string;
   count: number;
+  /** SAC contract address for the aggregated total; the UI uses this to pick the token's decimals/symbol. */
+  token?: string;
 }
 
 export interface CreatorDashboardData {
   stats: CreatorStats;
-  leaderboard: { donor_name: string; total_amount: string }[];
+  leaderboard: { donor_name: string; total_amount: string; token?: string }[];
   recent: CreatorDonationRow[];
   /** Precomputed donation-goal progress snapshot, or `null` when no goal is set. */
   goal: { current: string; target: string; pct: number; token: string } | null;
@@ -77,7 +79,7 @@ export async function loadCreatorDashboardData(
   // Stats: confirmed/indexed donations, including hidden.
   const statsRows = rows
     .filter((r) => CONFIRMED_STATUSES.includes(r.status))
-    .map((r) => ({ amount: r.amount }));
+    .map((r) => ({ amount: r.amount, token: r.token }));
   const stats = sumDonationStats(statsRows);
 
   // Leaderboard: visible confirmed/indexed donations, logged-in donors only.
@@ -90,6 +92,7 @@ export async function loadCreatorDashboardData(
       donor_name: r.donor_name,
       amount: r.amount,
       user_id: r.user_id,
+      token: r.token,
     }));
   const leaderboard = aggregateLeaderboard(leaderboardRows);
 

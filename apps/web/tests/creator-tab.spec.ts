@@ -36,8 +36,9 @@ async function installSeams(page: Page) {
       setCreatorActive: async () => ({ status: "PENDING", hash: "stub-pause-tx" }),
     };
     // Treasury seam for the payout warning.
+    const treasuryStub = async function treasuryStub() { return null; };
     (window as unknown as { __STARTIP_TREASURY_STUB__?: unknown }).__STARTIP_TREASURY_STUB__ =
-      async () => null;
+      treasuryStub;
     // Realtime seam: capture the callback so the test can push
     // payout_address / paused flips.
     (window as unknown as { __STARTIP_REALTIME_STUB__?: unknown }).__STARTIP_REALTIME_STUB__ = {
@@ -145,14 +146,14 @@ test.describe("Creator tab active features", () => {
   });
 
   test("editing display name + bio persists via the owner UPDATE RLS path", async ({ page }) => {
-    const active = page.getByTestId("creator-active");
-    await active.getByLabel(/display name/i).fill("Ada Lovelace");
-    await active.getByLabel(/bio/i).fill("First programmer.");
+    await page.getByRole("button", { name: /Edit creator profile/i }).click();
+    await page.getByLabel(/display name/i).fill("Ada Lovelace");
+    await page.getByLabel(/bio/i).fill("First programmer.");
     await page.getByTestId("creator-profile-save").click();
     await expect(page.getByTestId("creator-save-status")).toContainText(/saved/i);
     // The local state updates after the PATCH resolves.
-    await expect(active.getByLabel(/display name/i)).toHaveValue("Ada Lovelace");
-    await expect(active.getByLabel(/bio/i)).toHaveValue("First programmer.");
+    await expect(page.getByLabel(/display name/i)).toHaveValue("Ada Lovelace");
+    await expect(page.getByLabel(/bio/i)).toHaveValue("First programmer.");
   });
 
   test("shows the unified nav with the Discover link on the dashboard", async ({ page }) => {

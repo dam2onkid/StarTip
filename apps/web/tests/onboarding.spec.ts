@@ -84,8 +84,9 @@ async function installSeams(page: Page) {
     (window as unknown as { __STARTIP_REGISTER_STUB__?: unknown }).__STARTIP_REGISTER_STUB__ = {
       registerCreatorOnChain: async () => ({ status: "PENDING", hash: "stub-tx-hash" }),
     };
+    const treasuryStub = async function treasuryStub() { return null; };
     (window as unknown as { __STARTIP_TREASURY_STUB__?: unknown }).__STARTIP_TREASURY_STUB__ =
-      async () => null;
+      treasuryStub;
     // Realtime seam: capture the onActive callback so the test can push the
     // onchain_registered flip. Returns an unsubscribe.
     (window as unknown as { __STARTIP_REALTIME_STUB__?: unknown }).__STARTIP_REALTIME_STUB__ = {
@@ -230,7 +231,7 @@ test.describe.serial("Creator onboarding four-gate flow", () => {
     await expect(page.getByPlaceholder("G…")).toBeVisible();
 
     await page.getByPlaceholder("G…").fill("GBPAYOUT");
-    await page.getByRole("button", { name: /register on-chain/i }).click();
+    await page.getByRole("button", { name: /register creator/i }).click();
     await expect(page.getByText(/Registration submitted/i)).toBeVisible();
 
     // Drive the Realtime flip via the stub.

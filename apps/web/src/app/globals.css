@@ -344,14 +344,40 @@ body {
   }
 }
 
-/* Hero stat number: display font, oversized, tabular. */
+/* Hero stat number: compact, tabular, and allowed to wrap between amount/token. */
 .dashboard .stat-hero {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  gap: 0.35rem;
+  flex-wrap: wrap;
   font-family: var(--font-display), var(--font-body), sans-serif;
   font-weight: 600;
-  letter-spacing: -0.02em;
-  font-size: clamp(2rem, 6vw, 3rem);
+  letter-spacing: 0;
   line-height: 1;
   font-variant-numeric: tabular-nums;
+  overflow-wrap: normal;
+  word-break: normal;
+}
+.dashboard .stat-hero .stat-hero-amount {
+  display: inline;
+  font-family: inherit;
+  font-size: 2rem;
+  letter-spacing: 0;
+  line-height: 0.95;
+  text-transform: none;
+  color: inherit;
+  white-space: nowrap;
+}
+.dashboard .stat-hero .stat-hero-symbol {
+  display: inline;
+  font-family: var(--font-label), monospace;
+  font-size: 1.1rem;
+  letter-spacing: 0.02em;
+  line-height: 1;
+  text-transform: uppercase;
+  color: color-mix(in oklch, var(--foreground) 86%, transparent);
+  white-space: nowrap;
 }
 
 /* Status pill: neutral by default, lime when active. */
@@ -546,6 +572,11 @@ body {
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 0.75rem;
 }
+.dashboard .creator-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.9rem;
+}
 .dashboard .creator-metric-tile {
   min-width: 0;
   border-radius: var(--radius-md);
@@ -591,6 +622,10 @@ body {
   background: color-mix(in oklch, var(--foreground) 3%, transparent);
   padding: 0.65rem 0.75rem;
 }
+.dashboard .creator-address-row > .status-pill {
+  justify-self: start;
+  align-self: center;
+}
 .dashboard .creator-copy-value {
   display: flex;
   min-width: 0;
@@ -621,34 +656,6 @@ body {
   min-width: 0;
   flex-direction: column;
   gap: 0.85rem;
-}
-.dashboard .creator-settings-quick-stats {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.5rem;
-}
-.dashboard .creator-settings-quick-stats div {
-  min-width: 0;
-  border-radius: var(--radius-md);
-  border: 1px solid color-mix(in oklch, var(--foreground) 7%, transparent);
-  background: color-mix(in oklch, var(--foreground) 3%, transparent);
-  padding: 0.7rem;
-}
-.dashboard .creator-settings-quick-stats dt {
-  font-family: var(--font-label), monospace;
-  font-size: 0.58rem;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: color-mix(in oklch, var(--muted-foreground) 78%, transparent);
-}
-.dashboard .creator-settings-quick-stats dd {
-  margin-top: 0.25rem;
-  overflow-wrap: anywhere;
-  font-family: var(--font-display), var(--font-body), sans-serif;
-  font-size: 1.2rem;
-  font-weight: 600;
-  color: var(--foreground);
-  font-variant-numeric: tabular-nums;
 }
 .dashboard .creator-settings-nav {
   display: flex;
@@ -755,6 +762,148 @@ body {
 .dashboard .creator-settings-list > [data-slot="card"]:has(textarea),
 .dashboard .creator-settings-list > [data-slot="card"]:has([data-testid="moderation-list"]) {
   grid-column: 1 / -1;
+}
+.dashboard .creator-moderation-card {
+  overflow: hidden;
+  background:
+    linear-gradient(
+      135deg,
+      color-mix(in oklch, var(--foreground) 5%, transparent),
+      color-mix(in oklch, var(--card) 96%, transparent) 48%,
+      color-mix(in oklch, var(--background) 72%, transparent)
+    );
+}
+.dashboard .creator-moderation-heading {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(18rem, 0.58fr);
+  gap: 1rem;
+  align-items: start;
+}
+.dashboard .creator-moderation-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  overflow: hidden;
+  border-radius: var(--radius-md);
+  border: 1px solid color-mix(in oklch, var(--foreground) 8%, transparent);
+  background: color-mix(in oklch, var(--background) 48%, transparent);
+}
+.dashboard .creator-moderation-summary div {
+  min-width: 0;
+  padding: 0.7rem 0.8rem;
+}
+.dashboard .creator-moderation-summary div + div {
+  border-left: 1px solid color-mix(in oklch, var(--foreground) 7%, transparent);
+}
+.dashboard .creator-moderation-summary dt,
+.dashboard .creator-moderation-table-head {
+  font-family: var(--font-label), monospace;
+  font-size: 0.62rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: color-mix(in oklch, var(--muted-foreground) 76%, transparent);
+}
+.dashboard .creator-moderation-summary dd {
+  margin-top: 0.25rem;
+  font-family: var(--font-display), var(--font-body), sans-serif;
+  font-size: 1.25rem;
+  font-weight: 600;
+  line-height: 1;
+  color: var(--foreground);
+  font-variant-numeric: tabular-nums;
+}
+.dashboard .creator-moderation-table {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+.dashboard .creator-moderation-table-head,
+.dashboard .creator-moderation-row {
+  display: grid;
+  grid-template-columns: minmax(7.5rem, 0.75fr) minmax(0, 1.85fr) minmax(7rem, 0.6fr) minmax(6.5rem, auto);
+  gap: 0.85rem;
+  align-items: center;
+}
+.dashboard .creator-moderation-table-head {
+  padding: 0 1rem;
+}
+.dashboard .creator-moderation-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+.dashboard .creator-moderation-row {
+  border-radius: var(--radius-md);
+  border: 1px solid color-mix(in oklch, var(--foreground) 7%, transparent);
+  background:
+    linear-gradient(
+      90deg,
+      color-mix(in oklch, var(--foreground) 5%, transparent),
+      color-mix(in oklch, var(--foreground) 2.5%, transparent)
+    );
+  padding: 0.8rem 1rem;
+  box-shadow: inset 0 1px 0 color-mix(in oklch, var(--foreground) 5%, transparent);
+}
+.dashboard .creator-moderation-row[data-state="hidden"] {
+  opacity: 0.72;
+}
+.dashboard .creator-moderation-amount span {
+  font-family: var(--font-label), monospace;
+  font-size: 0.95rem;
+  line-height: 1.15;
+  color: var(--foreground);
+  font-variant-numeric: tabular-nums;
+}
+.dashboard .creator-moderation-donor {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 0.12rem;
+}
+.dashboard .creator-moderation-donor span,
+.dashboard .creator-moderation-donor small {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dashboard .creator-moderation-donor span {
+  color: var(--foreground);
+  font-size: 0.86rem;
+  font-weight: 600;
+}
+.dashboard .creator-moderation-donor small {
+  color: var(--muted-foreground);
+  font-size: 0.78rem;
+}
+.dashboard .creator-moderation-status {
+  display: inline-flex;
+  width: fit-content;
+  align-items: center;
+  gap: 0.4rem;
+  border-radius: 9999px;
+  border: 1px solid color-mix(in oklch, var(--foreground) 9%, transparent);
+  background: color-mix(in oklch, var(--foreground) 4%, transparent);
+  padding: 0.28rem 0.55rem;
+  font-family: var(--font-label), monospace;
+  font-size: 0.68rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+}
+.dashboard .creator-moderation-status[data-tone="visible"] {
+  border-color: color-mix(in oklch, var(--primary) 30%, transparent);
+  color: var(--primary);
+}
+.dashboard .creator-moderation-status .dot {
+  width: 0.35rem;
+  height: 0.35rem;
+  border-radius: 9999px;
+  background: currentColor;
+  box-shadow: 0 0 14px color-mix(in oklch, currentColor 45%, transparent);
+}
+.dashboard .creator-moderation-action {
+  display: flex;
+  justify-content: flex-end;
 }
 .dashboard .creator-profile-editor {
   overflow: hidden;
@@ -1374,6 +1523,40 @@ body {
 
   .dashboard .creator-settings-list {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .dashboard .creator-moderation-heading {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .dashboard .creator-moderation-table-head {
+    display: none;
+  }
+
+  .dashboard .creator-moderation-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "amount status"
+      "donor donor"
+      "action action";
+    align-items: start;
+  }
+
+  .dashboard .creator-moderation-amount {
+    grid-area: amount;
+  }
+
+  .dashboard .creator-moderation-donor {
+    grid-area: donor;
+  }
+
+  .dashboard .creator-moderation-status {
+    grid-area: status;
+  }
+
+  .dashboard .creator-moderation-action {
+    grid-area: action;
+    justify-content: flex-start;
   }
 
   .dashboard .creator-profile-cover-actions {

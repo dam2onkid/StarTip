@@ -122,7 +122,7 @@ describe("/dashboard shell", () => {
 
     expect(screen.queryByText(/^Active$/)).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /edit creator profile/i }));
-    const input = screen.getByLabelText(/^name$/i);
+    const input = screen.getByLabelText(/display name/i);
     const bioInput = screen.getByLabelText(/bio/i);
     await act(async () => {
       fireEvent.change(input, { target: { value: "Ada Lovelace" } });
@@ -135,7 +135,7 @@ describe("/dashboard shell", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByTestId("save-status")).toHaveTextContent(/saved/i);
+      expect(screen.getByTestId("creator-save-status")).toHaveTextContent(/saved/i);
     });
     expect(fromUpdate).toHaveBeenCalledWith({
       display_name: "Ada Lovelace",
@@ -174,7 +174,7 @@ describe("/dashboard shell", () => {
       fireEvent.click(screen.getByTestId("creator-profile-save"));
     });
     await waitFor(() => {
-      expect(screen.getByTestId("save-status")).toHaveTextContent(/saved/i);
+      expect(screen.getByTestId("creator-save-status")).toHaveTextContent(/saved/i);
     });
     expect(storageUpload).toHaveBeenCalledWith(
       expect.stringMatching(/^u1\/banner-\d+\.png$/),

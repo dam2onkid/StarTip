@@ -19,6 +19,7 @@ import {
   loadCreatorDashboardData,
   type CreatorDonationRow,
 } from "@/lib/creators/creator-stats";
+import { type TokenAllowlistEntry } from "@/lib/donations/token";
 
 /**
  * `/dashboard` — authed shell for the `(auth)` route group.
@@ -49,6 +50,13 @@ export default async function DashboardPage() {
   }
 
   const service = createServiceClient();
+
+  // Token allowlist: needed by the dashboard tabs to convert raw amounts to
+  // display units with token symbols.
+  const { data: tokenRows } = await service
+    .from("tokens")
+    .select("contract_address,symbol,name,issuer,decimals,icon_url");
+  const tokens = (tokenRows ?? []) as TokenAllowlistEntry[];
 
   // Profile: Creator fields + Donor identity fields.
   const { data: profile } = await supabase
@@ -119,7 +127,7 @@ export default async function DashboardPage() {
   // computeDonorRank.
   const { data: allRows } = await service
     .from("donations")
-    .select("donor_name,amount,user_id,creator_profile_id")
+    .select("donor_name,amount,user_id,creator_profile_id,token")
     .in("status", ["confirmed", "indexed"])
     .eq("moderation_status", "visible");
   const allDonations = (allRows ?? []) as DonorRankRow[];
@@ -154,6 +162,7 @@ export default async function DashboardPage() {
         display_name: info?.display_name ?? "Unknown creator",
         rank: rank.rank,
         total: rank.total,
+        token: rank.token,
       };
     });
   }
@@ -194,6 +203,7 @@ export default async function DashboardPage() {
       creatorProfile={creatorProfile}
       donorData={donorData}
       creatorActiveData={creatorActiveData}
+      tokens={tokens}
     />
   );
 }
@@ -213,8 +223,10 @@ export function DashboardShell({
   creatorProfile,
   donorData,
   creatorActiveData,
+  tokens = [],
 }: Omit<DashboardTabsProps, "creatorProfile"> & {
   creatorProfile?: CreatorProfile;
+  tokens?: TokenAllowlistEntry[];
 }) {
   const profile: CreatorProfile = creatorProfile ?? {
     id: "",
@@ -232,6 +244,7 @@ export function DashboardShell({
       creatorProfile={profile}
       donorData={donorData}
       creatorActiveData={creatorActiveData}
+      tokens={tokens}
     />
   );
 }

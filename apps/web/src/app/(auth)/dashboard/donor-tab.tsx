@@ -7,6 +7,11 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import {
+  buildTokenMap,
+  getTokenDisplay,
+  type TokenAllowlistEntry,
+} from "@/lib/donations/token";
 
 /**
  * The Donor tab of `/dashboard`: a logged-in User sees their donation
@@ -39,20 +44,30 @@ export interface DonorPerCreatorRank {
   display_name: string;
   rank: number | null;
   total: string;
+  token?: string;
 }
 
 export interface DonorTabProps {
   profile: DonorProfile;
   donations: DonorDonation[];
-  globalRank: { rank: number | null; total: string };
+  globalRank: { rank: number | null; total: string; token?: string };
   perCreatorRanks: DonorPerCreatorRank[];
+  tokens?: TokenAllowlistEntry[];
 }
 
 export function DonorTab({
   donations,
   globalRank,
   perCreatorRanks,
+  tokens = [],
 }: DonorTabProps) {
+  const tokenMap = buildTokenMap(tokens);
+  const globalRankDisplay = getTokenDisplay(
+    globalRank.total,
+    globalRank.token,
+    tokenMap,
+  );
+
   return (
     <div className="grid gap-4 lg:grid-cols-[minmax(0,1.35fr)_minmax(280px,0.65fr)]">
       <Card className="lg:row-span-2">
@@ -67,27 +82,31 @@ export function DonorTab({
             </p>
           ) : (
             <ul className="flex flex-col gap-2" data-testid="donor-history">
-              {donations.map((d) => (
-                <li
-                  key={d.id}
-                  className="row-inset flex items-center justify-between px-3 py-2"
-                >
-                  <span className="flex flex-col">
-                    <span className="font-mono text-sm text-foreground">
-                      {d.amount} {d.token}
+              {donations.map((d) => {
+                const display = getTokenDisplay(d.amount, d.token, tokenMap);
+                return (
+                  <li
+                    key={d.id}
+                    className="row-inset flex items-center justify-between px-3 py-2"
+                  >
+                    <span className="flex flex-col">
+                      <span className="font-mono text-sm text-foreground">
+                        {display.amount}
+                        {display.symbol ? ` ${display.symbol}` : ""}
+                      </span>
+                      {d.message && (
+                        <span className="text-xs text-muted-foreground">{d.message}</span>
+                      )}
                     </span>
-                    {d.message && (
-                      <span className="text-xs text-muted-foreground">{d.message}</span>
-                    )}
-                  </span>
-                  <span className="flex flex-col items-end">
-                    <span className="text-xs text-muted-foreground">
-                      {new Date(d.created_at).toLocaleDateString()}
+                    <span className="flex flex-col items-end">
+                      <span className="text-xs text-muted-foreground">
+                        {new Date(d.created_at).toLocaleDateString()}
+                      </span>
+                      <span className="text-xs text-muted-foreground">{d.status}</span>
                     </span>
-                    <span className="text-xs text-muted-foreground">{d.status}</span>
-                  </span>
-                </li>
-              ))}
+                  </li>
+                );
+              })}
             </ul>
           )}
         </CardContent>
@@ -115,7 +134,8 @@ export function DonorTab({
                   #{globalRank.rank}
                 </span>
                 <span className="text-sm text-muted-foreground">
-                  with {globalRank.total} donated
+                  with {globalRankDisplay.amount}
+                  {globalRankDisplay.symbol ? ` ${globalRankDisplay.symbol}` : ""} donated
                 </span>
               </div>
             </div>
