@@ -1,29 +1,25 @@
 // @vitest-environment node
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { NextRequest } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 
 /**
- * /api/overlay-settings — public GET (returns the Creator's settings row or
- * defaults) and authed PUT (upserts the caller's row via the browser RLS
- * path). Supabase is mocked; tests assert on status, body, and the
- * side-effect writes.
+ * /api/overlay-settings - public GET (returns the Creator's settings row or
+ * defaults) and authed PUT (upserts the caller's row via the AuthContext
+ * boundary). The auth boundary and Supabase service role are mocked; tests
+ * assert on status, body, and the side-effect writes.
  */
 
 const USER_ID = "00000000-0000-0000-0000-000000000001";
 const OTHER_ID = "00000000-0000-0000-0000-000000000002";
 const CREATOR_PROFILE_ID = "11111111-1111-1111-1111-111111111111";
 
-const getUser = vi.fn();
-const serverFrom = vi.fn();
-const serviceFrom = vi.fn();
-
-vi.mock("@/lib/supabase/server", () => ({
-  createServerClient: vi.fn(async () => ({
-    auth: { getUser },
-    from: serverFrom,
-  })),
+const requireAuthedCreatorMock = vi.hoisted(() => vi.fn());
+vi.mock("@/lib/auth/context", () => ({
+  requireAuthedCreator: requireAuthedCreatorMock,
 }));
 
+const serverFrom = vi.fn();
+const serviceFrom = vi.fn();
 vi.mock("@startip/shared/supabase/service", () => ({
   createServiceClient: vi.fn(() => ({ from: serviceFrom })),
 }));
@@ -65,6 +61,21 @@ function upsertChain(recorder: { payload: unknown; error: unknown }) {
   };
 }
 
+function authError(code: string, status: number) {
+  return { ok: false, response: NextResponse.json({ error: code }, { status }) };
+}
+
+function authContext(profile: Record<string, unknown>) {
+  return {
+    ok: true,
+    context: {
+      user: { id: USER_ID },
+      profile,
+      supabase: { from: serverFrom },
+    },
+  };
+}
+
 function getReq(handle: string) {
   return new NextRequest(
     `http://localhost/api/overlay-settings?handle=${encodeURIComponent(handle)}`,
@@ -82,8 +93,6 @@ function putReq(body: unknown) {
 
 describe("GET /api/overlay-settings", () => {
   beforeEach(() => {
-    getUser.mockReset();
-    serverFrom.mockReset();
     serviceFrom.mockReset();
   });
 
@@ -184,13 +193,16 @@ describe("GET /api/overlay-settings", () => {
 
 describe("PUT /api/overlay-settings", () => {
   beforeEach(() => {
-    getUser.mockReset();
+    requireAuthedCreatorMock.mockReset();
     serverFrom.mockReset();
     serviceFrom.mockReset();
+    requireAuthedCreatorMock.mockResolvedValue(
+      authContext({ id: CREATOR_PROFILE_ID, user_id: USER_ID, handle: "ada" }),
+    );
   });
 
   it("returns 401 when there is no session", async () => {
-    getUser.mockResolvedValue({ data: { user: null }, error: null });
+    requireAuthedCreatorMock.mockResolvedValue(authError("unauthorized", 401));
     const { PUT } = await import("@/app/api/overlay-settings/route");
     const res = await PUT(putReq({ alert_duration_ms: 4000, min_amount: 5, sound_enabled: true }));
     expect(res.status).toBe(401);
@@ -198,8 +210,7 @@ describe("PUT /api/overlay-settings", () => {
   });
 
   it("returns 404 when the caller has no profile row", async () => {
-    getUser.mockResolvedValue({ data: { user: { id: USER_ID } }, error: null });
-    serverFrom.mockImplementation(() => profilesSelectChain(null));
+    requireAuthedCreatorMock.mockResolvedValue(authError("profile_not_found", 404));
     const { PUT } = await import("@/app/api/overlay-settings/route");
     const res = await PUT(putReq({ alert_duration_ms: 4000, min_amount: 5, sound_enabled: true }));
     expect(res.status).toBe(404);
@@ -207,10 +218,7 @@ describe("PUT /api/overlay-settings", () => {
   });
 
   it("returns 400 not_creator when the caller has no handle (not a Creator)", async () => {
-    getUser.mockResolvedValue({ data: { user: { id: USER_ID } }, error: null });
-    serverFrom.mockImplementation(() =>
-      profilesSelectChain({ id: CREATOR_PROFILE_ID, user_id: USER_ID, handle: null }),
-    );
+    requireAuthedCreatorMock.mockResolvedValue(authError("not_creator", 400));
     const { PUT } = await import("@/app/api/overlay-settings/route");
     const res = await PUT(putReq({ alert_duration_ms: 4000, min_amount: 5, sound_enabled: true }));
     expect(res.status).toBe(400);
@@ -218,10 +226,6 @@ describe("PUT /api/overlay-settings", () => {
   });
 
   it("returns 400 invalid_alert_duration when alert_duration_ms is out of range", async () => {
-    getUser.mockResolvedValue({ data: { user: { id: USER_ID } }, error: null });
-    serverFrom.mockImplementation(() =>
-      profilesSelectChain({ id: CREATOR_PROFILE_ID, user_id: USER_ID, handle: "ada" }),
-    );
     const { PUT } = await import("@/app/api/overlay-settings/route");
     const tooLow = await PUT(putReq({ alert_duration_ms: 500, min_amount: 0, sound_enabled: true }));
     expect(tooLow.status).toBe(400);
@@ -232,10 +236,6 @@ describe("PUT /api/overlay-settings", () => {
   });
 
   it("returns 400 invalid_min_amount when min_amount is negative", async () => {
-    getUser.mockResolvedValue({ data: { user: { id: USER_ID } }, error: null });
-    serverFrom.mockImplementation(() =>
-      profilesSelectChain({ id: CREATOR_PROFILE_ID, user_id: USER_ID, handle: "ada" }),
-    );
     const { PUT } = await import("@/app/api/overlay-settings/route");
     const res = await PUT(putReq({ alert_duration_ms: 4000, min_amount: -1, sound_enabled: true }));
     expect(res.status).toBe(400);
@@ -243,10 +243,6 @@ describe("PUT /api/overlay-settings", () => {
   });
 
   it("returns 400 invalid_sound_enabled when sound_enabled is not a boolean", async () => {
-    getUser.mockResolvedValue({ data: { user: { id: USER_ID } }, error: null });
-    serverFrom.mockImplementation(() =>
-      profilesSelectChain({ id: CREATOR_PROFILE_ID, user_id: USER_ID, handle: "ada" }),
-    );
     const { PUT } = await import("@/app/api/overlay-settings/route");
     const res = await PUT(putReq({ alert_duration_ms: 4000, min_amount: 0, sound_enabled: "yes" }));
     expect(res.status).toBe(400);
@@ -254,7 +250,6 @@ describe("PUT /api/overlay-settings", () => {
   });
 
   it("returns 400 invalid_body when the body is not valid JSON", async () => {
-    getUser.mockResolvedValue({ data: { user: { id: USER_ID } }, error: null });
     const { PUT } = await import("@/app/api/overlay-settings/route");
     const res = await PUT(
       new NextRequest("http://localhost/api/overlay-settings", {
@@ -268,17 +263,8 @@ describe("PUT /api/overlay-settings", () => {
   });
 
   it("upserts the caller's row via the session client (RLS owner write) and returns 200", async () => {
-    getUser.mockResolvedValue({ data: { user: { id: USER_ID } }, error: null });
-    serverFrom.mockImplementation(() =>
-      profilesSelectChain({ id: CREATOR_PROFILE_ID, user_id: USER_ID, handle: "ada" }),
-    );
     const recorder = { payload: null as unknown, error: null as unknown };
-    // The PUT path uses the session client (serverFrom) for both the profile
-    // read and the upsert; the second serverFrom call returns the upsert chain.
-    serverFrom.mockImplementationOnce(() =>
-      profilesSelectChain({ id: CREATOR_PROFILE_ID, user_id: USER_ID, handle: "ada" }),
-    );
-    serverFrom.mockImplementationOnce(() => upsertChain(recorder));
+    serverFrom.mockImplementation(() => upsertChain(recorder));
     const { PUT } = await import("@/app/api/overlay-settings/route");
     const res = await PUT(putReq({ alert_duration_ms: 4000, min_amount: 5, sound_enabled: false }));
     expect(res.status).toBe(200);
@@ -298,12 +284,11 @@ describe("PUT /api/overlay-settings", () => {
   });
 
   it("returns 500 db_error when the upsert errors (e.g. RLS denial surfaces as an error)", async () => {
-    getUser.mockResolvedValue({ data: { user: { id: OTHER_ID } }, error: null });
-    serverFrom.mockImplementationOnce(() =>
-      profilesSelectChain({ id: "22222222-2222-2222-2222-222222222222", user_id: OTHER_ID, handle: "bob" }),
+    requireAuthedCreatorMock.mockResolvedValue(
+      authContext({ id: "22222222-2222-2222-2222-222222222222", user_id: OTHER_ID, handle: "bob" }),
     );
     const recorder = { payload: null as unknown, error: { message: "rls denied", code: "42501" } };
-    serverFrom.mockImplementationOnce(() => upsertChain(recorder));
+    serverFrom.mockImplementation(() => upsertChain(recorder));
     const { PUT } = await import("@/app/api/overlay-settings/route");
     const res = await PUT(putReq({ alert_duration_ms: 4000, min_amount: 0, sound_enabled: true }));
     expect(res.status).toBe(500);

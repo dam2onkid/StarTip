@@ -1,10 +1,10 @@
 // @vitest-environment node
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { NextRequest } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import * as StellarSdk from "@stellar/stellar-sdk";
 
 /**
- * POST /api/wallet/link — verify a `signMessage` signature against the
+ * POST /api/wallet/link - verify a `signMessage` signature against the
  * reconstructed challenge, enforce nonce + expiry, allow re-link only while
  * `onchain_registered = false`, reject `signerAddress` mismatch, and write
  * `owner_address` (service role). Signature verification uses the real
@@ -21,17 +21,12 @@ const HANDLE_HASH_HEX = handleHashHex(HANDLE);
 const SIGNER = StellarSdk.Keypair.random();
 const ADDRESS = SIGNER.publicKey();
 
-const getUser = vi.fn();
-const serverFrom = vi.fn();
-const serviceFrom = vi.fn();
-
-vi.mock("@/lib/supabase/server", () => ({
-  createServerClient: vi.fn(async () => ({
-    auth: { getUser },
-    from: serverFrom,
-  })),
+const requireAuthedProfileMock = vi.hoisted(() => vi.fn());
+vi.mock("@/lib/auth/context", () => ({
+  requireAuthedProfile: requireAuthedProfileMock,
 }));
 
+const serviceFrom = vi.fn();
 vi.mock("@startip/shared/supabase/service", () => ({
   createServiceClient: vi.fn(() => ({ from: serviceFrom })),
 }));
@@ -49,12 +44,19 @@ function req(body: unknown) {
   });
 }
 
-function profileChain(data: unknown) {
-  const chain: Record<string, unknown> = {};
-  chain.select = vi.fn(() => chain);
-  chain.eq = vi.fn(() => chain);
-  chain.maybeSingle = vi.fn(async () => ({ data, error: null }));
-  return chain;
+function authError(code: string, status: number) {
+  return { ok: false, response: NextResponse.json({ error: code }, { status }) };
+}
+
+function authContext(profile: Record<string, unknown>) {
+  return {
+    ok: true,
+    context: {
+      user: { id: USER_ID },
+      profile,
+      supabase: { from: vi.fn() },
+    },
+  };
 }
 
 function updateChain(recorder: { payload: unknown; filter: unknown }) {
@@ -106,13 +108,13 @@ function sign(challenge: string, kp: StellarSdk.Keypair = SIGNER) {
 
 describe("POST /api/wallet/link", () => {
   beforeEach(() => {
-    getUser.mockReset();
-    serverFrom.mockReset();
+    requireAuthedProfileMock.mockReset();
     serviceFrom.mockReset();
+    requireAuthedProfileMock.mockResolvedValue(authContext(profileWithNonce()));
   });
 
   it("returns 401 when there is no session", async () => {
-    getUser.mockResolvedValue({ data: { user: null }, error: null });
+    requireAuthedProfileMock.mockResolvedValue(authError("unauthorized", 401));
     const { POST } = await import("@/app/api/wallet/link/route");
     const res = await POST(req({ address: ADDRESS, signedMessage: "deadbeef" }));
     expect(res.status).toBe(401);
@@ -120,7 +122,6 @@ describe("POST /api/wallet/link", () => {
   });
 
   it("returns 400 when the body is missing required fields", async () => {
-    getUser.mockResolvedValue({ data: { user: { id: USER_ID } }, error: null });
     const { POST } = await import("@/app/api/wallet/link/route");
     const res = await POST(req({ address: ADDRESS }));
     expect(res.status).toBe(400);
@@ -128,8 +129,7 @@ describe("POST /api/wallet/link", () => {
   });
 
   it("returns 404 when the caller has no profile", async () => {
-    getUser.mockResolvedValue({ data: { user: { id: USER_ID } }, error: null });
-    serverFrom.mockImplementation(() => profileChain(null));
+    requireAuthedProfileMock.mockResolvedValue(authError("profile_not_found", 404));
     const { POST } = await import("@/app/api/wallet/link/route");
     const res = await POST(req({ address: ADDRESS, signedMessage: "deadbeef" }));
     expect(res.status).toBe(404);
@@ -137,12 +137,8 @@ describe("POST /api/wallet/link", () => {
   });
 
   it("returns 409 'already_linked' when linked and registered on-chain", async () => {
-    getUser.mockResolvedValue({ data: { user: { id: USER_ID } }, error: null });
-    serverFrom.mockImplementation(() =>
-      profileChain(profileWithNonce({
-        owner_address: "GOLDWALLET",
-        onchain_registered: true,
-      })),
+    requireAuthedProfileMock.mockResolvedValue(
+      authContext(profileWithNonce({ owner_address: "GOLDWALLET", onchain_registered: true })),
     );
     const { POST } = await import("@/app/api/wallet/link/route");
     const res = await POST(req({ address: ADDRESS, signedMessage: "deadbeef" }));
@@ -151,8 +147,6 @@ describe("POST /api/wallet/link", () => {
   });
 
   it("returns 400 'signer_mismatch' when signerAddress differs from address", async () => {
-    getUser.mockResolvedValue({ data: { user: { id: USER_ID } }, error: null });
-    serverFrom.mockImplementation(() => profileChain(profileWithNonce()));
     const { POST } = await import("@/app/api/wallet/link/route");
     const res = await POST(
       req({ address: ADDRESS, signedMessage: "deadbeef", signerAddress: "GDOTHER" }),
@@ -162,11 +156,10 @@ describe("POST /api/wallet/link", () => {
   });
 
   it("returns 400 'nonce_expired' when the nonce expiry is in the past", async () => {
-    getUser.mockResolvedValue({ data: { user: { id: USER_ID } }, error: null });
     const profile = profileWithNonce({
       wallet_link_nonce_expires_at: new Date(Date.now() - 60_000).toISOString(),
     });
-    serverFrom.mockImplementation(() => profileChain(profile));
+    requireAuthedProfileMock.mockResolvedValue(authContext(profile));
     const { POST } = await import("@/app/api/wallet/link/route");
     const res = await POST(req({ address: ADDRESS, signedMessage: sign(profile._challenge) }));
     expect(res.status).toBe(400);
@@ -174,9 +167,8 @@ describe("POST /api/wallet/link", () => {
   });
 
   it("returns 400 'nonce_missing' when no nonce is stored", async () => {
-    getUser.mockResolvedValue({ data: { user: { id: USER_ID } }, error: null });
-    serverFrom.mockImplementation(() =>
-      profileChain(profileWithNonce({ wallet_link_nonce: null, wallet_link_nonce_expires_at: null })),
+    requireAuthedProfileMock.mockResolvedValue(
+      authContext(profileWithNonce({ wallet_link_nonce: null, wallet_link_nonce_expires_at: null })),
     );
     const { POST } = await import("@/app/api/wallet/link/route");
     const res = await POST(req({ address: ADDRESS, signedMessage: "deadbeef" }));
@@ -185,8 +177,6 @@ describe("POST /api/wallet/link", () => {
   });
 
   it("returns 400 'invalid_signature' when the signature does not verify", async () => {
-    getUser.mockResolvedValue({ data: { user: { id: USER_ID } }, error: null });
-    serverFrom.mockImplementation(() => profileChain(profileWithNonce()));
     const { POST } = await import("@/app/api/wallet/link/route");
     const res = await POST(req({ address: ADDRESS, signedMessage: "00".repeat(64) }));
     expect(res.status).toBe(400);
@@ -194,9 +184,8 @@ describe("POST /api/wallet/link", () => {
   });
 
   it("writes owner_address, nulls the nonce, and returns owner_address on a valid signature", async () => {
-    getUser.mockResolvedValue({ data: { user: { id: USER_ID } }, error: null });
     const profile = profileWithNonce();
-    serverFrom.mockImplementation(() => profileChain(profile));
+    requireAuthedProfileMock.mockResolvedValue(authContext(profile));
     const recorder = { payload: null as unknown, filter: null as unknown };
     serviceFrom.mockImplementation(() => updateChain(recorder));
     const { POST } = await import("@/app/api/wallet/link/route");
@@ -217,9 +206,8 @@ describe("POST /api/wallet/link", () => {
   });
 
   it("allows re-link to a new wallet when onchain_registered is false", async () => {
-    getUser.mockResolvedValue({ data: { user: { id: USER_ID } }, error: null });
     const profile = profileWithNonce({ owner_address: "GOLDWALLET", onchain_registered: false });
-    serverFrom.mockImplementation(() => profileChain(profile));
+    requireAuthedProfileMock.mockResolvedValue(authContext(profile));
     serviceFrom.mockImplementation(() => updateChain({ payload: null, filter: null }));
     const { POST } = await import("@/app/api/wallet/link/route");
     const res = await POST(req({ address: ADDRESS, signedMessage: sign(profile._challenge) }));
@@ -228,8 +216,6 @@ describe("POST /api/wallet/link", () => {
   });
 
   it("returns 400 'invalid_address' when the address is not a valid public key", async () => {
-    getUser.mockResolvedValue({ data: { user: { id: USER_ID } }, error: null });
-    serverFrom.mockImplementation(() => profileChain(profileWithNonce()));
     const { POST } = await import("@/app/api/wallet/link/route");
     const res = await POST(req({ address: "not-a-key", signedMessage: "deadbeef" }));
     expect(res.status).toBe(400);

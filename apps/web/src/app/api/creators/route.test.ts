@@ -1,29 +1,23 @@
 // @vitest-environment node
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { NextRequest } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 
 /**
- * POST /api/creators — claim a Handle. The route is a pure HTTP function:
- * authed via the SSR server client, dual-source availability check against the
+ * POST /api/creators - claim a Handle. The route is a pure HTTP function:
+ * authed via the AuthContext boundary, dual-source availability check against the
  * `profiles` table and on-chain `get_creator`, then a service-role write of
- * `handle` + `handle_hash`. Supabase and the availability check are mocked;
+ * `handle` + `handle_hash`. The auth boundary and availability check are mocked;
  * tests assert on status, body, and the side-effect writes.
  */
 
 const USER_ID = "00000000-0000-0000-0000-000000000001";
-const OTHER_ID = "00000000-0000-0000-0000-000000000002";
 
-const getUser = vi.fn();
-const serverFrom = vi.fn();
-const serviceFrom = vi.fn();
-
-vi.mock("@/lib/supabase/server", () => ({
-  createServerClient: vi.fn(async () => ({
-    auth: { getUser },
-    from: serverFrom,
-  })),
+const requireAuthedProfileMock = vi.hoisted(() => vi.fn());
+vi.mock("@/lib/auth/context", () => ({
+  requireAuthedProfile: requireAuthedProfileMock,
 }));
 
+const serviceFrom = vi.fn();
 vi.mock("@startip/shared/supabase/service", () => ({
   createServiceClient: vi.fn(() => ({ from: serviceFrom })),
 }));
@@ -37,12 +31,26 @@ vi.mock("@/lib/stellar/client", () => ({
   networkPassphrase: "Test SDF Network ; September 2015",
 }));
 
-// Keep the pure helpers real; mock only the rpc-touching availability check.
 const checkHandleAvailability = vi.fn();
 vi.mock("@/lib/creators/handle", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/creators/handle")>()),
   checkHandleAvailability,
 }));
+
+function authError(code: string, status: number) {
+  return { ok: false, response: NextResponse.json({ error: code }, { status }) };
+}
+
+function authContext(profile: Record<string, unknown>) {
+  return {
+    ok: true,
+    context: {
+      user: { id: USER_ID },
+      profile,
+      supabase: { from: vi.fn() },
+    },
+  };
+}
 
 function req(body: unknown) {
   return new NextRequest("http://localhost/api/creators", {
@@ -50,16 +58,6 @@ function req(body: unknown) {
     headers: { "content-type": "application/json" },
     body: JSON.stringify(body),
   });
-}
-
-/** A profiles chain that resolves maybeSingle to `data` on each call. */
-function profilesChain(data: unknown) {
-  const chain: Record<string, unknown> = {};
-  chain.select = vi.fn(() => chain);
-  chain.eq = vi.fn(() => chain);
-  chain.neq = vi.fn(() => chain);
-  chain.maybeSingle = vi.fn(async () => ({ data, error: null }));
-  return chain;
 }
 
 /** A service-role update chain that records the payload + filter and resolves. */
@@ -77,14 +75,16 @@ function updateChain(recorder: { payload: unknown; filter: unknown }) {
 
 describe("POST /api/creators", () => {
   beforeEach(() => {
-    getUser.mockReset();
-    serverFrom.mockReset();
+    requireAuthedProfileMock.mockReset();
     serviceFrom.mockReset();
     checkHandleAvailability.mockReset();
+    requireAuthedProfileMock.mockResolvedValue(
+      authContext({ id: "p1", user_id: USER_ID, handle: null, onchain_registered: false }),
+    );
   });
 
   it("returns 401 when there is no session", async () => {
-    getUser.mockResolvedValue({ data: { user: null }, error: null });
+    requireAuthedProfileMock.mockResolvedValue(authError("unauthorized", 401));
     const { POST } = await import("@/app/api/creators/route");
     const res = await POST(req({ handle: "ada" }));
     expect(res.status).toBe(401);
@@ -92,8 +92,6 @@ describe("POST /api/creators", () => {
   });
 
   it("returns 400 when the handle fails validation", async () => {
-    getUser.mockResolvedValue({ data: { user: { id: USER_ID } }, error: null });
-    serverFrom.mockImplementation(() => profilesChain(null));
     const { POST } = await import("@/app/api/creators/route");
     const res = await POST(req({ handle: "x" }));
     expect(res.status).toBe(400);
@@ -101,8 +99,7 @@ describe("POST /api/creators", () => {
   });
 
   it("returns 404 when the caller has no profile row", async () => {
-    getUser.mockResolvedValue({ data: { user: { id: USER_ID } }, error: null });
-    serverFrom.mockImplementation(() => profilesChain(null));
+    requireAuthedProfileMock.mockResolvedValue(authError("profile_not_found", 404));
     const { POST } = await import("@/app/api/creators/route");
     const res = await POST(req({ handle: "ada" }));
     expect(res.status).toBe(404);
@@ -110,9 +107,8 @@ describe("POST /api/creators", () => {
   });
 
   it("returns 409 when the caller is already registered on-chain", async () => {
-    getUser.mockResolvedValue({ data: { user: { id: USER_ID } }, error: null });
-    serverFrom.mockImplementation(() =>
-      profilesChain({ id: "p1", user_id: USER_ID, handle: "ada", onchain_registered: true }),
+    requireAuthedProfileMock.mockResolvedValue(
+      authContext({ id: "p1", user_id: USER_ID, handle: "ada", onchain_registered: true }),
     );
     const { POST } = await import("@/app/api/creators/route");
     const res = await POST(req({ handle: "newhandle" }));
@@ -121,10 +117,6 @@ describe("POST /api/creators", () => {
   });
 
   it("returns 409 with reason offchain_taken when the handle is reserved by another user", async () => {
-    getUser.mockResolvedValue({ data: { user: { id: USER_ID } }, error: null });
-    serverFrom.mockImplementation(() =>
-      profilesChain({ id: "p1", user_id: USER_ID, handle: null, onchain_registered: false }),
-    );
     checkHandleAvailability.mockResolvedValue({ available: false, reason: "offchain_taken" });
     const { POST } = await import("@/app/api/creators/route");
     const res = await POST(req({ handle: "ada" }));
@@ -136,10 +128,6 @@ describe("POST /api/creators", () => {
   });
 
   it("returns 409 with reason onchain_taken when get_creator returns Some", async () => {
-    getUser.mockResolvedValue({ data: { user: { id: USER_ID } }, error: null });
-    serverFrom.mockImplementation(() =>
-      profilesChain({ id: "p1", user_id: USER_ID, handle: null, onchain_registered: false }),
-    );
     checkHandleAvailability.mockResolvedValue({ available: false, reason: "onchain_taken" });
     const { POST } = await import("@/app/api/creators/route");
     const res = await POST(req({ handle: "ada" }));
@@ -148,10 +136,6 @@ describe("POST /api/creators", () => {
   });
 
   it("claims the handle and returns the Creator fields on success", async () => {
-    getUser.mockResolvedValue({ data: { user: { id: USER_ID } }, error: null });
-    serverFrom.mockImplementation(() =>
-      profilesChain({ id: "p1", user_id: USER_ID, handle: null, onchain_registered: false }),
-    );
     checkHandleAvailability.mockResolvedValue({ available: true });
     const recorder = { payload: null as unknown, filter: null as unknown };
     serviceFrom.mockImplementation(() => updateChain(recorder));
@@ -169,10 +153,6 @@ describe("POST /api/creators", () => {
   });
 
   it("dryRun returns 200 { available: true } without writing", async () => {
-    getUser.mockResolvedValue({ data: { user: { id: USER_ID } }, error: null });
-    serverFrom.mockImplementation(() =>
-      profilesChain({ id: "p1", user_id: USER_ID, handle: null, onchain_registered: false }),
-    );
     checkHandleAvailability.mockResolvedValue({ available: true });
     const recorder = { payload: null as unknown, filter: null as unknown };
     serviceFrom.mockImplementation(() => updateChain(recorder));
@@ -185,10 +165,6 @@ describe("POST /api/creators", () => {
   });
 
   it("dryRun still returns 409 handle_taken when the handle is reserved", async () => {
-    getUser.mockResolvedValue({ data: { user: { id: USER_ID } }, error: null });
-    serverFrom.mockImplementation(() =>
-      profilesChain({ id: "p1", user_id: USER_ID, handle: null, onchain_registered: false }),
-    );
     checkHandleAvailability.mockResolvedValue({ available: false, reason: "offchain_taken" });
     const { POST } = await import("@/app/api/creators/route");
     const res = await POST(req({ handle: "ada", dryRun: true }));
@@ -197,7 +173,6 @@ describe("POST /api/creators", () => {
   });
 
   it("returns 400 when the body is not valid JSON", async () => {
-    getUser.mockResolvedValue({ data: { user: { id: USER_ID } }, error: null });
     const { POST } = await import("@/app/api/creators/route");
     const res = await POST(
       new NextRequest("http://localhost/api/creators", {
