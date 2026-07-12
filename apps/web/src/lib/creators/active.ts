@@ -2,6 +2,7 @@ import * as StellarSdk from "@stellar/stellar-sdk";
 import { contractId, getRpc, networkPassphrase } from "@/lib/stellar/client";
 import { signWalletTransaction } from "@/lib/wallet/kit";
 import { handleHashBuffer } from "@/lib/creators/handle-shared";
+import { invokeDonationRouter } from "@/lib/stellar/donation-router-invocation";
 
 /**
  * Active-Creator on-chain update helpers. Once a Creator is registered
@@ -59,8 +60,9 @@ export interface SetActiveArgs {
 
 /**
  * Build, sign, and submit `update_creator_payout(caller, creator_id_hash,
- * new_payout_address)`. The caller is the stored owner (require_auth target).
- * Throws on any step failure; the UI surfaces the error message.
+ * new_payout_address)` via `DonationRouterInvocation`. The caller is the stored
+ * owner (require_auth target). Throws on any step failure; the UI surfaces the
+ * error message.
  */
 export async function updateCreatorPayoutOnChain(
   args: UpdatePayoutArgs,
@@ -72,54 +74,26 @@ export async function updateCreatorPayoutOnChain(
   const { ownerAddress, handle, newPayoutAddress } = args;
   const rpc = getRpc();
 
-  const account = await rpc.getAccount(ownerAddress);
-  const contract = new StellarSdk.Contract(contractId);
-  const handleHash = handleHashBuffer(handle);
-
-  const tx = new StellarSdk.TransactionBuilder(account, {
-    fee: StellarSdk.BASE_FEE,
-    networkPassphrase,
-  })
-    .addOperation(
-      contract.call(
-        "update_creator_payout",
-        StellarSdk.Address.fromString(ownerAddress).toScVal(),
-        StellarSdk.xdr.ScVal.scvBytes(handleHash),
-        StellarSdk.Address.fromString(newPayoutAddress).toScVal(),
-      ),
-    )
-    .setTimeout(30)
-    .build();
-
-  const sim = await rpc.simulateTransaction(tx);
-  if (StellarSdk.rpc.Api.isSimulationError(sim)) {
-    throw new Error(`simulate update_creator_payout failed: ${sim.error}`);
-  }
-
-  const prepared = StellarSdk.rpc.assembleTransaction(tx, sim).build();
-  const { signedTxXdr, signerAddress } = await signWalletTransaction(
-    prepared.toXDR(),
-  );
-  if (signerAddress && signerAddress !== ownerAddress) {
-    throw new Error(
-      `signerAddress mismatch: expected ${ownerAddress}, got ${signerAddress}`,
-    );
-  }
-
-  const signed = StellarSdk.TransactionBuilder.fromXDR(signedTxXdr, networkPassphrase);
-  const sent = await rpc.sendTransaction(signed);
-  if (sent.status === "ERROR") {
-    const detail = sent.errorResult ? sent.errorResult.result().toString() : "unknown";
-    throw new Error(`update_creator_payout failed: ${sent.status} ${detail}`);
-  }
-  return { status: sent.status, hash: sent.hash };
+  return invokeDonationRouter({
+    method: "update_creator_payout",
+    args: [
+      StellarSdk.Address.fromString(ownerAddress).toScVal(),
+      StellarSdk.xdr.ScVal.scvBytes(handleHashBuffer(handle)),
+      StellarSdk.Address.fromString(newPayoutAddress).toScVal(),
+    ],
+    signer: {
+      address: ownerAddress,
+      signTransaction: signWalletTransaction,
+    },
+    networkConfig: { rpc, contractId, networkPassphrase },
+  });
 }
 
 /**
  * Build, sign, and submit `set_creator_active_owner(caller, creator_id_hash,
- * active)`. The caller is the stored owner (require_auth target). Pass
- * `active = false` to self-pause, `active = true` to self-unpause.
- * Throws on any step failure; the UI surfaces the error message.
+ * active)` via `DonationRouterInvocation`. The caller is the stored owner
+ * (require_auth target). Pass `active = false` to self-pause, `active = true` to
+ * self-unpause. Throws on any step failure; the UI surfaces the error message.
  */
 export async function setCreatorActiveOnChain(
   args: SetActiveArgs,
@@ -131,45 +105,17 @@ export async function setCreatorActiveOnChain(
   const { ownerAddress, handle, active } = args;
   const rpc = getRpc();
 
-  const account = await rpc.getAccount(ownerAddress);
-  const contract = new StellarSdk.Contract(contractId);
-  const handleHash = handleHashBuffer(handle);
-
-  const tx = new StellarSdk.TransactionBuilder(account, {
-    fee: StellarSdk.BASE_FEE,
-    networkPassphrase,
-  })
-    .addOperation(
-      contract.call(
-        "set_creator_active_owner",
-        StellarSdk.Address.fromString(ownerAddress).toScVal(),
-        StellarSdk.xdr.ScVal.scvBytes(handleHash),
-        StellarSdk.xdr.ScVal.scvBool(active),
-      ),
-    )
-    .setTimeout(30)
-    .build();
-
-  const sim = await rpc.simulateTransaction(tx);
-  if (StellarSdk.rpc.Api.isSimulationError(sim)) {
-    throw new Error(`simulate set_creator_active_owner failed: ${sim.error}`);
-  }
-
-  const prepared = StellarSdk.rpc.assembleTransaction(tx, sim).build();
-  const { signedTxXdr, signerAddress } = await signWalletTransaction(
-    prepared.toXDR(),
-  );
-  if (signerAddress && signerAddress !== ownerAddress) {
-    throw new Error(
-      `signerAddress mismatch: expected ${ownerAddress}, got ${signerAddress}`,
-    );
-  }
-
-  const signed = StellarSdk.TransactionBuilder.fromXDR(signedTxXdr, networkPassphrase);
-  const sent = await rpc.sendTransaction(signed);
-  if (sent.status === "ERROR") {
-    const detail = sent.errorResult ? sent.errorResult.result().toString() : "unknown";
-    throw new Error(`set_creator_active_owner failed: ${sent.status} ${detail}`);
-  }
-  return { status: sent.status, hash: sent.hash };
+  return invokeDonationRouter({
+    method: "set_creator_active_owner",
+    args: [
+      StellarSdk.Address.fromString(ownerAddress).toScVal(),
+      StellarSdk.xdr.ScVal.scvBytes(handleHashBuffer(handle)),
+      StellarSdk.xdr.ScVal.scvBool(active),
+    ],
+    signer: {
+      address: ownerAddress,
+      signTransaction: signWalletTransaction,
+    },
+    networkConfig: { rpc, contractId, networkPassphrase },
+  });
 }

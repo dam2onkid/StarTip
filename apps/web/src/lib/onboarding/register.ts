@@ -2,6 +2,7 @@ import * as StellarSdk from "@stellar/stellar-sdk";
 import { contractId, getRpc, networkPassphrase } from "@/lib/stellar/client";
 import { signWalletTransaction } from "@/lib/wallet/kit";
 import { handleHashBuffer } from "@/lib/creators/handle-shared";
+import { invokeDonationRouter } from "@/lib/stellar/donation-router-invocation";
 
 /**
  * Client-side onboarding transaction helpers. The Creator builds, signs, and
@@ -41,14 +42,8 @@ export interface RegisterResult {
 }
 
 /**
- * Build, sign, and submit `register_creator(handle_hash, payout_address)`.
- *
- * 1. Load the wallet account from RPC (the source must exist and be funded).
- * 2. Build the transaction with one `register_creator` invocation, invoking
- *    the wallet as the `owner` (require_auth target).
- * 3. Simulate to attach the Soroban auth + resource footprint.
- * 4. Sign with the wallet via the kit and submit.
- *
+ * Build, sign, and submit `register_creator(handle_hash, payout_address)` via
+ * `DonationRouterInvocation`. The wallet owns the on-chain signature.
  * Throws on any step failure; the UI surfaces the error message.
  */
 export async function registerCreatorOnChain(args: {
@@ -63,52 +58,19 @@ export async function registerCreatorOnChain(args: {
   const { ownerAddress, handle, payoutAddress } = args;
   const rpc = getRpc();
 
-  const account = await rpc.getAccount(ownerAddress);
-  const contract = new StellarSdk.Contract(contractId);
-  const handleHash = handleHashBuffer(handle);
-
-  const tx = new StellarSdk.TransactionBuilder(account, {
-    fee: StellarSdk.BASE_FEE,
-    networkPassphrase,
-  })
-    .addOperation(
-      contract.call(
-        "register_creator",
-        StellarSdk.Address.fromString(ownerAddress).toScVal(),
-        StellarSdk.xdr.ScVal.scvBytes(handleHash),
-        StellarSdk.Address.fromString(payoutAddress).toScVal(),
-      ),
-    )
-    .setTimeout(30)
-    .build();
-
-  const sim = await rpc.simulateTransaction(tx);
-  if (StellarSdk.rpc.Api.isSimulationError(sim)) {
-    throw new Error(`simulate register_creator failed: ${sim.error}`);
-  }
-
-  const prepared = StellarSdk.rpc.assembleTransaction(tx, sim).build();
-  const { signedTxXdr, signerAddress } = await signWalletTransaction(
-    prepared.toXDR(),
-  );
-  if (signerAddress && signerAddress !== ownerAddress) {
-    throw new Error(
-      `signerAddress mismatch: expected ${ownerAddress}, got ${signerAddress}`,
-    );
-  }
-
-  const signed = StellarSdk.TransactionBuilder.fromXDR(
-    signedTxXdr,
-    networkPassphrase,
-  );
-  const sent = await rpc.sendTransaction(signed);
-  if (sent.status === "ERROR") {
-    const detail = sent.errorResult
-      ? sent.errorResult.result().toString()
-      : "unknown";
-    throw new Error(`register_creator failed: ${sent.status} ${detail}`);
-  }
-  return { status: sent.status, hash: sent.hash };
+  return invokeDonationRouter({
+    method: "register_creator",
+    args: [
+      StellarSdk.Address.fromString(ownerAddress).toScVal(),
+      StellarSdk.xdr.ScVal.scvBytes(handleHashBuffer(handle)),
+      StellarSdk.Address.fromString(payoutAddress).toScVal(),
+    ],
+    signer: {
+      address: ownerAddress,
+      signTransaction: signWalletTransaction,
+    },
+    networkConfig: { rpc, contractId, networkPassphrase },
+  });
 }
 
 /**
