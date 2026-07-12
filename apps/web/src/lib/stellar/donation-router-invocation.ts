@@ -1,4 +1,8 @@
 import * as StellarSdk from "@stellar/stellar-sdk";
+import {
+  decodeContractErrorCode,
+  type ContractErrorCode,
+} from "@/lib/stellar/contract-errors";
 
 /**
  * Network-dependent dependencies for a DonationRouter contract invocation.
@@ -52,10 +56,37 @@ export interface InvokeDonationRouterResult {
   hash: string;
 }
 
+/** Pipeline-level codes returned by the invocation module. */
+export type InvocationErrorCode =
+  | ContractErrorCode
+  | "send_failed"
+  | "signer_mismatch"
+  | "unknown";
+
+/**
+ * Error thrown by `invokeDonationRouter` when simulation, signing, or
+ * submission fails. Carries a `code` so callers can map the failure to a
+ * domain-specific error without re-parsing the error message.
+ */
+export class InvocationError extends Error {
+  readonly code: InvocationErrorCode;
+  readonly method: string;
+  constructor(code: InvocationErrorCode, method: string, message: string) {
+    super(message);
+    this.name = "InvocationError";
+    this.code = code;
+    this.method = method;
+  }
+}
+
 /**
  * Build, simulate, assemble, sign, and submit a DonationRouter contract
  * invocation. This is the single public seam for all on-chain creator and
  * donation actions that call the router.
+ *
+ * Errors are thrown as `InvocationError` with a typed `code`. Recognized
+ * contract errors (Paused, AlreadyRegistered, ...) are decoded here; callers
+ * receive the typed code and the original error message.
  *
  * 1. Load the source account from RPC.
  * 2. Build a transaction with the contract invocation, optionally preceded by
@@ -89,7 +120,9 @@ export async function invokeDonationRouter(
 
   const sim = await rpc.simulateTransaction(tx);
   if (StellarSdk.rpc.Api.isSimulationError(sim)) {
-    throw new Error(`simulate ${method} failed: ${sim.error}`);
+    const error = sim.error ?? "";
+    const code = decodeContractErrorCode(error) ?? "unknown";
+    throw new InvocationError(code, method, `simulate ${method} failed: ${error}`);
   }
 
   const prepared =
@@ -99,14 +132,18 @@ export async function invokeDonationRouter(
 
   const { signedTxXdr, signerAddress } = await signer.signTransaction(prepared.toXDR());
   if (signerAddress && signerAddress !== signer.address) {
-    throw new Error(`signerAddress mismatch: expected ${signer.address}, got ${signerAddress}`);
+    throw new InvocationError(
+      "signer_mismatch",
+      method,
+      `signerAddress mismatch: expected ${signer.address}, got ${signerAddress}`,
+    );
   }
 
   const signed = StellarSdk.TransactionBuilder.fromXDR(signedTxXdr, networkPassphrase);
   const sent = await rpc.sendTransaction(signed);
   if (sent.status === "ERROR") {
     const detail = sent.errorResult ? sent.errorResult.result().toString() : "unknown";
-    throw new Error(`${method} failed: ${sent.status} ${detail}`);
+    throw new InvocationError("send_failed", method, `${method} failed: ${sent.status} ${detail}`);
   }
   return { status: sent.status, hash: sent.hash };
 }

@@ -3,10 +3,10 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import * as StellarSdk from "@stellar/stellar-sdk";
 
 /**
- * lib/donations/donate — client-side `donate()` transaction builder + error
- * decoder. The wallet owns the signature; the server never sees the secret
- * key. A `window.__STARTIP_DONATE_STUB__` seam lets the Playwright E2E
- * harness replace the build/sign/submit pipeline with a deterministic stub.
+ * lib/donations/donate - client-side `donate()` transaction wrapper. The
+ * wallet owns the signature; the server never sees the secret key. A
+ * `window.__STARTIP_DONATE_STUB__` seam lets the Playwright E2E harness
+ * replace the build/sign/submit pipeline with a deterministic stub.
  *
  * Tests cover:
  *   - donateOnChain happy path: builds, simulates, signs, submits, returns hash
@@ -14,7 +14,8 @@ import * as StellarSdk from "@stellar/stellar-sdk";
  *   - sendTransaction error -> throws DonateError with the result code
  *   - signer mismatch -> throws
  *   - stub seam short-circuits the pipeline
- *   - decodeDonateError maps each typed error code to a UI-facing message key
+ *   - two-op change_trust + donate path
+ *   - two-op path surfaces contract errors and trustline failures
  */
 
 const CONTRACT_ID = "CCV2XK5LVOV2XK5LVOV2XK5LVOV2XK5LVOV2XK5LVOV2XK5LVOV2XMCW";
@@ -167,7 +168,7 @@ describe("donateOnChain", () => {
       error: "Error(Paused)",
       result: undefined,
     } as unknown as StellarSdk.rpc.Api.SimulateTransactionResponse);
-    const { donateOnChain, DonateError } = await import("@/lib/donations/donate");
+    const { donateOnChain } = await import("@/lib/donations/donate");
     await expect(
       donateOnChain(
         {
@@ -179,7 +180,6 @@ describe("donateOnChain", () => {
         deps,
       ),
     ).rejects.toMatchObject({ name: "DonateError", code: "Paused" });
-    void DonateError;
   });
 
   it("throws DonateError with code 'TokenNotAllowed' when simulate returns that error", async () => {
@@ -343,7 +343,7 @@ describe("donateOnChain", () => {
   });
 
   it("throws DonateError with code 'trustline_failed' when change_trust fails at simulation", async () => {
-    const { deps, simulateTransaction } = makeDeps();
+    const { deps, simulateTransaction, sendTransaction } = makeDeps();
     // A simulation error that does not decode to a recognized contract error:
     // the change_trust op failed (e.g. asset issuer missing on-chain).
     simulateTransaction.mockResolvedValue({
@@ -367,7 +367,6 @@ describe("donateOnChain", () => {
       ),
     ).rejects.toMatchObject({ name: "DonateError", code: "trustline_failed" });
     // donate() is never submitted when the trustline step fails.
-    const { sendTransaction } = makeDeps();
     expect(sendTransaction).not.toHaveBeenCalled();
   });
 
@@ -396,21 +395,4 @@ describe("donateOnChain", () => {
   });
 });
 
-describe("decodeDonateError", () => {
-  it("maps each typed contract error name to its UI message key", async () => {
-    const { decodeDonateError } = await import("@/lib/donations/donate");
-    expect(decodeDonateError("Error(Unauthorized)")).toBe("Unauthorized");
-    expect(decodeDonateError("Error(Paused)")).toBe("Paused");
-    expect(decodeDonateError("Error(CreatorNotFound)")).toBe("CreatorNotFound");
-    expect(decodeDonateError("Error(CreatorInactive)")).toBe("CreatorInactive");
-    expect(decodeDonateError("Error(InvalidAmount)")).toBe("InvalidAmount");
-    expect(decodeDonateError("Error(TokenNotAllowed)")).toBe("TokenNotAllowed");
-    expect(decodeDonateError("Error(FeeCapExceeded)")).toBe("FeeCapExceeded");
-  });
 
-  it("returns 'unknown' for an unrecognized error string", async () => {
-    const { decodeDonateError } = await import("@/lib/donations/donate");
-    expect(decodeDonateError("something else")).toBe("unknown");
-    expect(decodeDonateError("")).toBe("unknown");
-  });
-});
