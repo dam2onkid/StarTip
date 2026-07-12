@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { NextResponse } from "next/server";
+import { authError, authContext } from "@/lib/auth/test-helpers";
 
 /**
  * POST /api/creators/reconcile - recover a Creator whose on-chain registration
@@ -38,21 +38,6 @@ vi.mock("@/lib/creators/handle", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/creators/handle")>()),
   readCreatorOnChain,
 }));
-
-function authError(code: string, status: number) {
-  return { ok: false, response: NextResponse.json({ error: code }, { status }) };
-}
-
-function authContext(profile: Record<string, unknown>) {
-  return {
-    ok: true,
-    context: {
-      user: { id: USER_ID },
-      profile,
-      supabase: { from: vi.fn() },
-    },
-  };
-}
 
 /** A service-role update chain that records the payload + filter and resolves. */
 function updateChain(recorder: { payload: unknown; filter: unknown }) {

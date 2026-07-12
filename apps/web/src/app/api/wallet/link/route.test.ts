@@ -1,7 +1,8 @@
 // @vitest-environment node
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import * as StellarSdk from "@stellar/stellar-sdk";
+import { authError, authContext } from "@/lib/auth/test-helpers";
 
 /**
  * POST /api/wallet/link - verify a `signMessage` signature against the
@@ -42,21 +43,6 @@ function req(body: unknown) {
     headers: { "content-type": "application/json" },
     body: JSON.stringify(body),
   });
-}
-
-function authError(code: string, status: number) {
-  return { ok: false, response: NextResponse.json({ error: code }, { status }) };
-}
-
-function authContext(profile: Record<string, unknown>) {
-  return {
-    ok: true,
-    context: {
-      user: { id: USER_ID },
-      profile,
-      supabase: { from: vi.fn() },
-    },
-  };
 }
 
 function updateChain(recorder: { payload: unknown; filter: unknown }) {

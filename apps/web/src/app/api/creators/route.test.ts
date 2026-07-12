@@ -1,6 +1,7 @@
 // @vitest-environment node
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
+import { authError, authContext } from "@/lib/auth/test-helpers";
 
 /**
  * POST /api/creators - claim a Handle. The route is a pure HTTP function:
@@ -36,21 +37,6 @@ vi.mock("@/lib/creators/handle", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/creators/handle")>()),
   checkHandleAvailability,
 }));
-
-function authError(code: string, status: number) {
-  return { ok: false, response: NextResponse.json({ error: code }, { status }) };
-}
-
-function authContext(profile: Record<string, unknown>) {
-  return {
-    ok: true,
-    context: {
-      user: { id: USER_ID },
-      profile,
-      supabase: { from: vi.fn() },
-    },
-  };
-}
 
 function req(body: unknown) {
   return new NextRequest("http://localhost/api/creators", {

@@ -6,7 +6,7 @@ Issues live as markdown files under `.scratch/<feature>/`. See `docs/agents/issu
 
 ### Triage labels
 
-Five canonical roles, using default label strings. See `docs/agents/triage-labels.md`.
+Canonical triage roles plus a local `done` status. See `docs/agents/triage-labels.md`.
 
 ### Domain docs
 

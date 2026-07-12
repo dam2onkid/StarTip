@@ -1,6 +1,7 @@
 // @vitest-environment node
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
+import { authError, authContext } from "@/lib/auth/test-helpers";
 
 /**
  * /api/overlay-settings - public GET (returns the Creator's settings row or
@@ -58,21 +59,6 @@ function upsertChain(recorder: { payload: unknown; error: unknown }) {
       recorder.payload = payload;
       return self;
     }),
-  };
-}
-
-function authError(code: string, status: number) {
-  return { ok: false, response: NextResponse.json({ error: code }, { status }) };
-}
-
-function authContext(profile: Record<string, unknown>) {
-  return {
-    ok: true,
-    context: {
-      user: { id: USER_ID },
-      profile,
-      supabase: { from: serverFrom },
-    },
   };
 }
 
@@ -197,7 +183,7 @@ describe("PUT /api/overlay-settings", () => {
     serverFrom.mockReset();
     serviceFrom.mockReset();
     requireAuthedCreatorMock.mockResolvedValue(
-      authContext({ id: CREATOR_PROFILE_ID, user_id: USER_ID, handle: "ada" }),
+      authContext({ id: CREATOR_PROFILE_ID, user_id: USER_ID, handle: "ada" }, serverFrom),
     );
   });
 
@@ -285,7 +271,7 @@ describe("PUT /api/overlay-settings", () => {
 
   it("returns 500 db_error when the upsert errors (e.g. RLS denial surfaces as an error)", async () => {
     requireAuthedCreatorMock.mockResolvedValue(
-      authContext({ id: "22222222-2222-2222-2222-222222222222", user_id: OTHER_ID, handle: "bob" }),
+      authContext({ id: "22222222-2222-2222-2222-222222222222", user_id: OTHER_ID, handle: "bob" }, serverFrom),
     );
     const recorder = { payload: null as unknown, error: { message: "rls denied", code: "42501" } };
     serverFrom.mockImplementation(() => upsertChain(recorder));
