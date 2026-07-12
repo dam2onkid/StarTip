@@ -49,13 +49,13 @@ export function QrCode({
   fileName?: string;
   className?: string;
 }) {
-  const [resolvedOrigin, setResolvedOrigin] = React.useState(origin ?? "");
-  React.useEffect(() => {
-    if (origin) return;
-    if (typeof window !== "undefined") {
-      setResolvedOrigin(window.location.origin);
-    }
-  }, [origin]);
+  const clientOrigin = React.useSyncExternalStore(
+    // Origin is static; no subscription needed.
+    () => () => {},
+    () => (typeof window !== "undefined" ? window.location.origin : ""),
+    () => "",
+  );
+  const resolvedOrigin = origin ?? clientOrigin;
 
   const url = buildDonateUrl(handle, resolvedOrigin);
   const svgRef = React.useRef<SVGSVGElement>(null);

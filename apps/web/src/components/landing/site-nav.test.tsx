@@ -33,10 +33,12 @@ vi.mock("framer-motion", async () => {
     {
       get: (_t, key) => {
         const tag = String(key);
-        return React.forwardRef((props: unknown, ref: unknown) =>
+        const MotionComponent = React.forwardRef((props: unknown, ref: unknown) =>
           // Strip motion-only props that have no DOM equivalent.
           React.createElement(tag, { ...(props as object), ref }),
         );
+        MotionComponent.displayName = `motion.${tag}`;
+        return MotionComponent;
       },
     },
   );

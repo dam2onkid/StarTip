@@ -20,17 +20,11 @@ export function NavSearch() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const initialQuery = searchParams.get("q") ?? "";
-  const [query, setQuery] = React.useState(initialQuery);
-
-  // Sync local state when the URL `q` param changes (e.g. user clears the
-  // search from the explore page's "Clear search" link).
-  React.useEffect(() => {
-    setQuery(searchParams.get("q") ?? "");
-  }, [searchParams]);
 
   function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const trimmed = query.trim();
+    const formData = new FormData(event.currentTarget);
+    const trimmed = String(formData.get("q") ?? "").trim();
     const target = trimmed
       ? `/creator/explore?q=${encodeURIComponent(trimmed)}`
       : "/creator/explore";
@@ -49,10 +43,10 @@ export function NavSearch() {
         className="pointer-events-none absolute left-3 size-4 text-muted-foreground"
       />
       <input
+        key={searchParams.toString()}
         type="search"
         name="q"
-        value={query}
-        onChange={(event) => setQuery(event.target.value)}
+        defaultValue={initialQuery}
         placeholder="Search creators"
         aria-label="Search creators"
         className="h-9 w-full rounded-xl border border-foreground/10 bg-foreground/[0.03] pl-9 pr-3 text-sm text-foreground placeholder:text-muted-foreground transition-colors hover:border-foreground/20 focus:border-primary/40 focus:outline-none focus:ring-[3px] focus:ring-ring/30 md:w-48 lg:w-56"
