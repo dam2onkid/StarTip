@@ -3,15 +3,11 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import * as StellarSdk from "@stellar/stellar-sdk";
 import type { RpcLike } from "./dispatch";
 import type { TokenMetadata } from "../stellar/token";
+import { toByteaHex } from "../bytea";
 
 const CONTRACT_ID = "CCV2XK5LVOV2XK5LVOV2XK5LVOV2XK5LVOV2XK5LVOV2XK5LVOV2XMCW";
 const CREATOR_G = "GDF6CFYOXQTZVSLLK2RTDAUZ6N2E72IL4K2L34HXZK32KBR4NLVPLUVA";
 const HANDLE_HASH = Buffer.alloc(32, 0xab);
-
-/** bytea values travel over PostgREST as `\x`-prefixed hex. */
-function toByteaHex(buf: Buffer): string {
-  return "\\x" + buf.toString("hex");
-}
 
 const HANDLE_HASH_HEX = toByteaHex(HANDLE_HASH);
 

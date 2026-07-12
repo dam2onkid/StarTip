@@ -1,6 +1,7 @@
 import * as StellarSdk from "@stellar/stellar-sdk";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { classifyMessage } from "./moderation";
+import { toByteaHex } from "../bytea";
 
 /**
  * `POST /verify` core logic, extracted so it can be tested as a pure function
@@ -173,9 +174,7 @@ export async function verifyDonation(
     return { status: 409, body: { error: "donation_event_not_found" } };
   }
 
-  const handleHashBytea =
-    "\\x" +
-    Buffer.from(donationEvent.creator_id_hash as Uint8Array).toString("hex");
+  const handleHashBytea = toByteaHex(donationEvent.creator_id_hash as Uint8Array);
   const token = donationEvent.token as string;
   const amount = (donationEvent.amount as bigint).toString();
 

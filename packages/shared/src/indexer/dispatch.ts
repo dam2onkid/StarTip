@@ -2,16 +2,7 @@ import * as StellarSdk from "@stellar/stellar-sdk";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { TokenMetadata } from "../stellar/token";
 import { classifyMessage } from "../donations/moderation";
-
-/**
- * bytea values travel over the PostgREST API as hex strings with the `\x`
- * prefix: that is how Postgres casts text to bytea and how PostgREST encodes
- * bytea in JSON responses. `handle_hash` is stored as bytea, so every value
- * we send or filter on must use this format.
- */
-export function toByteaHex(buf: Buffer): string {
-  return "\\x" + buf.toString("hex");
-}
+import { resolveProfileByHandleHash } from "../profiles/creator-profile-resolver";
 
 /** RPC surface the indexer depends on (structural subset of rpc.Server). */
 export interface RpcLike {
@@ -56,11 +47,6 @@ interface IndexerState {
   id: number;
   last_ledger: number;
   last_cursor: string | null;
-}
-
-interface ProfileRow {
-  id: string;
-  owner_address: string | null;
 }
 
 interface DonationRow {
@@ -114,7 +100,6 @@ async function dispatchDonationReceived(
   event: StellarSdk.rpc.Api.EventResponse,
   value: Record<string, unknown>,
 ): Promise<void> {
-  const handleHash = toByteaHex(value.creator_id_hash as Buffer);
   const txHash = event.txHash;
   const amount = (value.amount as bigint).toString();
 
@@ -142,13 +127,7 @@ async function dispatchDonationReceived(
   }
 
   // No existing row: insert an indexed row. Requires the creator profile.
-  const profile = (
-    await supabase
-      .from("profiles")
-      .select("id")
-      .eq("handle_hash", handleHash)
-      .maybeSingle()
-  ).data as { id: string } | null;
+  const profile = await resolveProfileByHandleHash(supabase, value.creator_id_hash as Buffer);
   if (!profile) {
     // Orphan donation: creator has no off-chain profile. Skip.
     return;
@@ -157,7 +136,7 @@ async function dispatchDonationReceived(
   await supabase.from("donations").insert({
     tx_hash: txHash,
     creator_profile_id: profile.id,
-    handle_hash: handleHash,
+    handle_hash: profile.handle_hash,
     token: value.token as string,
     amount,
     donor_name: "Anonymous",
@@ -174,17 +153,10 @@ async function dispatchCreatorRegistered(
   supabase: SupabaseClient,
   value: Record<string, unknown>,
 ): Promise<void> {
-  const handleHash = toByteaHex(value.creator_id_hash as Buffer);
   const owner = value.owner as string;
   const payoutAddress = value.payout_address as string;
 
-  const profile = (
-    await supabase
-      .from("profiles")
-      .select("id,owner_address")
-      .eq("handle_hash", handleHash)
-      .maybeSingle()
-  ).data as ProfileRow | null;
+  const profile = await resolveProfileByHandleHash(supabase, value.creator_id_hash as Buffer);
   if (!profile) {
     // Orphan: no off-chain profile reserved for this handle. Skip.
     return;
@@ -202,7 +174,7 @@ async function dispatchCreatorRegistered(
       onchain_registered_at: nowIso(),
       payout_address: payoutAddress,
     })
-    .eq("handle_hash", handleHash);
+    .eq("handle_hash", profile.handle_hash);
 }
 
 /** Dispatch a `CreatorPayoutUpdated` event: mirror the new payout address. */
@@ -210,22 +182,15 @@ async function dispatchCreatorPayoutUpdated(
   supabase: SupabaseClient,
   value: Record<string, unknown>,
 ): Promise<void> {
-  const handleHash = toByteaHex(value.creator_id_hash as Buffer);
   const newPayout = value.new_payout_address as string;
 
-  const profile = (
-    await supabase
-      .from("profiles")
-      .select("id")
-      .eq("handle_hash", handleHash)
-      .maybeSingle()
-  ).data as { id: string } | null;
+  const profile = await resolveProfileByHandleHash(supabase, value.creator_id_hash as Buffer);
   if (!profile) return;
 
   await supabase
     .from("profiles")
     .update({ payout_address: newPayout })
-    .eq("handle_hash", handleHash);
+    .eq("handle_hash", profile.handle_hash);
 }
 
 /** Dispatch a `CreatorActiveChanged` event: mirror paused = NOT active. */
@@ -233,22 +198,15 @@ async function dispatchCreatorActiveChanged(
   supabase: SupabaseClient,
   value: Record<string, unknown>,
 ): Promise<void> {
-  const handleHash = toByteaHex(value.creator_id_hash as Buffer);
   const active = value.active as boolean;
 
-  const profile = (
-    await supabase
-      .from("profiles")
-      .select("id")
-      .eq("handle_hash", handleHash)
-      .maybeSingle()
-  ).data as { id: string } | null;
+  const profile = await resolveProfileByHandleHash(supabase, value.creator_id_hash as Buffer);
   if (!profile) return;
 
   await supabase
     .from("profiles")
     .update({ paused: !active })
-    .eq("handle_hash", handleHash);
+    .eq("handle_hash", profile.handle_hash);
 }
 
 /** Dispatch a `TokenAllowlistUpdated` event: upsert or delete a tokens row. */
