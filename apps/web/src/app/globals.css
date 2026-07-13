@@ -753,18 +753,11 @@ body {
 }
 .dashboard .creator-settings-list {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1fr);
   gap: 0.85rem;
-}
-.dashboard .creator-overview-section .creator-settings-list {
-  grid-template-columns: 1fr;
 }
 .dashboard .creator-settings-list > [data-slot="card"] {
   min-width: 0;
-}
-.dashboard .creator-settings-list > [data-slot="card"]:has(textarea),
-.dashboard .creator-settings-list > [data-slot="card"].creator-moderation-card {
-  grid-column: 1 / -1;
 }
 .dashboard .creator-moderation-card {
   overflow: hidden;
@@ -1532,10 +1525,6 @@ body {
   .dashboard .creator-settings-tab {
     min-width: 10rem;
     width: auto;
-  }
-
-  .dashboard .creator-settings-list {
-    grid-template-columns: minmax(0, 1fr);
   }
 
   .dashboard .creator-moderation-heading {
