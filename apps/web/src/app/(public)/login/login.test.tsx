@@ -27,7 +27,7 @@ function setConfirmed(value: boolean) {
 
 async function submitCredentials(email: string, password: string) {
   fireEvent.change(screen.getByLabelText(/^email$/i), { target: { value: email } });
-  fireEvent.change(screen.getByLabelText(/password/i), { target: { value: password } });
+  fireEvent.change(screen.getByLabelText(/^password$/i), { target: { value: password } });
   fireEvent.click(screen.getByRole("button", { name: /sign in/i }));
 }
 
@@ -44,7 +44,7 @@ describe("/login email + password form", () => {
     const { default: LoginPage } = await import("@/app/(public)/login/page");
     render(<LoginPage />);
     expect(screen.getByLabelText(/^email$/i)).toBeInTheDocument();
-    expect(screen.getByLabelText(/password/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/^password$/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /sign in/i })).toBeInTheDocument();
   });
 

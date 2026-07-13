@@ -13,6 +13,7 @@ import {
   FieldLabel,
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
 
 /**
  * `LoginForm` — email + password sign-in form for the Databuddy-inspired auth
@@ -104,10 +105,9 @@ export function LoginForm({
                   Forgot your password?
                 </a>
               </div>
-              <Input
+              <PasswordInput
                 id="password"
                 name="password"
-                type="password"
                 required
                 autoComplete="current-password"
                 minLength={6}

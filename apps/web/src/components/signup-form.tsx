@@ -13,6 +13,7 @@ import {
   FieldLabel,
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
 
 /**
  * `SignupForm` — email + password signup form for the Databuddy-inspired auth
@@ -129,10 +130,9 @@ export function SignupForm({
               <Field className="grid grid-cols-2 gap-4">
                 <Field>
                   <FieldLabel htmlFor="password">Password</FieldLabel>
-                  <Input
+                  <PasswordInput
                     id="password"
                     name="password"
-                    type="password"
                     required
                     autoComplete="new-password"
                     minLength={6}
@@ -144,10 +144,9 @@ export function SignupForm({
                   <FieldLabel htmlFor="confirm-password">
                     Confirm Password
                   </FieldLabel>
-                  <Input
+                  <PasswordInput
                     id="confirm-password"
                     name="confirm-password"
-                    type="password"
                     required
                     autoComplete="new-password"
                     minLength={6}
