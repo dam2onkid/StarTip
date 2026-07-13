@@ -33,13 +33,13 @@ test.describe("landing page — prefers-reduced-motion: no-preference", () => {
     await expect(subheadline).toBeVisible();
     await expect(subheadline).toContainText(SUBHEADLINE_PREFIX);
 
-    // The primary CTA lives in the main content (the hero). The nav and footer
-    // also expose "Sign in/up" links, but those are ghost / text links,
-    // not the single Tertiary primary CTA (PRD single-accent rule). Scoping to
-    // `main` targets the hero CTA without asserting on internals.
+    // The primary CTA lives in the main content (the hero). The nav exposes a
+    // ghost "Sign in/up" link, but the single Tertiary primary CTA is the hero's
+    // "Get started" button (PRD single-accent rule). Scoping to `main` targets
+    // the hero CTA without asserting on internals.
     const primaryCta = page
       .getByRole("main")
-      .getByRole("link", { name: "Sign in/up" });
+      .getByRole("link", { name: "Get started" });
     await expect(primaryCta).toHaveAttribute("href", "/login");
     // Exactly one primary CTA with this label in the main content.
     await expect(primaryCta).toHaveCount(1);
@@ -146,7 +146,7 @@ test.describe("landing page — prefers-reduced-motion: no-preference", () => {
     // Primary CTA background uses the Tertiary color (#B4FF39 -> rgb(180, 255, 57)).
     const primaryCta = page
       .getByRole("main")
-      .getByRole("link", { name: "Sign in/up" });
+      .getByRole("link", { name: "Get started" });
     await expect(primaryCta).toHaveCSS(
       "background-color",
       "rgb(180, 255, 57)",
@@ -182,12 +182,11 @@ test.describe("landing page — prefers-reduced-motion: reduce", () => {
     await expect(receive).toBeVisible();
 
     // No scrolling: the steps' computed opacity is full (not the `whileInView`
-    // hidden state of opacity 0 awaiting viewport entry).
+    // hidden state of opacity 0 awaiting viewport entry). `toHaveCSS` polls so
+    // the test waits for the static reduced-motion render to replace the
+    // hydration-time animated fallback.
     for (const step of [register, share, receive]) {
-      const opacity = await step.evaluate((el) =>
-        window.getComputedStyle(el).opacity,
-      );
-      expect(opacity).toBe("1");
+      await expect(step).toHaveCSS("opacity", "1");
     }
   });
 

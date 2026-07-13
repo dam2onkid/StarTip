@@ -113,7 +113,7 @@ export function Hero({ auth }: { auth: NavAuth }) {
 
       <motion.div
         style={reduced ? undefined : { y: contentY, opacity: contentOpacity }}
-        className="relative z-10 mx-auto flex w-full max-w-6xl flex-col gap-8 px-6 pt-36 pb-24"
+        className="relative z-10 mx-auto flex w-full max-w-6xl flex-col gap-6 px-6 pt-28 pb-20"
       >
         <motion.div
           initial={reduced ? false : "hidden"}
