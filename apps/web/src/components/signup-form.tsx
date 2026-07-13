@@ -7,13 +7,6 @@ import { cn } from "@/lib/utils";
 import { createBrowserClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import {
   Field,
   FieldDescription,
   FieldGroup,
@@ -22,8 +15,8 @@ import {
 import { Input } from "@/components/ui/input";
 
 /**
- * `SignupForm` — email + password signup form (shadcn `signup-03` layout,
- * new-york style).
+ * `SignupForm` — email + password signup form for the Databuddy-inspired auth
+ * shell.
  *
  * The visitor enters an email, a password, and a password confirmation, then
  * signs up via Supabase Auth `signUp`. Because `enable_confirmations = true`,
@@ -83,110 +76,116 @@ export function SignupForm({
   if (sent) {
     return (
       <div className={cn("flex flex-col gap-6", className)} {...props}>
-        <Card>
-          <CardContent>
-            <p
-              data-testid="signup-confirmation-sent"
-              aria-live="polite"
-              className="text-sm text-muted-foreground"
-            >
-              Check your inbox for the confirmation link to activate your
-              account.
-            </p>
-          </CardContent>
-        </Card>
+        <div className="space-y-1.5 px-6">
+          <h1 className="text-balance font-display text-2xl text-foreground">
+            Check your inbox
+          </h1>
+          <p className="text-sm text-muted-foreground">
+            We sent a confirmation link to activate your account.
+          </p>
+        </div>
+        <div className="px-6">
+          <p
+            data-testid="signup-confirmation-sent"
+            aria-live="polite"
+            className="text-sm text-muted-foreground"
+          >
+            Check your inbox for the confirmation link to activate your
+            account.
+          </p>
+        </div>
       </div>
     );
   }
 
   return (
     <div className={cn("flex flex-col gap-6", className)} {...props}>
-      <Card>
-        <CardHeader className="text-center">
-          <CardTitle className="text-xl">Create your account</CardTitle>
-          <CardDescription>
-            Enter your email below to create your account
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={onSubmit}>
-            <FieldGroup>
-              <Field>
-                <FieldLabel htmlFor="email">Email</FieldLabel>
-                <Input
-                  id="email"
-                  name="email"
-                  type="email"
-                  placeholder="m@example.com"
-                  required
-                  autoComplete="email"
-                  spellCheck={false}
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                />
-              </Field>
-              <Field>
-                <Field className="grid grid-cols-2 gap-4">
-                  <Field>
-                    <FieldLabel htmlFor="password">Password</FieldLabel>
-                    <Input
-                      id="password"
-                      name="password"
-                      type="password"
-                      required
-                      autoComplete="new-password"
-                      minLength={6}
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                    />
-                  </Field>
-                  <Field>
-                    <FieldLabel htmlFor="confirm-password">
-                      Confirm Password
-                    </FieldLabel>
-                    <Input
-                      id="confirm-password"
-                      name="confirm-password"
-                      type="password"
-                      required
-                      autoComplete="new-password"
-                      minLength={6}
-                      value={confirm}
-                      onChange={(e) => setConfirm(e.target.value)}
-                    />
-                  </Field>
+      <div className="space-y-1.5 px-6">
+        <h1 className="text-balance font-display text-2xl text-foreground">
+          Create your account
+        </h1>
+        <p className="text-sm text-muted-foreground">
+          Enter your email below to create your account
+        </p>
+      </div>
+      <div className="px-6">
+        <form onSubmit={onSubmit}>
+          <FieldGroup>
+            <Field>
+              <FieldLabel htmlFor="email">Email</FieldLabel>
+              <Input
+                id="email"
+                name="email"
+                type="email"
+                placeholder="m@example.com"
+                required
+                autoComplete="email"
+                spellCheck={false}
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+              />
+            </Field>
+            <Field>
+              <Field className="grid grid-cols-2 gap-4">
+                <Field>
+                  <FieldLabel htmlFor="password">Password</FieldLabel>
+                  <Input
+                    id="password"
+                    name="password"
+                    type="password"
+                    required
+                    autoComplete="new-password"
+                    minLength={6}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                  />
                 </Field>
-                <FieldDescription>
-                  Must be at least 6 characters long.
-                </FieldDescription>
+                <Field>
+                  <FieldLabel htmlFor="confirm-password">
+                    Confirm Password
+                  </FieldLabel>
+                  <Input
+                    id="confirm-password"
+                    name="confirm-password"
+                    type="password"
+                    required
+                    autoComplete="new-password"
+                    minLength={6}
+                    value={confirm}
+                    onChange={(e) => setConfirm(e.target.value)}
+                  />
+                </Field>
               </Field>
-              <Field>
-                <Button type="submit" size="lg" loading={loading} className="w-full">
-                  Sign up
-                </Button>
-                {error && (
-                  <p
-                    aria-live="polite"
-                    data-testid="signup-error"
-                    className="text-sm text-red-400"
-                  >
-                    {error}
-                  </p>
-                )}
-                <FieldDescription className="text-center">
-                  Already have an account?{" "}
-                  <Link
-                    href={`/login${next !== "/dashboard" ? `?next=${encodeURIComponent(next)}` : ""}`}
-                    className="text-foreground underline-offset-4 hover:underline"
-                  >
-                    Log in
-                  </Link>
-                </FieldDescription>
-              </Field>
-            </FieldGroup>
-          </form>
-        </CardContent>
-      </Card>
+              <FieldDescription>
+                Must be at least 6 characters long.
+              </FieldDescription>
+            </Field>
+            <Field>
+              <Button type="submit" size="lg" loading={loading} className="w-full">
+                Sign up
+              </Button>
+              {error && (
+                <p
+                  aria-live="polite"
+                  data-testid="signup-error"
+                  className="text-sm text-red-400"
+                >
+                  {error}
+                </p>
+              )}
+              <FieldDescription className="text-center">
+                Already have an account?{" "}
+                <Link
+                  href={`/login${next !== "/dashboard" ? `?next=${encodeURIComponent(next)}` : ""}`}
+                  className="text-foreground underline-offset-4 hover:underline"
+                >
+                  Log in
+                </Link>
+              </FieldDescription>
+            </Field>
+          </FieldGroup>
+        </form>
+      </div>
       <FieldDescription className="px-6 text-center">
         By clicking continue, you agree to our{" "}
         <a href="#">Terms of Service</a> and <a href="#">Privacy Policy</a>.

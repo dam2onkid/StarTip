@@ -137,6 +137,23 @@ describe("<SiteNav /> unified nav", () => {
     expect(screen.queryByRole("button", { name: /open menu/i })).toBeNull();
   });
 
+  it("suppresses itself on /login and /signup so auth surfaces stay clean", () => {
+    for (const path of ["/login", "/signup"]) {
+      pathname.value = path;
+      const { unmount } = renderNav(<SiteNav />);
+      expect(
+        screen.queryByRole("navigation", { name: "Primary" }),
+      ).toBeNull();
+      expect(screen.queryByRole("link", { name: "StarTip home" })).toBeNull();
+      expect(screen.queryByRole("link", { name: "Discover" })).toBeNull();
+      expect(
+        screen.queryByRole("link", { name: "Sign in/up" }),
+      ).toBeNull();
+      expect(screen.queryByRole("button", { name: /open menu/i })).toBeNull();
+      unmount();
+    }
+  });
+
   it("mobile menu reflects the same left links and CTA when opened", async () => {
     renderNav(<SiteNav />);
     // Before opening: only the desktop Discover link is in the DOM.

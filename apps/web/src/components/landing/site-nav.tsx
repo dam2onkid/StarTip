@@ -23,10 +23,11 @@ import { cn } from "@/lib/utils";
  * Unified site navigation (PRD: Unified hybrid navigation).
  *
  * Rendered from the root `app/layout.tsx` so a single nav appears on every
- * route. The OBS Overlay browser-source surface (`/overlay/*`) is excluded:
- * the nav suppresses itself based on the current pathname so the overlay stays
- * transparent and chrome-free for OBS composition. All hooks run before the
- * suppression guard so the hook order is stable across pathname changes.
+ * route. The OBS Overlay browser-source surface (`/overlay/*`) and the focused
+ * auth surfaces (`/login`, `/signup`) are excluded: the nav suppresses itself
+ * based on the current pathname so those surfaces stay clean and distraction
+ * free. All hooks run before the suppression guard so the hook order is stable
+ * across pathname changes.
  *
  * Visual language is preserved per `DESIGN.md`: a floating glass pill detached
  * from the viewport edges, scroll-aware frost, a magnetic CTA with a lime glow
@@ -114,10 +115,11 @@ export function SiteNav({ auth = { state: "unauthenticated" } }: { auth?: NavAut
     }
   }
 
-  // Suppress the nav on the OBS Overlay browser-source surface so it stays
-  // transparent and chrome-free for OBS composition. The guard runs after every
-  // hook so the hook call order is identical on overlay and non-overlay routes.
+  // Suppress the nav on the OBS Overlay browser-source surface and on the
+  // focused auth surfaces so they stay clean and chrome-free. The guard runs
+  // after every hook so the hook call order is identical across routes.
   const isOverlay = pathname?.startsWith("/overlay/") ?? false;
+  const isAuthPage = pathname === "/login" || pathname === "/signup";
   const isLanding = pathname === "/";
   const authed = auth.state === "authenticated";
 
@@ -132,7 +134,7 @@ export function SiteNav({ auth = { state: "unauthenticated" } }: { auth?: NavAut
     }
   }, [menuOpen]);
 
-  if (isOverlay) return null;
+  if (isOverlay || isAuthPage) return null;
 
   return (
     <header
