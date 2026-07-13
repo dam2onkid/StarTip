@@ -137,19 +137,13 @@ export function createTtsApp(
     const { text, voice } = body;
 
     const synthesis = deps.provider.synthesize(text, voice).catch(() => null);
-    const timeout = new Promise<never>((_, reject) => {
-      setTimeout(
-        () => reject(new Error("synthesis_timeout")),
-        options.synthesizeTimeoutMs,
-      );
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
+    const timeout = new Promise<Buffer | null>((resolve) => {
+      timeoutId = setTimeout(() => resolve(null), options.synthesizeTimeoutMs);
     });
 
-    let audio: Buffer | null;
-    try {
-      audio = await Promise.race([synthesis, timeout]);
-    } catch {
-      return c.json({ error: "synthesis_failed" }, 500);
-    }
+    const audio = await Promise.race([synthesis, timeout]);
+    clearTimeout(timeoutId);
 
     if (audio === null) {
       return c.json({ error: "synthesis_failed" }, 500);
