@@ -5,21 +5,22 @@ import Link from "next/link";
 import { motion, useScroll, useTransform, type Variants } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Magnetic } from "@/components/landing/magnetic";
+import { ScrambleText } from "@/components/landing/scramble-text";
 import { usePrefersReducedMotion } from "@/hooks/use-prefers-reduced-motion";
 import type { NavAuth } from "@/lib/nav/auth";
+import FaultyTerminal from "@/components/landing/faulty-terminal";
 
 /**
  * Hero architecture (premium-frontend-ui skill §2.2). Full-bleed `100dvh`
  * container, headline broken into word spans for a cascading entrance, and
- * parallax depth layers (a faint grid + a floating accent shape) that drift
- * on scroll. The CTA is magnetic and frosted.
+ * a dim, glitchy WebGL terminal backdrop. The CTA is magnetic and frosted.
  *
  * Only `transform` and `opacity` are animated. The word-stagger entrance is
  * disabled under `prefers-reduced-motion: reduce`, rendering the headline
  * statically. Parallax is likewise disabled for reduced-motion users.
  */
 
-const HEADLINE = "Fast, global tips for livestream creators. Settled on Stellar.";
+const HEADLINE = `Global tips for livestream creators.\nBuild on Stellar.`;
 const SUBHEADLINE =
   "Fans scan a QR and send a Stellar asset. The transaction settles in seconds, anywhere in the world, for a fraction of a cent. Every donation is bound to an on-chain proof the platform cannot forge.";
 
@@ -43,7 +44,7 @@ const fade: Variants = {
   show: {
     opacity: 1,
     y: 0,
-    transition: { duration: 0.6, ease: [0.22, 1, 0.36, 1], delay: 0.5 },
+    transition: { duration: 0.6, ease: [0.22, 1, 0.36, 1] },
   },
 };
 
@@ -60,56 +61,39 @@ export function Hero({ auth }: { auth: NavAuth }) {
   const ctaHref =
     auth.state === "authenticated" ? "/creator/explore" : "/login";
 
-  // Parallax depth: background drifts up slower than foreground (skill §3.1).
-  const gridY = useTransform(scrollYProgress, [0, 1], ["0%", "40%"]);
-  const shapeY = useTransform(scrollYProgress, [0, 1], ["0%", "80%"]);
-  const shapeX = useTransform(scrollYProgress, [0, 1], ["0%", "-15%"]);
+  // Parallax depth: content drifts up/fades on scroll while the terminal
+  // stays pinned as a full-bleed backdrop.
   const contentY = useTransform(scrollYProgress, [0, 1], ["0%", "20%"]);
   const contentOpacity = useTransform(scrollYProgress, [0, 0.8], [1, 0]);
-
-  const words = React.useMemo(() => HEADLINE.split(" "), []);
 
   return (
     <section
       ref={ref}
       className="relative flex min-h-dvh w-full items-center overflow-hidden"
     >
-      {/* Parallax depth layers */}
-      <motion.div
-        aria-hidden
-        className="pointer-events-none absolute inset-0 z-0"
-        style={reduced ? undefined : { y: gridY }}
-      >
-        <div
-          className="absolute inset-0 opacity-[0.04]"
-          style={{
-            backgroundImage:
-              "linear-gradient(to right, var(--foreground) 1px, transparent 1px), linear-gradient(to bottom, var(--foreground) 1px, transparent 1px)",
-            backgroundSize: "64px 64px",
-            maskImage:
-              "radial-gradient(ellipse 80% 60% at 50% 40%, black 30%, transparent 75%)",
-            WebkitMaskImage:
-              "radial-gradient(ellipse 80% 60% at 50% 40%, black 30%, transparent 75%)",
-          }}
+      {/* Glitchy terminal backdrop */}
+      <div className="pointer-events-none absolute inset-0 z-0">
+        <FaultyTerminal
+          className="pointer-events-none"
+          scale={2}
+          gridMul={[2, 1]}
+          digitSize={1.2}
+          timeScale={0.5}
+          pause={reduced}
+          scanlineIntensity={1}
+          glitchAmount={1}
+          flickerAmount={1}
+          noiseAmp={1}
+          chromaticAberration={0}
+          dither={0}
+          curvature={0}
+          tint="#B4FF39"
+          mouseReact={false}
+          mouseStrength={0.5}
+          pageLoadAnimation={false}
+          brightness={0.1}
         />
-      </motion.div>
-      <motion.div
-        aria-hidden
-        className="pointer-events-none absolute z-0"
-        style={{
-          y: reduced ? undefined : shapeY,
-          x: reduced ? undefined : shapeX,
-          top: "18%",
-          right: "-6%",
-          width: "min(38vw, 520px)",
-          aspectRatio: "1 / 1",
-          borderRadius: "9999px",
-          background:
-            "radial-gradient(circle at 30% 30%, color-mix(in oklch, var(--primary) 22%, transparent), transparent 65%)",
-          filter: "blur(40px)",
-          opacity: 0.5,
-        }}
-      />
+      </div>
 
       <motion.div
         style={reduced ? undefined : { y: contentY, opacity: contentOpacity }}
@@ -125,30 +109,53 @@ export function Hero({ auth }: { auth: NavAuth }) {
             variants={reduced ? undefined : fade}
             className="font-mono text-xs uppercase tracking-[0.2em] text-muted-foreground"
           >
-            <span className="text-primary">●</span> Tipping rail · Stellar
+            <span className="text-primary" aria-hidden>&gt;</span>
+            <span className="ml-2">Tipping rail · Stellar</span>
           </motion.span>
-          <h1 className="font-display text-display-hero text-balance text-foreground">
-            {reduced
-              ? HEADLINE
-              : words.map((w, i) => (
-                  <React.Fragment key={`${w}-${i}`}>
-                    <motion.span
-                      variants={word}
-                      className="inline-block [transform-origin:0_100%]"
-                    >
-                      {w}
-                    </motion.span>
-                    {i < words.length - 1 ? " " : ""}
-                  </React.Fragment>
-                ))}
-          </h1>
+          <motion.h1
+            variants={reduced ? undefined : word}
+            className="font-mono font-semibold text-display-hero text-balance text-foreground"
+            aria-label={HEADLINE}
+          >
+            <span className="text-primary" aria-hidden>&gt;</span>
+            <span className="ml-2">
+              {reduced ? (
+                HEADLINE
+              ) : (
+                <ScrambleText
+                  text={HEADLINE}
+                  duration={1.2}
+                  delay={0.6}
+                  disabled={reduced}
+                />
+              )}
+            </span>
+            {!reduced && (
+              <motion.span
+                className="ml-1 font-mono text-primary"
+                aria-hidden
+                animate={{ opacity: [1, 0, 0, 1] }}
+                transition={{
+                  duration: 0.8,
+                  repeat: Infinity,
+                  ease: "linear",
+                  times: [0, 0.49, 0.51, 1],
+                }}
+              >
+                |
+              </motion.span>
+            )}
+            {reduced && (
+              <span className="ml-1 font-mono text-primary" aria-hidden>|</span>
+            )}
+          </motion.h1>
         </motion.div>
 
         <motion.p
           initial={reduced ? false : "hidden"}
           animate="show"
           variants={reduced ? undefined : fade}
-          className="max-w-2xl text-base leading-relaxed text-muted-foreground sm:text-lg"
+          className="max-w-2xl border-l border-primary/20 pl-4 text-base leading-relaxed text-muted-foreground sm:text-lg"
         >
           {SUBHEADLINE}
         </motion.p>
@@ -160,7 +167,11 @@ export function Hero({ auth }: { auth: NavAuth }) {
           className="flex flex-col gap-4 sm:flex-row sm:items-center"
         >
           <Magnetic strength={0.45}>
-            <Button asChild size="lg" className="h-12 px-7 text-base">
+            <Button
+              asChild
+              size="lg"
+              className="h-12 px-7 text-base shadow-[0_0_24px_-6px_rgba(180,255,57,0.35)]"
+            >
               <Link href={ctaHref} data-cursor="hover">
                 Get started
               </Link>

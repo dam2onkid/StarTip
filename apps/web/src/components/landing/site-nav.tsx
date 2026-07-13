@@ -118,6 +118,7 @@ export function SiteNav({ auth = { state: "unauthenticated" } }: { auth?: NavAut
   // transparent and chrome-free for OBS composition. The guard runs after every
   // hook so the hook call order is identical on overlay and non-overlay routes.
   const isOverlay = pathname?.startsWith("/overlay/") ?? false;
+  const isLanding = pathname === "/";
   const authed = auth.state === "authenticated";
 
   // Lock body scroll when the mobile menu is open.
@@ -134,14 +135,19 @@ export function SiteNav({ auth = { state: "unauthenticated" } }: { auth?: NavAut
   if (isOverlay) return null;
 
   return (
-    <header className="px-4 pt-4 sm:px-6 sm:pt-5">
+    <header
+      className={cn(
+        "z-50 px-4 pt-4 sm:px-6 sm:pt-5",
+        isLanding
+          ? "pointer-events-none absolute inset-x-0 top-0"
+          : "relative",
+      )}
+    >
       <nav
         aria-label="Primary"
         className={cn(
-          "relative mx-auto flex max-w-6xl items-center justify-between gap-4 rounded-2xl px-4 py-2.5 transition-[background,backdrop-filter,border-color,box-shadow] duration-300 sm:px-5",
-          menuOpen
-            ? "glass-strong shadow-[0_8px_40px_-12px_rgba(0,0,0,0.5)]"
-            : "border border-transparent bg-transparent",
+          "pointer-events-auto relative mx-auto flex max-w-6xl items-center justify-between gap-4 rounded-2xl border border-foreground/10 bg-foreground/[0.08] px-4 py-2.5 shadow-[0_8px_40px_-12px_rgba(0,0,0,0.5)] backdrop-blur-xl transition-[background-color,border-color,box-shadow] duration-300 sm:px-5",
+          menuOpen && "bg-foreground/[0.1]",
         )}
       >
         {/* Left cluster: logo + desktop links, flex-start so the tabs follow
@@ -226,15 +232,8 @@ export function SiteNav({ auth = { state: "unauthenticated" } }: { auth?: NavAut
             </>
           ) : (
             <Magnetic strength={0.4} className="hidden md:inline-block">
-              <Button
-                asChild
-                size="lg"
-                variant="ghost"
-                className="group/cta relative overflow-hidden rounded-xl border border-foreground/10 bg-foreground/[0.03] text-foreground transition-all duration-300 hover:border-primary/40 hover:bg-primary/[0.06] hover:shadow-[0_0_24px_-6px_rgba(180,255,57,0.4)]"
-              >
-                <Link href="/login" className="relative z-10">
-                  Sign in/up
-                </Link>
+              <Button asChild size="lg">
+                <Link href="/login">Sign in/up</Link>
               </Button>
             </Magnetic>
           )}
@@ -286,7 +285,7 @@ export function SiteNav({ auth = { state: "unauthenticated" } }: { auth?: NavAut
             animate={{ opacity: 1, y: 0 }}
             exit={reduced ? undefined : { opacity: 0, y: -8 }}
             transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
-            className="mx-auto mt-2 max-w-6xl overflow-hidden rounded-2xl glass-strong p-2 md:hidden"
+            className="pointer-events-auto mx-auto mt-2 max-w-6xl overflow-hidden rounded-2xl glass-strong p-2 md:hidden"
           >
             <ul className="flex flex-col">
               {LINKS.map((link) => (

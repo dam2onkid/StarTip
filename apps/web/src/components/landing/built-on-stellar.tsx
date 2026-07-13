@@ -3,6 +3,7 @@
 import * as React from "react";
 import { motion, useScroll, useTransform, type Variants } from "framer-motion";
 import { roadmapNote, stellarValueProps } from "@/content/landing";
+import { ScrambleText } from "@/components/landing/scramble-text";
 import { usePrefersReducedMotion } from "@/hooks/use-prefers-reduced-motion";
 
 /**
@@ -48,13 +49,23 @@ export function BuiltOnStellar() {
     >
       <div className="flex flex-col gap-4">
         <span className="font-mono text-xs uppercase tracking-[0.2em] text-muted-foreground">
-          The rail
+          <span className="text-primary" aria-hidden>&gt;</span>
+          <span className="ml-2">The rail</span>
         </span>
         <motion.h2
           style={reduced ? undefined : { y: headingY }}
           className="font-display text-display-section text-balance text-foreground"
+          aria-label="Built on Stellar"
         >
-          Built on Stellar
+          {reduced ? (
+            "Built on Stellar"
+          ) : (
+            <ScrambleText
+              text="Built on Stellar"
+              duration={1.0}
+              disabled={reduced}
+            />
+          )}
         </motion.h2>
       </div>
 
@@ -70,7 +81,7 @@ export function BuiltOnStellar() {
           <motion.div
             key={valueProp.heading}
             variants={reduced ? undefined : prop}
-            className="glass group relative flex flex-col gap-4 overflow-hidden rounded-2xl p-7"
+            className="glass group relative flex flex-col gap-4 overflow-hidden rounded-2xl border border-primary/10 p-7 transition-[border-color,box-shadow] duration-300 hover:border-primary/30 hover:shadow-[0_0_24px_-12px_rgba(180,255,57,0.15)]"
           >
             <span
               aria-hidden
@@ -78,8 +89,13 @@ export function BuiltOnStellar() {
             >
               ✦
             </span>
-            <h3 className="font-display text-3xl font-semibold tracking-tight text-foreground">
-              {valueProp.heading}
+            <h3
+              className="font-display text-3xl font-semibold tracking-tight text-foreground"
+              aria-label={valueProp.heading}
+            >
+              {reduced ? valueProp.heading : (
+                <ScrambleText text={valueProp.heading} duration={0.8} />
+              )}
             </h3>
             <p className="max-w-xs text-base leading-relaxed text-muted-foreground">
               {valueProp.body}

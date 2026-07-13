@@ -4,6 +4,7 @@ import * as React from "react";
 import dynamic from "next/dynamic";
 import { motion, useScroll, useTransform } from "framer-motion";
 import { howItWorksSteps } from "@/content/landing";
+import { ScrambleText } from "@/components/landing/scramble-text";
 import { usePrefersReducedMotion } from "@/hooks/use-prefers-reduced-motion";
 
 /**
@@ -62,13 +63,21 @@ export function HowItWorks() {
     >
       <div className="flex flex-col gap-4">
         <span className="font-mono text-xs uppercase tracking-[0.2em] text-muted-foreground">
-          The flow
+          <span className="text-primary" aria-hidden>&gt;</span>
+          <span className="ml-2">The flow</span>
         </span>
         <motion.h2
           style={reduced ? undefined : { y: headingY }}
           className="font-display text-display-section text-balance text-foreground"
+          aria-label="How it works"
         >
-          How it works
+          {reduced ? "How it works" : (
+            <ScrambleText
+              text="How it works"
+              duration={1.0}
+              disabled={reduced}
+            />
+          )}
         </motion.h2>
       </div>
       {reduced ? <HowItWorksStatic /> : <HowItWorksAnimated />}

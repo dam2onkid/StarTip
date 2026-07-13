@@ -172,6 +172,26 @@ body {
 }
 
 /*
+ * CRT scanlines. A fixed horizontal line pattern blended over the composition
+ * to echo the FaultyTerminal shader without covering the foreground content.
+ */
+.scanlines {
+  position: fixed;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+  opacity: 0.04;
+  mix-blend-mode: overlay;
+  background: repeating-linear-gradient(
+    to bottom,
+    transparent,
+    transparent 2px,
+    rgba(0, 0, 0, 0.25) 2px,
+    rgba(0, 0, 0, 0.25) 3px
+  );
+}
+
+/*
  * Glass surface. Frosted depth via backdrop-filter blur over a semi-transparent
  * neutral, with an ultra-thin border and a faint top-edge highlight
  * (premium-frontend-ui skill §4 lighting & glass).

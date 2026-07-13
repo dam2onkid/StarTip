@@ -2,6 +2,7 @@
 
 import { motion, type Variants } from "framer-motion";
 import { howItWorksSteps } from "@/content/landing";
+import { ScrambleText } from "@/components/landing/scramble-text";
 
 /**
  * Animated "How it works" list. Dynamically imported by `HowItWorks` only when
@@ -39,7 +40,7 @@ export function HowItWorksAnimated() {
         <motion.li
           key={step.label}
           variants={stepVariants}
-          className="group relative flex flex-col gap-4 overflow-hidden rounded-2xl border border-foreground/10 bg-card/40 p-8 backdrop-blur-sm transition-colors duration-300 hover:bg-card/70"
+          className="group relative flex flex-col gap-4 overflow-hidden rounded-2xl border border-primary/10 bg-card/40 p-8 backdrop-blur-sm transition-[border-color,background-color,box-shadow] duration-300 hover:border-primary/30 hover:bg-card/70 hover:shadow-[0_0_24px_-12px_rgba(180,255,57,0.15)]"
         >
           <span
             aria-hidden
@@ -48,7 +49,7 @@ export function HowItWorksAnimated() {
             {String(i + 1).padStart(2, "0")}
           </span>
           <p className="relative z-10 font-mono text-sm tracking-wide text-primary/80">
-            {step.label}
+            <ScrambleText text={step.label} duration={0.8} />
           </p>
           <p className="relative z-10 max-w-xs text-base leading-relaxed text-foreground">
             {step.body}

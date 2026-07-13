@@ -5,6 +5,7 @@ import { motion, type Variants } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { secondaryCards } from "@/content/landing";
 import { TiltCard } from "@/components/landing/tilt-card";
+import { ScrambleText } from "@/components/landing/scramble-text";
 import { usePrefersReducedMotion } from "@/hooks/use-prefers-reduced-motion";
 
 /**
@@ -52,15 +53,28 @@ export function SecondaryCards() {
             variants={reduced ? undefined : card}
             className="[perspective:1200px]"
           >
-            <TiltCard className="glass h-full rounded-2xl p-6">
+            <TiltCard className="glass h-full rounded-2xl border border-primary/10 p-6 transition-[border-color,box-shadow] duration-300 hover:border-primary/30 hover:shadow-[0_0_24px_-12px_rgba(180,255,57,0.15)]">
               <div className="flex h-full flex-col gap-6 [transform:translateZ(40px)] [transform-style:preserve-3d]">
                 <div className="flex items-center gap-2">
                   <span
                     aria-hidden
-                    className="inline-block size-1.5 rounded-full bg-primary/70"
-                  />
-                  <h3 className="font-mono text-xs uppercase tracking-[0.18em] text-foreground">
-                    {item.header}
+                    className="font-mono text-xs text-primary/70"
+                  >
+                    &gt;
+                  </span>
+                  <h3
+                    className="font-mono text-xs uppercase tracking-[0.18em] text-foreground"
+                    aria-label={item.header}
+                  >
+                    {reduced ? (
+                      item.header
+                    ) : (
+                      <ScrambleText
+                        text={item.header}
+                        duration={0.8}
+                        disabled={reduced}
+                      />
+                    )}
                   </h3>
                 </div>
                 <p className="text-sm leading-relaxed text-muted-foreground">
