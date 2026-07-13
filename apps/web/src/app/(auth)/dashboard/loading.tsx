@@ -16,7 +16,7 @@ export default function DashboardLoading() {
   return (
     <>
       <Grain />
-      <section className="dashboard relative mx-auto flex w-full max-w-6xl flex-col gap-6 px-4 pb-16 pt-20 sm:px-6 sm:pb-20 sm:pt-24">
+      <section className="dashboard relative mx-auto flex w-full max-w-7xl flex-col gap-6 px-4 pb-16 pt-20 sm:px-6 sm:pb-20 sm:pt-24">
         <header className="dashboard-overview">
           <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
             {/* Identity */}

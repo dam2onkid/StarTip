@@ -39,10 +39,7 @@ export function ActiveGate({
       className="creator-settings-shell"
       data-testid="creator-active"
     >
-      <CreatorSettingsSidebar
-        current={current}
-        tab={tab}
-        onTabChange={setTab}
+      <CreatorSettingsSidebar tab={tab} onTabChange={setTab}
       />
       <div className="creator-settings-panel">
         <TabsContent value="overview" className="m-0">

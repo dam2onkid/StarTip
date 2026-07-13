@@ -107,7 +107,7 @@ export function ExploreDiscovery({
   const trimmedQuery = query.trim()
 
   return (
-    <section className="mx-auto flex w-full max-w-6xl flex-col gap-7 px-6 pt-28 pb-24">
+    <section className="mx-auto flex w-full max-w-7xl flex-col gap-7 px-6 pt-28 pb-24">
       <header className="flex flex-col gap-5">
         <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
           <div className="flex max-w-2xl flex-col gap-2">
@@ -170,7 +170,7 @@ export function ExploreDiscovery({
         <Separator />
       </header>
 
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
+      <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_360px]">
         <main className="flex min-w-0 flex-col gap-4">
           {creatorsError ? (
             <Card>
@@ -202,7 +202,7 @@ export function ExploreDiscovery({
               </CardHeader>
             </Card>
           ) : (
-            <ul className="grid gap-4 sm:grid-cols-2" data-testid="creator-list">
+            <ul className="grid gap-6 sm:grid-cols-2" data-testid="creator-list">
               {visibleCreators.map((creator) => (
                 <li key={creator.handle}>
                   <Card className="group relative h-full gap-5 overflow-hidden py-5 transition hover:border-primary/35">

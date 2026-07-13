@@ -215,15 +215,11 @@ export function CreatorSettingsSection({
 }
 
 export function CreatorSettingsSidebar({
-  current,
-  tab,
-  onTabChange,
+  tab, onTabChange,
 }: {
-  current: CreatorProfile;
   tab: CreatorSettingsTab;
   onTabChange: (tab: CreatorSettingsTab) => void;
 }) {
-  const paused = current.paused ?? false;
   const items: { id: CreatorSettingsTab; label: string; detail: string }[] = [
     { id: "overview", label: "Overview", detail: "Tips and supporters" },
     { id: "profile", label: "Profile & Links", detail: "Public page and QR" },
@@ -233,23 +229,6 @@ export function CreatorSettingsSidebar({
   ];
   return (
     <aside className="creator-settings-sidebar" aria-label="Creator settings">
-      <div className="creator-settings-profile">
-        <div className="min-w-0">
-          <span className="font-mono text-[0.65rem] uppercase tracking-[0.12em] text-muted-foreground/80">
-            Creator
-          </span>
-          <h2 className="mt-1 truncate font-display text-xl font-semibold text-foreground">
-            {current.display_name}
-          </h2>
-          <p className="truncate text-sm text-muted-foreground">@{current.handle}</p>
-        </div>
-        {paused ? (
-          <span className="status-pill" data-tone="paused">
-            <span className="dot" aria-hidden />
-            Paused
-          </span>
-        ) : null}
-      </div>
       <TabsList className="creator-settings-nav" aria-label="Creator tabs">
         {items.map((item) => (
           <TabsTrigger

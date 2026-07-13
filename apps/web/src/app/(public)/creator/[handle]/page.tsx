@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation";
+import { Trophy } from "lucide-react";
 import { createServiceClient } from "@startip/shared/supabase/service";
 import {
   aggregateLeaderboard,
@@ -12,6 +13,7 @@ import {
   getTokenDisplay,
   type TokenAllowlistEntry,
 } from "@/lib/donations/token";
+import { cn } from "@/lib/utils";
 import { ShareButtons } from "@/components/creator/share-buttons";
 import { BackButton } from "@/components/creator/back-button";
 import { QrCode } from "@/components/creator/qr-code";
@@ -187,6 +189,12 @@ export function CreatorPageShell({
 }) {
   const tokenMap = buildTokenMap(tokens);
   const totalDisplay = getTokenDisplay(total, totalToken, tokenMap);
+  const topDonor = leaderboard[0]
+    ? {
+        ...leaderboard[0],
+        display: getTokenDisplay(leaderboard[0].total_amount, leaderboard[0].token, tokenMap),
+      }
+    : null;
 
   return (
     <section className="relative w-full">
@@ -197,7 +205,7 @@ export function CreatorPageShell({
           appeared above the banner and lets the cover reach the viewport top.
           Atmospheric gradient + grain + faint grid per DESIGN.md; no second hue
           is introduced, the lime accent stays reserved for the Donate CTA. */}
-      <div className="absolute inset-x-0 -top-24 -z-10 h-72 overflow-hidden">
+      <div className="absolute inset-x-0 -top-24 -z-10 h-96 overflow-hidden">
         {bannerUrl ? (
           <>
             {/* Creator-supplied cover image. */}
@@ -261,16 +269,16 @@ export function CreatorPageShell({
       </div>
 
       {/* Back control, sitting on the cover just below the nav. */}
-      <div className="mx-auto w-full max-w-4xl px-6 pt-6">
+      <div className="mx-auto w-full max-w-7xl px-6 pt-6">
         <BackButton />
       </div>
 
       {/* Profile head: avatar overlapping the banner baseline + identity, bio,
           and share, exactly like a social profile. `pt-14` (below the Back row)
-          places the avatar over the lower third of the 18rem banner. The avatar
+          places the avatar over the lower third of the 24rem banner. The avatar
           sits on top of the banner (normal flow, above the -z-10 cover) so
           nothing overlays it. */}
-      <div className="mx-auto w-full max-w-4xl px-6 pt-14">
+      <div className="mx-auto w-full max-w-7xl px-6 pt-14">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:gap-5">
             {avatarUrl ? (
@@ -307,7 +315,7 @@ export function CreatorPageShell({
       {/* Body grid: max 2 columns. Left column stacks Stats + Support; the
           right column is the Top Donors leaderboard. The Donate CTA is the
           single Tertiary element at rest (DESIGN.md single-accent rule). */}
-      <div className="mx-auto grid w-full max-w-4xl gap-6 px-6 py-8 md:grid-cols-2">
+      <div className="mx-auto grid w-full max-w-7xl gap-6 px-6 py-8 md:grid-cols-2">
         <div className="flex flex-col gap-6">
           {/* Stats card */}
           <div className="flex flex-col gap-3 rounded-lg bg-card p-5 ring-1 ring-foreground/10">
@@ -412,41 +420,94 @@ export function CreatorPageShell({
         </div>
 
         {/* Leaderboard card */}
-        <aside className="flex flex-col gap-3 rounded-lg bg-card p-5 ring-1 ring-foreground/10">
-          <h2 className="font-mono text-xs uppercase tracking-[0.18em] text-muted-foreground">
-            Top Donors
-          </h2>
+        <aside className="flex flex-col gap-4 rounded-lg bg-card p-5 ring-1 ring-foreground/10">
+          <div className="flex items-center justify-between">
+            <h2 className="font-mono text-xs uppercase tracking-[0.18em] text-muted-foreground">
+              Top Donors
+            </h2>
+            {leaderboard.length > 0 && (
+              <span className="font-mono text-xs text-muted-foreground">
+                {leaderboard.length} ranked
+              </span>
+            )}
+          </div>
+
           {leaderboard.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              No tracked donations yet. Be the first logged-in donor.
-            </p>
+            <div className="flex flex-col items-center gap-3 py-8 text-center">
+              <div className="flex size-12 items-center justify-center rounded-full bg-background/40 ring-1 ring-foreground/10">
+                <Trophy className="size-5 text-muted-foreground" />
+              </div>
+              <p className="max-w-[16rem] text-sm text-muted-foreground">
+                No tracked donations yet. Be the first logged-in donor.
+              </p>
+            </div>
           ) : (
-            <ol className="flex flex-col gap-2" data-testid="creator-leaderboard">
-              {leaderboard.map((entry, i) => {
-                const display = getTokenDisplay(
-                  entry.total_amount,
-                  entry.token,
-                  tokenMap,
-                );
-                return (
-                  <li
-                    key={entry.donor_name + (entry.token ?? "")}
-                    className="flex items-center justify-between rounded-md bg-background/40 px-3 py-2 ring-1 ring-foreground/5"
-                  >
-                    <span className="flex items-center gap-3">
-                      <span className="font-mono text-xs text-muted-foreground">
-                        {String(i + 1).padStart(2, "0")}
+            <div className="flex flex-col gap-3">
+              {topDonor && (
+                <div className="relative overflow-hidden rounded-xl bg-gradient-to-br from-primary/15 to-primary/5 p-4 ring-1 ring-primary/20">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex min-w-0 flex-col gap-1">
+                      <span className="font-mono text-[10px] uppercase tracking-wider text-primary">
+                        #1 Top Donor
                       </span>
-                      <span className="font-medium text-foreground">{entry.donor_name}</span>
+                      <span className="truncate font-display text-lg font-semibold text-foreground">
+                        {topDonor.donor_name}
+                      </span>
+                    </div>
+                    <span className="shrink-0 font-mono text-lg text-primary">
+                      {topDonor.display.amount}
+                      {topDonor.display.symbol ? ` ${topDonor.display.symbol}` : ""}
                     </span>
-                    <span className="font-mono text-sm text-muted-foreground">
-                      {display.amount}
-                      {display.symbol ? ` ${display.symbol}` : ""}
-                    </span>
-                  </li>
-                );
-              })}
-            </ol>
+                  </div>
+                </div>
+              )}
+
+              {leaderboard.length > 1 && (
+                <ol className="flex flex-col gap-2" data-testid="creator-leaderboard">
+                  {leaderboard.slice(1).map((entry, i) => {
+                    const rank = i + 2;
+                    const display = getTokenDisplay(
+                      entry.total_amount,
+                      entry.token,
+                      tokenMap,
+                    );
+                    return (
+                      <li
+                        key={entry.donor_name + (entry.token ?? "")}
+                        className={cn(
+                          "flex items-center justify-between rounded-lg px-3 py-2.5 ring-1",
+                          rank <= 3
+                            ? "bg-background/60 ring-foreground/10"
+                            : "bg-background/40 ring-foreground/5",
+                        )}
+                      >
+                        <span className="flex min-w-0 items-center gap-3">
+                          <span
+                            className={cn(
+                              "flex h-5 w-5 shrink-0 items-center justify-center rounded-full font-mono text-[10px]",
+                              rank === 2
+                                ? "bg-foreground/15 text-foreground"
+                                : rank === 3
+                                  ? "bg-foreground/10 text-muted-foreground"
+                                  : "text-muted-foreground",
+                            )}
+                          >
+                            {String(rank).padStart(2, "0")}
+                          </span>
+                          <span className="truncate font-medium text-foreground">
+                            {entry.donor_name}
+                          </span>
+                        </span>
+                        <span className="shrink-0 font-mono text-sm text-muted-foreground">
+                          {display.amount}
+                          {display.symbol ? ` ${display.symbol}` : ""}
+                        </span>
+                      </li>
+                    );
+                  })}
+                </ol>
+              )}
+            </div>
           )}
         </aside>
       </div>

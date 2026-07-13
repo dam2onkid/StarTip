@@ -19,7 +19,7 @@ export default function CreatorLoading() {
   return (
     <section className="relative w-full">
       {/* Banner placeholder — same shape/offset as the real cover. */}
-      <div className="absolute inset-x-0 -top-24 -z-10 h-72 overflow-hidden">
+      <div className="absolute inset-x-0 -top-24 -z-10 h-96 overflow-hidden">
         <div
           aria-hidden
           className="absolute inset-0"
@@ -31,12 +31,12 @@ export default function CreatorLoading() {
       </div>
 
       {/* Back control. */}
-      <div className="mx-auto w-full max-w-4xl px-6 pt-6">
+      <div className="mx-auto w-full max-w-7xl px-6 pt-6">
         <BackButton />
       </div>
 
       {/* Profile head. */}
-      <div className="mx-auto w-full max-w-4xl px-6 pt-14">
+      <div className="mx-auto w-full max-w-7xl px-6 pt-14">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:gap-5">
             <SkeletonCircle className="h-28 w-28" />
@@ -60,7 +60,7 @@ export default function CreatorLoading() {
       </div>
 
       {/* Body grid: left column (stats + support), right column (leaderboard). */}
-      <div className="mx-auto grid w-full max-w-4xl gap-6 px-6 py-8 md:grid-cols-2">
+      <div className="mx-auto grid w-full max-w-7xl gap-6 px-6 py-8 md:grid-cols-2">
         <div className="flex flex-col gap-6">
           {/* Stats card */}
           <div className="flex flex-col gap-3 rounded-lg bg-card p-5 ring-1 ring-foreground/10">
@@ -87,21 +87,37 @@ export default function CreatorLoading() {
         </div>
 
         {/* Leaderboard card */}
-        <aside className="flex flex-col gap-3 rounded-lg bg-card p-5 ring-1 ring-foreground/10">
-          <Skeleton className="h-3.5 w-24 rounded-md" />
-          <div className="flex flex-col gap-2">
-            {Array.from({ length: 4 }).map((_, i) => (
-              <div
-                key={i}
-                className="flex items-center justify-between rounded-md bg-background/40 px-3 py-2 ring-1 ring-foreground/5"
-              >
-                <span className="flex items-center gap-3">
-                  <Skeleton className="h-3.5 w-5 rounded-md" />
-                  <Skeleton className="h-4 w-28 rounded-md" />
-                </span>
-                <Skeleton className="h-4 w-20 rounded-md" />
+        <aside className="flex flex-col gap-4 rounded-lg bg-card p-5 ring-1 ring-foreground/10">
+          <div className="flex items-center justify-between">
+            <Skeleton className="h-3.5 w-24 rounded-md" />
+            <Skeleton className="h-3 w-16 rounded-md" />
+          </div>
+          <div className="flex flex-col gap-3">
+            {/* Featured top donor skeleton */}
+            <div className="rounded-xl bg-primary/5 p-4 ring-1 ring-primary/20">
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex flex-col gap-2">
+                  <Skeleton className="h-2.5 w-20 rounded-md" />
+                  <Skeleton className="h-6 w-32 rounded-md" />
+                </div>
+                <Skeleton className="h-6 w-24 rounded-md" />
               </div>
-            ))}
+            </div>
+            {/* List item skeletons */}
+            <div className="flex flex-col gap-2">
+              {Array.from({ length: 3 }).map((_, i) => (
+                <div
+                  key={i}
+                  className="flex items-center justify-between rounded-lg bg-background/40 px-3 py-2.5 ring-1 ring-foreground/5"
+                >
+                  <span className="flex items-center gap-3">
+                    <Skeleton className="size-5 rounded-full" />
+                    <Skeleton className="h-4 w-28 rounded-md" />
+                  </span>
+                  <Skeleton className="h-4 w-20 rounded-md" />
+                </div>
+              ))}
+            </div>
           </div>
         </aside>
       </div>

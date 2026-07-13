@@ -13,7 +13,7 @@ import {
  */
 export default function ExploreLoading() {
   return (
-    <section className="mx-auto flex w-full max-w-6xl flex-col gap-7 px-6 pt-28 pb-24">
+    <section className="mx-auto flex w-full max-w-7xl flex-col gap-7 px-6 pt-28 pb-24">
       <header className="flex flex-col gap-5">
         <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
           <div className="flex max-w-2xl flex-col gap-2">

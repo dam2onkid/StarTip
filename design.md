@@ -67,6 +67,16 @@ The palette is built around high-contrast neutrals and a single accent that driv
 - **body:** Inter 0.95rem
 - **label:** JetBrains Mono 0.75rem
 
+## Spacing & Layout
+
+Spacing is intentionally sparse: three tokens cover the entire system. The page foundation is dark and spacious, so every gap should earn its place.
+
+- **sm (8px):** Inline clusters, tight component groups, and small metadata rows.
+- **md (16px):** Related card groups, compact lists, and section content padding.
+- **lg (32px):** Major section grids, split layouts, and card grids. Prefer this for the primary layout grid and multi-column card lists so content breathes.
+
+Grid layouts should map to these tokens: `gap-8` (32px) for the main section grid and card grids, `gap-4` (16px) for nested card clusters, and `gap-2` (8px) for inline details. Avoid arbitrary gaps outside the scale; the three-token range keeps rhythm consistent across the app.
+
 ## Do's and Don'ts
 
 - **Do** use Tertiary for exactly one primary action per route/view at rest.
