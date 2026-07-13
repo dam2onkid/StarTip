@@ -101,7 +101,7 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-describe("OverlayAlerts — initial render", () => {
+describe("OverlayAlerts - initial render", () => {
   it("renders each seeded visible donation with Donor Name, amount + symbol, and message", () => {
     render(
       <OverlayAlerts
@@ -203,7 +203,7 @@ describe("OverlayAlerts — initial render", () => {
   });
 });
 
-describe("OverlayAlerts — Realtime inserts", () => {
+describe("OverlayAlerts - Realtime inserts", () => {
   it("appends a new donation delivered through the postgres_changes channel", async () => {
     render(
       <OverlayAlerts
@@ -433,7 +433,7 @@ describe("OverlayAlerts — Realtime inserts", () => {
   });
 });
 
-describe("OverlayAlerts — overlay settings (auto-dismiss, min_amount, sound)", () => {
+describe("OverlayAlerts - overlay settings (auto-dismiss, min_amount, sound)", () => {
   it("auto-dismisses each alert after alert_duration_ms", async () => {
     // Use the shortest valid duration with real timers so framer-motion's exit animation
     // (rAF-based) can flush the exiting nodes from the DOM. The auto-dismiss

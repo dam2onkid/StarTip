@@ -17,13 +17,13 @@ import { rawToDisplayAmount } from "@/lib/stellar/amount";
  * live without a page reload.
  *
  * Overlay settings (spec §11.3) are passed from the server component:
- *   * `alert_duration_ms` — each queued alert auto-dismisses after this many
+ *   * `alert_duration_ms` - each queued alert auto-dismisses after this many
  *     ms (default 10000).
  *   * `min_amount` (in raw units, resolved by the server using the token
- *     decimals) — donations below this threshold are silently recorded but
+ *     decimals) - donations below this threshold are silently recorded but
  *     not shown. {@link shouldShowAlert} applies the filter to both the
  *     initial donations and Realtime inserts.
- *   * `sound_enabled` — a short alert sound plays on Realtime insert when
+ *   * `sound_enabled` - a short alert sound plays on Realtime insert when
  *     true (no sound on the initial server-rendered donations). The browser
  *     may block autoplay until a user interaction; the Overlay is a browser
  *     source so OBS provides the interaction context.

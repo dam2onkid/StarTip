@@ -13,6 +13,8 @@ export interface CreatorProfile extends OnboardingProfile {
   bio: string | null;
   /** On-chain payout address; set by the indexer after `CreatorRegistered`. */
   payout_address?: string | null;
+  /** Opaque token for the private OBS browser source. */
+  overlay_id?: string | null;
   /** Mirrored by the indexer from `CreatorActiveChanged` (`paused = !active`). */
   paused?: boolean;
 }

@@ -16,10 +16,41 @@ import { CardTitleWithInfo, CopyValueRow } from "../shared";
 import { StatusLine, computePct, overlaySettingsErrorMessage, goalErrorMessage } from "../utils";
 import type { Status } from "../types";
 
-/** Overlay URL: show `/overlay/[handle]` with a copy action. */
-export function OverlayUrlCard({ handle }: { handle: string | null }) {
-  const path = handle ? `/overlay/${handle}` : "";
-  if (!handle) return null;
+/** Overlay URL: show `/overlay/[overlay_id]` with a copy + regenerate action. */
+export function OverlayUrlCard({
+  overlayId,
+  onRegenerate,
+}: {
+  overlayId: string | null | undefined;
+  onRegenerate?: (newOverlayId: string) => void;
+}) {
+  const [regenerating, setRegenerating] = useState(false);
+  const [status, setStatus] = useState<Status>({ kind: "idle" });
+  const path = overlayId ? `/overlay/${overlayId}` : "";
+  if (!overlayId) return null;
+
+  async function regenerate() {
+    setRegenerating(true);
+    setStatus({ kind: "idle" });
+    try {
+      const res = await fetch("/api/overlay/regenerate", { method: "POST" });
+      const body = (await res.json()) as { overlay_id?: string; error?: string };
+      if (res.status === 200 && body.overlay_id) {
+        onRegenerate?.(body.overlay_id);
+        setStatus({ kind: "info", message: "Overlay URL regenerated." });
+      } else {
+        setStatus({
+          kind: "error",
+          message: overlaySettingsErrorMessage(body.error ?? "unknown"),
+        });
+      }
+    } catch {
+      setStatus({ kind: "error", message: "Could not regenerate the Overlay URL." });
+    } finally {
+      setRegenerating(false);
+    }
+  }
+
   return (
     <Card>
       <CardHeader>
@@ -28,7 +59,7 @@ export function OverlayUrlCard({ handle }: { handle: string | null }) {
           info="Add this URL as a browser source in OBS to show donation alerts on your stream."
         />
       </CardHeader>
-      <CardContent className="flex flex-col gap-3">
+      <CardContent className="flex flex-col gap-3" data-testid="overlay-url-card">
         <CopyValueRow
           label="Overlay URL"
           value={path}
@@ -37,6 +68,19 @@ export function OverlayUrlCard({ handle }: { handle: string | null }) {
           testId="overlay-url"
           copyTestId="overlay-copy"
         />
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          onClick={regenerate}
+          loading={regenerating}
+          disabled={regenerating}
+          className="self-start"
+          data-testid="overlay-regenerate"
+        >
+          Regenerate URL
+        </Button>
+        <StatusLine status={status} />
       </CardContent>
     </Card>
   );
@@ -45,7 +89,7 @@ export function OverlayUrlCard({ handle }: { handle: string | null }) {
 /**
  * Overlay Settings card: configure alert duration, min amount, and sound.
  */
-export function OverlaySettingsCard({ handle }: { handle: string | null }) {
+export function OverlaySettingsCard({ overlayId }: { overlayId: string | null | undefined }) {
   const [durationMs, setDurationMs] = useState<number>(DEFAULT_ALERT_DURATION_MS);
   const [minAmount, setMinAmount] = useState<string>("0");
   const [soundEnabled, setSoundEnabled] = useState<boolean>(true);
@@ -53,11 +97,11 @@ export function OverlaySettingsCard({ handle }: { handle: string | null }) {
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState<Status>({ kind: "idle" });
 
-  // Load the current settings on mount (and when the handle changes).
+  // Load the current settings on mount (and when the overlay ID changes).
   useEffect(() => {
-    if (!handle) return;
+    if (!overlayId) return;
     let alive = true;
-    fetch(`/api/overlay-settings?handle=${encodeURIComponent(handle)}`)
+    fetch(`/api/overlay-settings?overlay_id=${encodeURIComponent(overlayId)}`)
       .then(async (res) => {
         if (!res.ok) return;
         const body = (await res.json()) as {
@@ -79,9 +123,9 @@ export function OverlaySettingsCard({ handle }: { handle: string | null }) {
     return () => {
       alive = false;
     };
-  }, [handle]);
+  }, [overlayId]);
 
-  if (!handle) return null;
+  if (!overlayId) return null;
 
   async function save() {
     setSaving(true);

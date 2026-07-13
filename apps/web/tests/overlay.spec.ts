@@ -2,10 +2,10 @@ import { test, expect, type Page } from "@playwright/test";
 import { expectNoNav } from "./nav-helpers";
 
 /**
- * Overlay E2E seam for `/overlay/[handle]` (PRD issue 09).
+ * Overlay E2E seam for `/overlay/[overlay_id]` (PRD issue 09).
  *
- * `/overlay/[handle]` is a public OBS browser source. The server component
- * resolves the handle to the Creator's `creator_profile_id` (registered + not
+ * `/overlay/[overlay_id]` is a public OBS browser source. The server component
+ * resolves the opaque Overlay ID to the Creator's `creator_profile_id` (registered + not
  * paused) and fetches the token allowlist. The client component subscribes to
  * Supabase Realtime on
  * `donations` (filtered by `creator_profile_id`, `status IN
@@ -51,7 +51,7 @@ test.describe("Overlay realtime donation alerts", () => {
   });
 
   test("does not replay historical donations on load", async ({ page }) => {
-    await page.goto("/overlay/ada");
+    await page.goto("/overlay/abc123");
 
     const alerts = page.getByTestId("overlay-alerts");
     await expect(alerts).toBeVisible();
@@ -59,7 +59,7 @@ test.describe("Overlay realtime donation alerts", () => {
   });
 
   test("hidden donations do not appear on the overlay", async ({ page }) => {
-    await page.goto("/overlay/ada");
+    await page.goto("/overlay/abc123");
 
     // The hidden donation's donor name and message never render.
     await expect(page.getByText("Troll")).toHaveCount(0);
@@ -67,7 +67,7 @@ test.describe("Overlay realtime donation alerts", () => {
   });
 
   test("a donation inserted via Realtime appears without a page reload", async ({ page }) => {
-    await page.goto("/overlay/ada");
+    await page.goto("/overlay/abc123");
 
     // Historical donations are not replayed; the not-yet-pushed donor is absent.
     await expect(page.getByTestId("overlay-alert")).toHaveCount(0);
@@ -105,13 +105,13 @@ test.describe("Overlay realtime donation alerts", () => {
     await expect(lateAlert.getByTestId("alert-symbol")).toContainText("USDC");
   });
 
-  test("404s for an unknown / not-registered / paused handle", async ({ page }) => {
-    const res = await page.goto("/overlay/does-not-exist");
+  test("404s for an unknown / not-registered / paused overlay_id", async ({ page }) => {
+    const res = await page.goto("/overlay/unknown");
     expect(res?.status()).toBe(404);
   });
 
   test("renders no nav so the browser-source surface stays transparent and chrome-free", async ({ page }) => {
-    await page.goto("/overlay/ada");
+    await page.goto("/overlay/abc123");
     await expectNoNav(page);
   });
 });

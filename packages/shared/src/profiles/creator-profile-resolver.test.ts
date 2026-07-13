@@ -47,20 +47,21 @@ const EXPECTED_PROFILE: CreatorProfile = {
   id: "p1",
   owner_address: "G...",
   handle_hash: HANDLE_HASH_BYTEA,
+  overlay_id: null,
 };
 
 describe("resolveProfileByHandleHash", () => {
   it("formats the raw hash and queries profiles by handle_hash", async () => {
     const { supabase, recorded, setResponse } = createMockSupabase();
     setResponse("profiles:select", {
-      data: { id: "p1", owner_address: "G..." },
+      data: { id: "p1", owner_address: "G...", overlay_id: null },
       error: null,
     });
 
     const result = await resolveProfileByHandleHash(supabase, HANDLE_HASH);
 
     expect(result).toEqual(EXPECTED_PROFILE);
-    expect(recorded.select).toBe("id, owner_address");
+    expect(recorded.select).toBe("id, owner_address, overlay_id");
     expect(recorded.eq).toEqual({ col: "handle_hash", value: HANDLE_HASH_BYTEA });
   });
 

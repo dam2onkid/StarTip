@@ -410,6 +410,26 @@ describe("indexer/dispatch processPoll", () => {
       onchain_registered_at: expect.any(String),
       payout_address: CREATOR_G,
     });
+    expect((update!.payload as { overlay_id: string }).overlay_id).toMatch(/^[0-9a-f]{32}$/);
+  });
+
+  it("CreatorRegistered: preserves an existing overlay_id", async () => {
+    const { supabase, calls, setResponder } = createMockSupabase();
+    setResponder("indexer_state:select", () => ({ data: { id: 1, last_ledger: 100, last_cursor: "cur" }, error: null }));
+    setResponder("profiles:select", () => ({ data: { id: "p1", owner_address: CREATOR_G, overlay_id: "existing000overlay000id000000000" }, error: null }));
+
+    const event = makeEvent("creator_registered", {
+      creator_id_hash: HANDLE_HASH,
+      owner: CREATOR_G,
+      payout_address: CREATOR_G,
+    });
+    const rpc = createMockRpc([event]);
+    const { processPoll } = await import("./dispatch");
+    await processPoll({ supabase: supabase as any, rpc, tokenReader, contractId: CONTRACT_ID });
+
+    const update = findCall(calls, "profiles", "update");
+    expect(update).toBeDefined();
+    expect((update!.payload as { overlay_id: string }).overlay_id).toBe("existing000overlay000id000000000");
   });
 
   it("CreatorRegistered: skips when no matching profile (orphan)", async () => {

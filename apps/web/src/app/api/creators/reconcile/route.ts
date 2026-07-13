@@ -4,6 +4,7 @@ import { createServiceClient } from "@startip/shared/supabase/service";
 import { rpc } from "@startip/shared/stellar/server";
 import { contractId } from "@/lib/stellar/client";
 import { readCreatorOnChain } from "@/lib/creators/handle";
+import { ensureOverlayId } from "@startip/shared/overlay/id";
 
 /**
  * POST /api/creators/reconcile - recover a Creator whose on-chain
@@ -17,10 +18,10 @@ import { readCreatorOnChain } from "@/lib/creators/handle";
  * the deterministic recovery path that does not depend on event history.
  *
  * Returns:
- *   200 { onchain_registered: true, payout_address }  - flipped (or already was)
- *   200 { onchain_registered: false }                 - not registered yet
- *   409 { error: "owner_mismatch" }                   - registered to another wallet
- *   409 { error: "not_ready" }                        - no handle / wallet linked yet
+ *   200 { onchain_registered: true, payout_address, overlay_id }  - flipped (or already was)
+ *   200 { onchain_registered: false }                             - not registered yet
+ *   409 { error: "owner_mismatch" }                               - registered to another wallet
+ *   409 { error: "not_ready" }                                    - no handle / wallet linked yet
  */
 export async function POST() {
   const auth = await requireAuthedProfile();
@@ -28,7 +29,11 @@ export async function POST() {
   const { user, profile } = auth.context;
 
   if (profile.onchain_registered) {
-    return NextResponse.json({ onchain_registered: true });
+    return NextResponse.json({
+      onchain_registered: true,
+      payout_address: profile.payout_address,
+      overlay_id: profile.overlay_id,
+    });
   }
 
   if (!profile.handle || !profile.owner_address) {
@@ -54,6 +59,7 @@ export async function POST() {
     return NextResponse.json({ error: "owner_mismatch" }, { status: 409 });
   }
 
+  const newOverlayId = ensureOverlayId(profile);
   const service = createServiceClient();
   const { error: updateErr } = await service
     .from("profiles")
@@ -61,6 +67,7 @@ export async function POST() {
       onchain_registered: true,
       onchain_registered_at: new Date().toISOString(),
       payout_address: creator.payout_address,
+      overlay_id: newOverlayId,
     })
     .eq("user_id", user.id);
   if (updateErr) return NextResponse.json({ error: "db_error" }, { status: 500 });
@@ -68,5 +75,6 @@ export async function POST() {
   return NextResponse.json({
     onchain_registered: true,
     payout_address: creator.payout_address,
+    overlay_id: newOverlayId,
   });
 }

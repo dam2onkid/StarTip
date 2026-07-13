@@ -115,6 +115,7 @@ describe("/dashboard shell", () => {
           handle: null,
           owner_address: null,
           onchain_registered: false,
+          overlay_id: null,
           paused: false,
         }}
       />,
@@ -158,6 +159,7 @@ describe("/dashboard shell", () => {
           handle: "ada",
           owner_address: "G-OWNER",
           onchain_registered: true,
+          overlay_id: "abc123",
           paused: false,
         }}
       />,
@@ -209,6 +211,7 @@ describe("/dashboard shell", () => {
           handle: null,
           owner_address: null,
           onchain_registered: false,
+          overlay_id: null,
           paused: false,
         }}
       />,

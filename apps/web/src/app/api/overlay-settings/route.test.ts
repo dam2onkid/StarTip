@@ -62,9 +62,9 @@ function upsertChain(recorder: { payload: unknown; error: unknown }) {
   };
 }
 
-function getReq(handle: string) {
+function getReq(overlayId: string) {
   return new NextRequest(
-    `http://localhost/api/overlay-settings?handle=${encodeURIComponent(handle)}`,
+    `http://localhost/api/overlay-settings?overlay_id=${encodeURIComponent(overlayId)}`,
     { method: "GET" },
   );
 }
@@ -100,7 +100,7 @@ describe("GET /api/overlay-settings", () => {
         }),
       );
     const { GET } = await import("@/app/api/overlay-settings/route");
-    const res = await GET(getReq("ada"));
+    const res = await GET(getReq("abc123"));
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({
       alert_duration_ms: 4000,
@@ -121,7 +121,7 @@ describe("GET /api/overlay-settings", () => {
       )
       .mockImplementationOnce(() => overlaySelectChain(null));
     const { GET } = await import("@/app/api/overlay-settings/route");
-    const res = await GET(getReq("ada"));
+    const res = await GET(getReq("abc123"));
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({
       alert_duration_ms: 10000,
@@ -131,21 +131,21 @@ describe("GET /api/overlay-settings", () => {
     });
   });
 
-  it("returns 404 creator_not_found when the handle is unknown / not registered / paused", async () => {
+  it("returns 404 creator_not_found when the overlay_id is unknown / not registered / paused", async () => {
     serviceFrom.mockImplementationOnce(() => profilesSelectChain(null));
     const { GET } = await import("@/app/api/overlay-settings/route");
-    const res = await GET(getReq("ghost"));
+    const res = await GET(getReq("unknown"));
     expect(res.status).toBe(404);
     expect(await res.json()).toEqual({ error: "creator_not_found" });
   });
 
-  it("returns 400 missing_handle when no handle query is provided", async () => {
+  it("returns 400 missing_overlay_id when no overlay_id query is provided", async () => {
     const { GET } = await import("@/app/api/overlay-settings/route");
     const res = await GET(
       new NextRequest("http://localhost/api/overlay-settings", { method: "GET" }),
     );
     expect(res.status).toBe(400);
-    expect(await res.json()).toEqual({ error: "missing_handle" });
+    expect(await res.json()).toEqual({ error: "missing_overlay_id" });
   });
 
   it("returns 500 db_error when the profile read errors", async () => {
@@ -153,12 +153,12 @@ describe("GET /api/overlay-settings", () => {
       profilesSelectChain(null, { message: "boom" }),
     );
     const { GET } = await import("@/app/api/overlay-settings/route");
-    const res = await GET(getReq("ada"));
+    const res = await GET(getReq("abc123"));
     expect(res.status).toBe(500);
     expect(await res.json()).toEqual({ error: "db_error" });
   });
 
-  it("normalizes the handle to lowercase before filtering", async () => {
+  it("trims the overlay_id before filtering", async () => {
     serviceFrom
       .mockImplementationOnce(() =>
         profilesSelectChain({
@@ -169,11 +169,11 @@ describe("GET /api/overlay-settings", () => {
       )
       .mockImplementationOnce(() => overlaySelectChain(null));
     const { GET } = await import("@/app/api/overlay-settings/route");
-    await GET(getReq("  Ada  "));
+    await GET(getReq("  abc123  "));
     const profileChain = serviceFrom.mock.results[0].value as {
       eq: { mock: { calls: unknown[][] } };
     };
-    expect(profileChain.eq.mock.calls[0][1]).toBe("ada");
+    expect(profileChain.eq.mock.calls[0][1]).toBe("abc123");
   });
 });
 

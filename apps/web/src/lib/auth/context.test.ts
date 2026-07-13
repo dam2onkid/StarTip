@@ -21,6 +21,7 @@ function makeProfile(overrides: Partial<Profile> = {}): Profile {
     handle_hash: null,
     onchain_registered: false,
     onchain_registered_at: null,
+    overlay_id: null,
     owner_address: null,
     paused: false,
     payout_address: null,

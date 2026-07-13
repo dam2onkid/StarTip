@@ -1,7 +1,7 @@
 /**
  * Pure, client-safe Overlay settings helpers.
  *
- * The Overlay server component (`app/(public)/overlay/[handle]/page.tsx`)
+ * The Overlay server component (`app/(public)/overlay/[overlay_id]/page.tsx`)
  * loads the Creator's `overlay_settings` row (or falls back to the column
  * defaults when no row exists), resolves `min_amount` from display units to
  * raw units (multiplied by 10^decimals for the donation's token), and passes

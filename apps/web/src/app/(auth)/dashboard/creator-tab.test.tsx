@@ -132,6 +132,7 @@ function profile(over: Partial<CreatorProfile> = {}): CreatorProfile {
     handle: null,
     owner_address: null,
     onchain_registered: false,
+    overlay_id: null,
     paused: false,
     ...over,
   };

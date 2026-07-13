@@ -48,6 +48,7 @@ const PUBLIC_CREATOR = {
   avatar_url: null,
   bio: "Pioneer programmer.",
   onchain_registered: true,
+  overlay_id: "abc123",
   paused: false,
 };
 
@@ -164,6 +165,7 @@ let profile = {
   handle_hash: null,
   owner_address: null,
   onchain_registered: false,
+  overlay_id: null,
   payout_address: null,
   paused: false,
   wallet_link_nonce: null,
@@ -228,6 +230,7 @@ function creatorModeProfile() {
     handle: "ada",
     owner_address: "GDF6CFYOXQTZVSLLK2RTDAUZ6N2E72IL4K2L34HXZK32KBR4NLVPLUVA",
     onchain_registered: true,
+    overlay_id: "abc123",
     payout_address: "GBPAYOUTADDRESS",
     paused: false,
   };
@@ -448,6 +451,11 @@ export function startMockSupabase(port) {
         const ins = inFilters(query);
         if (eq.handle) {
           const match = PUBLIC_CREATORS.find((c) => c.handle === eq.handle);
+          json(res, 200, match ? [match] : []);
+          return;
+        }
+        if (eq.overlay_id) {
+          const match = PUBLIC_CREATORS.find((c) => c.overlay_id === eq.overlay_id);
           json(res, 200, match ? [match] : []);
           return;
         }

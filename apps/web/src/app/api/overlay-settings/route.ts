@@ -11,9 +11,9 @@ import {
  * `/api/overlay-settings` - public read and authed owner write of a
  * Creator's Overlay settings (spec §11.3).
  *
- * GET `?handle=<handle>` - public. Resolves the handle to a registered,
- * not-paused Creator profile (service role, bypasses RLS), reads the
- * `overlay_settings` row by `creator_profile_id`, and returns it. When no
+ * GET `?overlay_id=<overlay_id>` - public. Resolves the opaque Overlay ID to a
+ * registered, not-paused Creator profile (service role, bypasses RLS), reads
+ * the `overlay_settings` row by `creator_profile_id`, and returns it. When no
  * row exists, returns the column defaults (10000ms, 0, true, 'default') so
  * the Overlay works out of the box before the Creator configures it.
  *
@@ -36,10 +36,10 @@ const DEFAULTS = {
 } as const;
 
 export async function GET(request: NextRequest) {
-  const handleParam = request.nextUrl.searchParams.get("handle");
-  const handle = typeof handleParam === "string" ? handleParam.trim().toLowerCase() : "";
-  if (!handle) {
-    return NextResponse.json({ error: "missing_handle" }, { status: 400 });
+  const overlayIdParam = request.nextUrl.searchParams.get("overlay_id");
+  const overlayId = typeof overlayIdParam === "string" ? overlayIdParam.trim() : "";
+  if (!overlayId) {
+    return NextResponse.json({ error: "missing_overlay_id" }, { status: 400 });
   }
 
   const service = createServiceClient();
@@ -47,7 +47,7 @@ export async function GET(request: NextRequest) {
   const { data: profile, error: profileErr } = await service
     .from("profiles")
     .select("id,onchain_registered,paused")
-    .eq("handle", handle)
+    .eq("overlay_id", overlayId)
     .maybeSingle();
   if (profileErr) return NextResponse.json({ error: "db_error" }, { status: 500 });
   const p = profile as { id: string; onchain_registered: boolean; paused: boolean } | null;

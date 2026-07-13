@@ -21,6 +21,12 @@ import { PayoutAddressWarning } from "../shared";
 import { StatusLine } from "../utils";
 import type { CreatorProfile, Status } from "../types";
 
+interface ReconcileResponse {
+  onchain_registered?: boolean;
+  payout_address?: string | null;
+  overlay_id?: string | null;
+}
+
 /** Gate 3: register on-chain. */
 export function OnchainPendingGate(args: {
   current: CreatorProfile;
@@ -74,13 +80,11 @@ export function OnchainPendingGate(args: {
         });
         if (!alive) return;
         if (res.ok) {
-          const body = (await res.json()) as {
-            onchain_registered?: boolean;
-            payout_address?: string | null;
-          };
+          const body = (await res.json()) as ReconcileResponse;
           if (body.onchain_registered) {
             onReconciledRef.current({
               payout_address: body.payout_address ?? undefined,
+              overlay_id: body.overlay_id ?? undefined,
             });
           }
         }
@@ -117,14 +121,12 @@ export function OnchainPendingGate(args: {
         });
         if (!alive) return;
         if (res.ok) {
-          const body = (await res.json()) as {
-            onchain_registered?: boolean;
-            payout_address?: string | null;
-          };
+          const body = (await res.json()) as ReconcileResponse;
           if (body.onchain_registered) {
             clearInterval(id);
             onReconciledRef.current({
               payout_address: body.payout_address ?? undefined,
+              overlay_id: body.overlay_id ?? undefined,
             });
           }
         }

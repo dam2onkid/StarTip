@@ -47,11 +47,16 @@ export function useOnchainRegisteredRealtime(
           const next = payload.new as {
             onchain_registered?: boolean;
             payout_address?: string | null;
+            overlay_id?: string | null;
           };
           if (next.onchain_registered) {
-            onActiveRef.current({
+            const update: Partial<CreatorProfile> = {
               payout_address: next.payout_address ?? undefined,
-            });
+            };
+            if (next.overlay_id !== undefined) {
+              update.overlay_id = next.overlay_id;
+            }
+            onActiveRef.current(update);
           }
         },
       )
@@ -105,6 +110,7 @@ export function useCreatorActiveRealtime(
           const next = payload.new as {
             payout_address?: string | null;
             paused?: boolean;
+            overlay_id?: string | null;
           };
           const update: Partial<CreatorProfile> = {};
           if (next.payout_address !== undefined) {
@@ -112,6 +118,9 @@ export function useCreatorActiveRealtime(
           }
           if (next.paused !== undefined) {
             update.paused = next.paused;
+          }
+          if (next.overlay_id !== undefined) {
+            update.overlay_id = next.overlay_id;
           }
           if (Object.keys(update).length > 0) {
             onUpdateRef.current(update);

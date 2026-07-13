@@ -48,6 +48,7 @@ function profile(over: Partial<CreatorProfile> = {}): CreatorProfile {
     handle: null,
     owner_address: null,
     onchain_registered: false,
+    overlay_id: null,
     paused: false,
     ...over,
   };
@@ -317,7 +318,7 @@ describe("OnchainPendingGate", () => {
 
   it("calls onReconciled when the mount reconcile finds the creator registered", async () => {
     const onReconciled = vi.fn();
-    mockFetch([() => jsonRes(200, { onchain_registered: true, payout_address: "GBPAYOUT" })]);
+    mockFetch([() => jsonRes(200, { onchain_registered: true, payout_address: "GBPAYOUT", overlay_id: "abc123" })]);
     render(
       <OnchainPendingGateWrapper
         current={profile({ handle: "ada", owner_address: STUB_ADDRESS })}
@@ -326,7 +327,7 @@ describe("OnchainPendingGate", () => {
       />,
     );
     await waitFor(() => {
-      expect(onReconciled).toHaveBeenCalledWith({ payout_address: "GBPAYOUT" });
+      expect(onReconciled).toHaveBeenCalledWith({ payout_address: "GBPAYOUT", overlay_id: "abc123" });
     });
   });
 });

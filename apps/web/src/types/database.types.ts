@@ -109,6 +109,7 @@ export type Database = {
           onchain_registered: boolean
           onchain_registered_at: string | null
           owner_address: string | null
+          overlay_id: string | null
           paused: boolean
           payout_address: string | null
           user_id: string
@@ -126,6 +127,7 @@ export type Database = {
           onchain_registered?: boolean
           onchain_registered_at?: string | null
           owner_address?: string | null
+          overlay_id?: string | null
           paused?: boolean
           payout_address?: string | null
           user_id: string
@@ -143,6 +145,7 @@ export type Database = {
           onchain_registered?: boolean
           onchain_registered_at?: string | null
           owner_address?: string | null
+          overlay_id?: string | null
           paused?: boolean
           payout_address?: string | null
           user_id?: string

@@ -81,8 +81,13 @@ export function ActiveGate({
             title="Stream Overlay"
             description="Copy your overlay URL and tune how alerts appear on stream."
           >
-            <OverlayUrlCard handle={current.handle} />
-            <OverlaySettingsCard handle={current.handle} />
+            <OverlayUrlCard
+              overlayId={current.overlay_id}
+              onRegenerate={(newOverlayId) =>
+                onUpdate((prev) => ({ ...prev, overlay_id: newOverlayId }))
+              }
+            />
+            <OverlaySettingsCard overlayId={current.overlay_id} key={current.overlay_id} />
             <DonationGoalCard handle={current.handle} goal={activeData?.goal ?? null} tokens={tokens} />
           </CreatorSettingsSection>
         </TabsContent>

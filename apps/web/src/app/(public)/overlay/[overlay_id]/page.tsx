@@ -4,11 +4,11 @@ import { OverlayAlerts, type OverlayToken } from "./overlay-alerts";
 import type { OverlaySettings } from "@/lib/overlay/settings";
 
 /**
- * `/overlay/[handle]` — public OBS browser source. Resolves the Handle to its
- * `creator_profile_id` (registered + not paused), fetches the token allowlist
- * and the Creator's `overlay_settings` row, and hands them to the
- * `<OverlayAlerts>` client component which subscribes to Supabase Realtime on
- * `donations` for live alerts.
+ * `/overlay/[overlay_id]` - public OBS browser source. Resolves the opaque
+ * Overlay ID to its `creator_profile_id` (registered + not paused), fetches
+ * the token allowlist and the Creator's `overlay_settings` row, and hands them
+ * to the `<OverlayAlerts>` client component which subscribes to Supabase
+ * Realtime on `donations` for live alerts.
  *
  * Overlay settings (spec §11.3): the server loads the Creator's
  * `overlay_settings` row (or falls back to defaults when no row exists) and
@@ -19,11 +19,11 @@ import type { OverlaySettings } from "@/lib/overlay/settings";
  * `alertDurationMs` (auto-dismiss), and plays a sound on Realtime insert when
  * `sound_enabled` is true.
  *
- * No auth required. The handle is resolved via the service role (bypasses RLS)
- * filtered to `onchain_registered = true AND paused = false`, so unknown /
- * not-registered / paused handles 404. Historical donations are intentionally
- * not replayed on page load; the overlay only displays Realtime events that
- * arrive after the browser source is opened. The
+ * No auth required. The Overlay ID is resolved via the service role (bypasses
+ * RLS) filtered to `onchain_registered = true AND paused = false`, so unknown
+ * / not-registered / paused Overlay IDs 404. Historical donations are
+ * intentionally not replayed on page load; the overlay only displays Realtime
+ * events that arrive after the browser source is opened. The
  * `donations_anon_visible_select` RLS policy suppresses hidden rows on the
  * anon-key Realtime channel.
  *
@@ -36,16 +36,16 @@ export const dynamic = "force-dynamic";
 export default async function OverlayPage({
   params,
 }: {
-  params: Promise<{ handle: string }>;
+  params: Promise<{ overlay_id: string }>;
 }) {
-  const { handle } = await params;
-  const normalized = handle.trim().toLowerCase();
+  const { overlay_id } = await params;
+  const normalized = overlay_id.trim();
   const service = createServiceClient();
 
   const { data: profile } = await service
     .from("profiles")
     .select("id,onchain_registered,paused")
-    .eq("handle", normalized)
+    .eq("overlay_id", normalized)
     .maybeSingle();
 
   const p = profile as {

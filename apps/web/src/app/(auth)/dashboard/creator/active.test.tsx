@@ -135,6 +135,7 @@ function activeProfile(over: Partial<CreatorProfile> = {}): CreatorProfile {
     handle: "ada",
     owner_address: STUB_ADDRESS,
     onchain_registered: true,
+    overlay_id: "abc123",
     payout_address: "GBPAYOUT",
     paused: false,
     display_name: "Ada",
@@ -288,10 +289,10 @@ describe("ActiveGate - overview", () => {
 });
 
 describe("ActiveGate - profile & links", () => {
-  it("renders the overlay URL with the handle", async () => {
+  it("renders the overlay URL with the overlay_id", async () => {
     render(<ActiveGateWrapper initial={activeProfile()} data={activeData()} />);
     await openCreatorTab(/overlay/i);
-    expect(screen.getByTestId("overlay-url")).toHaveTextContent(/\/overlay\/ada/);
+    expect(screen.getByTestId("overlay-url")).toHaveTextContent(/\/overlay\/abc123/);
     expect(screen.getByTestId("overlay-copy")).toBeInTheDocument();
   });
 
