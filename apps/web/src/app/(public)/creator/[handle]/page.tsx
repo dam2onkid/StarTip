@@ -1,13 +1,8 @@
 import { notFound } from "next/navigation";
 import { Trophy } from "lucide-react";
 import { createServiceClient } from "@startip/shared/supabase/service";
-import {
-  aggregateLeaderboard,
-  sumDonationStats,
-  type LeaderboardRow,
-} from "@/lib/creators/leaderboard";
-import { goalProgress, type GoalDonationRow } from "@/lib/creators/goal";
 import { rawToDisplayAmount } from "@/lib/stellar/amount";
+import { getBaseUrl } from "@/lib/server/base-url";
 import {
   buildTokenMap,
   getTokenDisplay,
@@ -15,7 +10,6 @@ import {
 } from "@/lib/donations/token";
 import { cn } from "@/lib/utils";
 import { ShareButtons } from "@/components/creator/share-buttons";
-import { BackButton } from "@/components/creator/back-button";
 import { QrCode } from "@/components/creator/qr-code";
 
 /**
@@ -43,60 +37,53 @@ export default async function CreatorPage({
   const normalized = handle.trim().toLowerCase();
 
   const service = createServiceClient();
+  const baseUrl = await getBaseUrl();
 
-  const { data: profile } = await service
-    .from("profiles")
-    .select("id,handle,display_name,avatar_url,banner_url,bio,onchain_registered,paused")
-    .eq("handle", normalized)
-    .maybeSingle();
+  const apiUrl = `${baseUrl}/api/creators/${normalized}/leaderboard`;
+  const [apiRes, { data: tokens }] = await Promise.all([
+    fetch(apiUrl, { cache: "no-store" }),
+    service
+      .from("tokens")
+      .select("contract_address,symbol,name,issuer,decimals,icon_url"),
+  ]);
 
-  const p = profile as {
-    id: string;
-    handle: string;
-    display_name: string;
-    avatar_url: string | null;
-    banner_url: string | null;
-    bio: string | null;
-    onchain_registered: boolean;
-    paused: boolean;
-  } | null;
-
-  if (!p || !p.onchain_registered || p.paused) {
+  if (!apiRes.ok) {
     notFound();
   }
 
-  const { data: donations } = await service
-    .from("donations")
-    .select("donor_name,amount,user_id,token")
-    .eq("creator_profile_id", p.id)
-    .in("status", ["confirmed", "indexed"])
-    .eq("moderation_status", "visible");
+  const api = (await apiRes.json()) as {
+    profile: {
+      id: string;
+      handle: string;
+      display_name: string;
+      avatar_url: string | null;
+      banner_url: string | null;
+      bio: string | null;
+      onchain_registered: boolean;
+      paused: boolean;
+    };
+    stats: {
+      total: string;
+      count: number;
+      token?: string;
+    };
+    leaderboard: {
+      donor_name: string;
+      total_amount: string;
+      token?: string;
+    }[];
+    goal: {
+      current: string;
+      target: string;
+      pct: number;
+      token: string;
+    } | null;
+  };
 
-  const rowsWithToken = (donations ?? []) as (LeaderboardRow & { token: string })[];
-  const rows: LeaderboardRow[] = rowsWithToken.map(({ donor_name, amount, user_id, token }) => ({
-    donor_name,
-    amount,
-    user_id,
-    token,
-  }));
-  const stats = sumDonationStats(rows);
-  const leaderboard = aggregateLeaderboard(rows);
-
-  // Token allowlist: needed to convert raw totals to display units with symbol.
-  const { data: tokens } = await service
-    .from("tokens")
-    .select("contract_address,symbol,name,issuer,decimals,icon_url");
   const tokenAllowlist = (tokens ?? []) as TokenAllowlistEntry[];
+  const tokenMap = buildTokenMap(tokenAllowlist);
 
-  // Donation goal: read the Creator's `donation_goals` row (public SELECT,
-  // service role bypasses RLS) and compute progress from the visible
-  // confirmed/indexed donations in the goal's token. No row = no goal bar.
-  const { data: goalRow } = await service
-    .from("donation_goals")
-    .select("target_amount,token")
-    .eq("creator_profile_id", p.id)
-    .maybeSingle();
-  const g = goalRow as { target_amount: string; token: string } | null;
+  const p = api.profile;
   let goal: {
     current: string;
     target: string;
@@ -105,31 +92,11 @@ export default async function CreatorPage({
     symbol: string;
     decimals: number;
   } | null = null;
-  if (g) {
-    // Read the goal token's metadata (decimals, symbol) for display conversion.
-    const { data: tokenRow } = await service
-      .from("tokens")
-      .select("symbol,decimals")
-      .eq("contract_address", g.token)
-      .maybeSingle();
-    const tk = tokenRow as { symbol: string; decimals: number } | null;
-    const decimals = tk?.decimals ?? 0;
-    const symbol = tk?.symbol ?? "";
-    const goalDonations: GoalDonationRow[] = rowsWithToken
-      .filter((r) => r.token === g.token)
-      .map((r) => ({ token: r.token, amount: r.amount }));
-    const progress = goalProgress(goalDonations, {
-      token: g.token,
-      targetAmount: g.target_amount,
-    });
-    goal = {
-      current: progress.current,
-      target: progress.target,
-      pct: progress.pct,
-      token: g.token,
-      symbol,
-      decimals,
-    };
+  if (api.goal) {
+    const entry = api.goal.token ? tokenMap.get(api.goal.token) : undefined;
+    const decimals = entry?.decimals ?? 0;
+    const symbol = entry?.symbol ?? api.goal.token;
+    goal = { ...api.goal, symbol, decimals };
   }
 
   return (
@@ -139,10 +106,10 @@ export default async function CreatorPage({
       avatarUrl={p.avatar_url}
       bannerUrl={p.banner_url}
       bio={p.bio}
-      total={stats.total}
-      totalToken={stats.token}
-      count={stats.count}
-      leaderboard={leaderboard}
+      total={api.stats.total}
+      totalToken={api.stats.token}
+      count={api.stats.count}
+      leaderboard={api.leaderboard}
       tokens={tokenAllowlist}
       goal={goal}
     />
@@ -189,12 +156,6 @@ export function CreatorPageShell({
 }) {
   const tokenMap = buildTokenMap(tokens);
   const totalDisplay = getTokenDisplay(total, totalToken, tokenMap);
-  const topDonor = leaderboard[0]
-    ? {
-        ...leaderboard[0],
-        display: getTokenDisplay(leaderboard[0].total_amount, leaderboard[0].token, tokenMap),
-      }
-    : null;
 
   return (
     <section className="relative w-full">
@@ -268,17 +229,12 @@ export function CreatorPageShell({
         />
       </div>
 
-      {/* Back control, sitting on the cover just below the nav. */}
-      <div className="mx-auto w-full max-w-7xl px-6 pt-6">
-        <BackButton />
-      </div>
-
       {/* Profile head: avatar overlapping the banner baseline + identity, bio,
           and share, exactly like a social profile. `pt-14` (below the Back row)
           places the avatar over the lower third of the 24rem banner. The avatar
           sits on top of the banner (normal flow, above the -z-10 cover) so
           nothing overlays it. */}
-      <div className="mx-auto w-full max-w-7xl px-6 pt-14">
+      <div className="mx-auto w-full max-w-7xl px-6 pt-14 mt-40">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:gap-5">
             {avatarUrl ? (
@@ -442,72 +398,72 @@ export function CreatorPageShell({
               </p>
             </div>
           ) : (
-            <div className="flex flex-col gap-3">
-              {topDonor && (
-                <div className="relative overflow-hidden rounded-xl bg-gradient-to-br from-primary/15 to-primary/5 p-4 ring-1 ring-primary/20">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex min-w-0 flex-col gap-1">
-                      <span className="font-mono text-[10px] uppercase tracking-wider text-primary">
-                        #1 Top Donor
-                      </span>
-                      <span className="truncate font-display text-lg font-semibold text-foreground">
-                        {topDonor.donor_name}
-                      </span>
-                    </div>
-                    <span className="shrink-0 font-mono text-lg text-primary">
-                      {topDonor.display.amount}
-                      {topDonor.display.symbol ? ` ${topDonor.display.symbol}` : ""}
-                    </span>
-                  </div>
-                </div>
-              )}
-
-              {leaderboard.length > 1 && (
-                <ol className="flex flex-col gap-2" data-testid="creator-leaderboard">
-                  {leaderboard.slice(1).map((entry, i) => {
-                    const rank = i + 2;
-                    const display = getTokenDisplay(
-                      entry.total_amount,
-                      entry.token,
-                      tokenMap,
-                    );
-                    return (
-                      <li
-                        key={entry.donor_name + (entry.token ?? "")}
-                        className={cn(
-                          "flex items-center justify-between rounded-lg px-3 py-2.5 ring-1",
-                          rank <= 3
-                            ? "bg-background/60 ring-foreground/10"
-                            : "bg-background/40 ring-foreground/5",
-                        )}
-                      >
-                        <span className="flex min-w-0 items-center gap-3">
-                          <span
-                            className={cn(
-                              "flex h-5 w-5 shrink-0 items-center justify-center rounded-full font-mono text-[10px]",
-                              rank === 2
-                                ? "bg-foreground/15 text-foreground"
-                                : rank === 3
-                                  ? "bg-foreground/10 text-muted-foreground"
-                                  : "text-muted-foreground",
-                            )}
-                          >
-                            {String(rank).padStart(2, "0")}
+            <ol className="flex flex-col gap-2" data-testid="creator-leaderboard">
+              {leaderboard.map((entry, i) => {
+                const display = getTokenDisplay(
+                  entry.total_amount,
+                  entry.token,
+                  tokenMap,
+                );
+                if (i === 0) {
+                  return (
+                    <li
+                      key={entry.donor_name + (entry.token ?? "")}
+                      className="relative overflow-hidden rounded-xl bg-gradient-to-br from-primary/15 to-primary/5 p-4 ring-1 ring-primary/20"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex min-w-0 flex-col gap-1">
+                          <span className="font-mono text-[10px] uppercase tracking-wider text-primary">
+                            #1 Top Donor
                           </span>
-                          <span className="truncate font-medium text-foreground">
+                          <span className="truncate font-display text-lg font-semibold text-foreground">
                             {entry.donor_name}
                           </span>
-                        </span>
-                        <span className="shrink-0 font-mono text-sm text-muted-foreground">
+                        </div>
+                        <span className="shrink-0 font-mono text-lg text-primary">
                           {display.amount}
                           {display.symbol ? ` ${display.symbol}` : ""}
                         </span>
-                      </li>
-                    );
-                  })}
-                </ol>
-              )}
-            </div>
+                      </div>
+                    </li>
+                  );
+                }
+                const rank = i + 1;
+                return (
+                  <li
+                    key={entry.donor_name + (entry.token ?? "")}
+                    className={cn(
+                      "flex items-center justify-between rounded-lg px-3 py-2.5 ring-1",
+                      rank <= 3
+                        ? "bg-background/60 ring-foreground/10"
+                        : "bg-background/40 ring-foreground/5",
+                    )}
+                  >
+                    <span className="flex min-w-0 items-center gap-3">
+                      <span
+                        className={cn(
+                          "flex h-5 w-5 shrink-0 items-center justify-center rounded-full font-mono text-[10px]",
+                          rank === 2
+                            ? "bg-foreground/15 text-foreground"
+                            : rank === 3
+                              ? "bg-foreground/10 text-muted-foreground"
+                              : "text-muted-foreground",
+                        )}
+                      >
+                        {String(rank).padStart(2, "0")}
+                      </span>
+                      <span className="truncate font-medium text-foreground">
+                        {entry.donor_name}
+                      </span>
+                    </span>
+                    <span className="shrink-0 font-mono text-sm text-muted-foreground">
+                      {display.amount}
+                      {display.symbol ? ` ${display.symbol}` : ""}
+                    </span>
+                  </li>
+                );
+              })}
+            </ol>
           )}
         </aside>
       </div>

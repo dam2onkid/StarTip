@@ -179,9 +179,55 @@ to convert the on-chain raw `i128` amount to a display amount.
 _Avoid_: token info, token config.
 
 **Overlay**:
-A browser source page (`/overlay/[handle]`) the Creator adds to OBS. Subscribes
-to Supabase Realtime and renders Donation alerts on the livestream.
+A browser source page (`/overlay/[overlay_id]`) the Creator adds to OBS.
+Subscribes to Supabase Realtime and renders Donation alerts on the
+livestream, optionally reading each Donation aloud via Text-to-Speech.
+Addressed by Overlay ID, not Handle: unlike `/donate/[handle]`, the Overlay
+route must not be guessable from public information, since it is the
+Creator's private OBS browser-source URL.
 _Avoid_: alert widget, notification layer.
+
+**Overlay ID**:
+An opaque, unguessable token identifying a Creator's Overlay, distinct from
+Handle. Generated automatically once onboarding completes; the Creator may
+regenerate it from the dashboard, which immediately invalidates the previous
+`/overlay/[overlay_id]` URL (old browser sources 404). Never derived from or
+exposed alongside the Handle. Analogous to a stream key: whoever holds it can
+view the Creator's live Overlay, so it is not published anywhere public.
+_Avoid_: stream key (used only as an analogy), overlay token (implementation
+detail), overlay handle.
+
+**Donation Alert**:
+The visual card rendered on the Overlay for a single Donation (Donor Name,
+amount + token symbol, message), auto-dismissed after `alert_duration_ms`
+(spec §11.3) or, when Text-to-Speech is enabled, after the Alert Reading
+finishes if that takes longer. Distinct from the Alert Reading: the Alert can
+render before, during, or without a Reading.
+_Avoid_: alert (ambiguous with Alert Reading), toast.
+
+**Alert Reading**:
+The Text-to-Speech narration of a Donation Alert (Donor Name, amount +
+message, capped to the first ~200 characters) in the Creator's configured
+Voice. Plays once, after the Overlay's alert sound (when enabled), and never
+replays. Absent when Text-to-Speech is disabled, the Creator has not chosen a
+Voice, or synthesis fails/times out; the Donation Alert always renders
+regardless of whether the Reading succeeds.
+_Avoid_: TTS, narration, speech (be specific: an Alert Reading is scoped to
+one Donation Alert).
+
+**Voice**:
+A Text-to-Speech Provider's named speech identity (e.g. an edge-tts voice
+like `vi-VN-HoaiMyNeural`), carrying an implicit locale that determines the
+Alert Reading's sentence template. Chosen per-Creator in Overlay settings;
+`null` means Text-to-Speech is unconfigured even if `tts_enabled` is true.
+_Avoid_: speaker, model.
+
+**Text-to-Speech Provider**:
+A pluggable backend that turns an Alert Reading's text into audio for a given
+Voice. The Worker owns Provider selection; `edge-tts` is the only Provider
+today. Never chosen by the Creator directly, only through the Voice they
+pick.
+_Avoid_: TTS engine, TTS service.
 
 **Moderation Status**:
 The visibility state of a Donation's message on the Overlay
@@ -206,5 +252,6 @@ A public ranking of Donors by total donated amount. Two scopes:
   Platform Fee config, `max_fee_bps` (immutable), Treasury address, Admin role
   (`set_admin`), Token Allowlist, `paused` switch, Donation settlement,
   `DonationReceived` event, Donation ID Hash. Nothing else.
-- **Off-chain (Supabase)**: full message, donor name, Profile, Overlay theme,
-  Leaderboard, donation goal, Moderation Status, dashboard data.
+- **Off-chain (Supabase)**: full message, donor name, Profile, Overlay ID,
+  Overlay theme, Voice choice, Leaderboard, donation goal, Moderation Status,
+  dashboard data.
