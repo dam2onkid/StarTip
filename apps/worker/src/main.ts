@@ -9,8 +9,8 @@ import { createTtsApp, EdgeTtsProvider } from "./tts";
 import { startIndexerLoop } from "./indexer";
 
 /**
- * Worker entry point. Boots the Hono verify server + the indexer poll loop in
- * a single Node process (ADR-0006).
+ * Worker entry point. Boots the Hono server for /verify and /tts + the indexer
+ * poll loop in a single Node process (ADR-0006).
  */
 
 // Shared clients (created once, reused across requests + polls).

@@ -61,13 +61,21 @@ async function streamToBuffer(stream: NodeJS.ReadableStream): Promise<Buffer> {
   return Buffer.concat(chunks);
 }
 
+async function withEdgeTts<T>(fn: (tts: MsEdgeTTS) => Promise<T>): Promise<T> {
+  const tts = new MsEdgeTTS();
+  try {
+    return await fn(tts);
+  } finally {
+    tts.close();
+  }
+}
+
 /**
  * Edge-tts-backed {@link TtsProvider}.
  */
 export class EdgeTtsProvider implements TtsProvider {
   async synthesize(text: string, voice: string): Promise<Buffer> {
-    const tts = new MsEdgeTTS();
-    try {
+    return withEdgeTts(async (tts) => {
       await tts.setMetadata(
         voice,
         OUTPUT_FORMAT.AUDIO_24KHZ_48KBITRATE_MONO_MP3,
@@ -75,22 +83,15 @@ export class EdgeTtsProvider implements TtsProvider {
       const { audioStream } = tts.toStream(escapeXml(text));
       const audio = await streamToBuffer(audioStream);
       return audio;
-    } finally {
-      tts.close();
-    }
+    });
   }
 
   async listVoices(locale?: string): Promise<TtsVoice[]> {
-    const tts = new MsEdgeTTS();
-    try {
-      const voices = await tts.getVoices();
-      const filtered = locale
-        ? voices.filter((v) => v.Locale === locale)
-        : voices;
-      return filtered.map(mapVoice);
-    } finally {
-      tts.close();
-    }
+    const voices = await withEdgeTts((tts) => tts.getVoices());
+    const filtered = locale
+      ? voices.filter((v) => v.Locale === locale)
+      : voices;
+    return filtered.map(mapVoice);
   }
 }
 
