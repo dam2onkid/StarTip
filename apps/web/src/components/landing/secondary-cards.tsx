@@ -4,7 +4,7 @@ import Link from "next/link";
 import { motion, type Variants } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { secondaryCards } from "@/content/landing";
-import { TiltCard } from "@/components/landing/tilt-card";
+import { BorderGlow } from "@/components/landing/border-glow";
 import { ScrambleText } from "@/components/landing/scramble-text";
 import { usePrefersReducedMotion } from "@/hooks/use-prefers-reduced-motion";
 
@@ -13,10 +13,10 @@ import { usePrefersReducedMotion } from "@/hooks/use-prefers-reduced-motion";
  * variant so the hero "Sign in/up" CTA remains the single Tertiary
  * element on the page at rest (single-accent rule, DESIGN.md).
  *
- * Premium layer: each card is a frosted-glass surface with dimensional tilt on
- * fine-pointer devices and a staggered entrance as the grid enters the viewport.
- * Only `transform` and `opacity` are animated; the stagger and tilt are
- * disabled under `prefers-reduced-motion: reduce`.
+ * Premium layer: each card is a dark surface with a directional edge glow that
+ * follows the pointer on fine-pointer devices, plus a staggered entrance as the
+ * grid enters the viewport. Only `transform` and `opacity` are animated; the
+ * glow and stagger are disabled under `prefers-reduced-motion: reduce`.
  */
 const container: Variants = {
   hidden: {},
@@ -62,13 +62,17 @@ export function SecondaryCards() {
           className="grid gap-5 sm:grid-cols-3"
         >
           {secondaryCards.map((item) => (
-            <motion.div
-              key={item.header}
-              variants={reduced ? undefined : card}
-              className="[perspective:1200px]"
-            >
-              <TiltCard className="glass h-full rounded-2xl border border-primary/10 p-6 transition-[border-color,box-shadow] duration-300 hover:border-primary/30 hover:shadow-[0_0_24px_-12px_rgba(180,255,57,0.15)]">
-                <div className="flex h-full flex-col gap-6 [transform:translateZ(40px)] [transform-style:preserve-3d]">
+            <motion.div key={item.header} variants={reduced ? undefined : card}>
+              <BorderGlow
+                className="h-full"
+                backgroundColor="#17191C"
+                borderRadius={14}
+                glowColor="78 100 64"
+                glowRadius={20}
+                colors={["#B4FF39", "#ECEDEE", "#9CA3AF"]}
+                data-cursor="hover"
+              >
+                <div className="flex h-full flex-col gap-6 p-6">
                   <div className="flex items-center gap-2">
                     <span
                       aria-hidden
@@ -102,7 +106,7 @@ export function SecondaryCards() {
                     </Button>
                   </div>
                 </div>
-              </TiltCard>
+              </BorderGlow>
             </motion.div>
           ))}
         </motion.div>
