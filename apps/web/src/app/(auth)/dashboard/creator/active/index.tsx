@@ -47,13 +47,14 @@ export function ActiveGate({
       <div className="creator-settings-panel">
         <TabsContent value="overview" className="m-0">
           <CreatorSettingsSection
+            className="creator-overview-section"
             eyebrow="Overview"
             title="Creator Overview"
             description="Track tips, supporter activity, and the public status donors see."
           >
+            <CreatorStatusCard current={current} />
             <StatsCard activeData={activeData} tokens={tokens} />
             <LeaderboardCard activeData={activeData} tokens={tokens} />
-            <CreatorStatusCard current={current} />
           </CreatorSettingsSection>
         </TabsContent>
         <TabsContent value="profile" className="m-0">

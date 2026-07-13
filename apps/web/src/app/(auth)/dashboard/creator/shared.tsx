@@ -2,6 +2,7 @@
 
 import { useState, type ReactNode } from "react";
 import { CheckIcon, ClipboardIcon, InfoIcon } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { CardTitle } from "@/components/ui/card";
 import {
@@ -192,15 +193,17 @@ export function CreatorSettingsSection({
   eyebrow,
   title,
   description,
+  className,
   children,
 }: {
   eyebrow: string;
   title: string;
   description: string;
+  className?: string;
   children: ReactNode;
 }) {
   return (
-    <section className="creator-settings-section">
+    <section className={cn("creator-settings-section", className)}>
       <header className="creator-settings-section-header">
         <span>{eyebrow}</span>
         <h2>{title}</h2>
