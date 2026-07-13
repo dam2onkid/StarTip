@@ -30,7 +30,7 @@ const verifyApp = createVerifyApp(
 // TTS endpoint deps.
 const ttsApp = createTtsApp(
   { provider: new EdgeTtsProvider() },
-  { synthesizeTimeoutMs: env.TTS_SYNTHESIZE_TIMEOUT_MS },
+  { synthesizeTimeoutMs: 8_000 },
   env.WORKER_SECRET,
 );
 
