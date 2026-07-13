@@ -20,9 +20,9 @@ import FaultyTerminal from "@/components/landing/faulty-terminal";
  * statically. Parallax is likewise disabled for reduced-motion users.
  */
 
-const HEADLINE = `Global tips for livestream creators.\nBuild on Stellar.`;
+const HEADLINE = `Global tips for livestream creators.`;
 const SUBHEADLINE =
-  "Fans scan a QR and send a Stellar asset. The transaction settles in seconds, anywhere in the world, for a fraction of a cent. Every donation is bound to an on-chain proof the platform cannot forge.";
+  "Fans scan a QR and send a Stellar asset. The transaction settles in seconds, anywhere in the world, for a fraction of a cent. Every donation is bound to an on-chain proof the platform cannot forge. Build on Stellar.";
 
 const container: Variants = {
   hidden: {},
