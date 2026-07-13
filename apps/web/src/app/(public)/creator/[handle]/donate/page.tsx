@@ -62,7 +62,7 @@ export function DonatePageShell({ creator }: { creator: DonateCreatorIdentity })
   const creatorHref = `/creator/${encodeURIComponent(creator.handle)}`;
 
   return (
-    <section className="mx-auto flex w-full max-w-md flex-col gap-4 px-6 pt-32 pb-24">
+    <section className="mx-auto flex w-full max-w-2xl flex-col gap-6 px-6 pt-32 pb-24">
       <Button
         asChild
         variant="ghost"

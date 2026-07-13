@@ -6,6 +6,7 @@ import {
   DonateError,
   DONATE_ERROR_MESSAGES,
   type DonateArgs,
+  type DonateErrorCode,
   type DonateResult,
 } from "@/lib/donations/donate";
 import type { TokenAllowlistEntry } from "@/lib/donations/token";
@@ -92,6 +93,10 @@ export class DonationFlowValidationError extends Error {
 function mapDonationFlowError(err: unknown): string {
   if (err instanceof DonateError) {
     return DONATE_ERROR_MESSAGES[err.code] ?? err.message;
+  }
+  if (err instanceof Error && err.name === "DonateError" && "code" in err) {
+    const code = (err as { code: string }).code as DonateErrorCode;
+    return DONATE_ERROR_MESSAGES[code] ?? err.message;
   }
   if (err instanceof VerifyError) {
     return `Server error: ${err.code}`;

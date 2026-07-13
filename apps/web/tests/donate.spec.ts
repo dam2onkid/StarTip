@@ -100,14 +100,13 @@ test.describe("Donate flow", () => {
       .getByRole("navigation", { name: "Primary" })
       .getByRole("button", { name: /connect wallet/i })
       .click();
-    await expect(page.getByText(/Connected:/i)).toBeVisible();
+    await expect(page.getByText(/Connected wallet/i)).toBeVisible();
 
     // Wait for the token picker to populate from the mock Supabase tokens
-    // endpoint. Native <option> elements are not "visible" in Playwright's
-    // a11y tree until the <select> is open, so assert the combobox is enabled
-    // and auto-selected the first token (CUSDC) instead.
+    // endpoint. The shadcn Select renders a combobox button; assert it is
+    // enabled and auto-selected the first token (CUSDC) instead.
     await expect(page.getByRole("combobox", { name: /token/i })).toBeEnabled();
-    await expect(page.getByRole("combobox", { name: /token/i })).toHaveValue("CUSDC");
+    await expect(page.getByRole("combobox", { name: /token/i })).toHaveText("USDC");
 
     // Enter amount.
     await page.getByPlaceholder("0.00").fill("1.5");
@@ -116,7 +115,7 @@ test.describe("Donate flow", () => {
     await page.getByRole("button", { name: /donate/i }).click();
 
     // Verify success.
-    await expect(page.getByText(/donation confirmed/i)).toBeVisible();
+    await expect(page.locator("form").getByText(/donation confirmed/i)).toBeVisible();
   });
 
   test("error path: paused creator surfaces a user-facing error message", async ({ page }) => {
@@ -130,11 +129,11 @@ test.describe("Donate flow", () => {
       .getByRole("navigation", { name: "Primary" })
       .getByRole("button", { name: /connect wallet/i })
       .click();
-    await expect(page.getByText(/Connected:/i)).toBeVisible();
+    await expect(page.getByText(/Connected wallet/i)).toBeVisible();
 
-    // Wait for the token picker (see happy path note on native <option> visibility).
+    // Wait for the token picker (see happy path note on the shadcn Select).
     await expect(page.getByRole("combobox", { name: /token/i })).toBeEnabled();
-    await expect(page.getByRole("combobox", { name: /token/i })).toHaveValue("CUSDC");
+    await expect(page.getByRole("combobox", { name: /token/i })).toHaveText("USDC");
 
     // Enter amount and submit.
     await page.getByPlaceholder("0.00").fill("1.0");
@@ -158,11 +157,11 @@ test.describe("Donate flow", () => {
       .getByRole("navigation", { name: "Primary" })
       .getByRole("button", { name: /connect wallet/i })
       .click();
-    await expect(page.getByText(/Connected:/i)).toBeVisible();
+    await expect(page.getByText(/Connected wallet/i)).toBeVisible();
 
-    // Wait for the token picker (see happy path note on native <option> visibility).
+    // Wait for the token picker (see happy path note on the shadcn Select).
     await expect(page.getByRole("combobox", { name: /token/i })).toBeEnabled();
-    await expect(page.getByRole("combobox", { name: /token/i })).toHaveValue("CUSDC");
+    await expect(page.getByRole("combobox", { name: /token/i })).toHaveText("USDC");
 
     // The trustline guidance renders (the checkTrustline seam returns false).
     await expect(page.getByText(/trustline to this token is required/i)).toBeVisible();
@@ -172,7 +171,7 @@ test.describe("Donate flow", () => {
     await page.getByRole("button", { name: /donate/i }).click();
 
     // Verify success.
-    await expect(page.getByText(/donation confirmed/i)).toBeVisible();
+    await expect(page.locator("form").getByText(/donation confirmed/i)).toBeVisible();
 
     // Assert the donate stub received needsTrustline: true (the two-op path).
     const args = await page.evaluate(() =>

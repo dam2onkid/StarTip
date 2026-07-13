@@ -162,25 +162,25 @@ afterEach(() => {
 
 async function renderAndConnect(handle = "ada") {
   const { DonateWalletProvider } = await import("@/components/landing/donate-wallet-context");
-  const { DonateWalletConnector } = await import("@/components/landing/donate-wallet-connector");
   const { DonateForm } = await import("./donate-form");
   connectWallet.mockResolvedValue({ address: STUB_ADDRESS });
   render(
     <DonateWalletProvider>
-      <DonateWalletConnector />
       <DonateForm handle={handle} />
     </DonateWalletProvider>,
   );
   await act(async () => {
     fireEvent.click(screen.getByRole("button", { name: /connect wallet/i }));
   });
-  await waitFor(() => expect(screen.getByText(/Connected:/i)).toBeInTheDocument());
+  await waitFor(() => expect(screen.getByText(/Connected wallet/i)).toBeInTheDocument());
   // Wait for the token picker to be populated by the useEffect.
-  await waitFor(() => expect(screen.getByRole("option", { name: /USDC/i })).toBeInTheDocument());
+  await waitFor(() =>
+    expect(screen.getByRole("combobox", { name: /token/i })).toHaveTextContent("USDC"),
+  );
 }
 
 describe("DonateForm", () => {
-  it("points donors to the navbar wallet connector when no wallet is connected", async () => {
+  it("prompts to connect wallet when no wallet is connected", async () => {
     const { DonateWalletProvider } = await import("@/components/landing/donate-wallet-context");
     const { DonateForm } = await import("./donate-form");
     render(
@@ -189,21 +189,24 @@ describe("DonateForm", () => {
       </DonateWalletProvider>,
     );
     expect(
-      screen.getByText(/connect your wallet from the navbar/i),
+      screen.getByText(/Connect your wallet/i),
     ).toBeInTheDocument();
     expect(
-      screen.queryByRole("button", { name: /connect wallet/i }),
-    ).not.toBeInTheDocument();
+      screen.getByText(/Link a Stellar wallet to send your donation/i),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /connect wallet/i }),
+    ).toBeInTheDocument();
   });
 
-  it("shows the navbar-connected wallet address", async () => {
+  it("shows the connected wallet", async () => {
     await renderAndConnect();
-    expect(screen.getByText(/Connected:/i)).toBeInTheDocument();
+    expect(screen.getByText(/Connected wallet/i)).toBeInTheDocument();
   });
 
   it("renders the token picker, amount, and donate button after connecting", async () => {
     await renderAndConnect();
-    expect(screen.getByRole("option", { name: /USDC/i })).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: /token/i })).toHaveTextContent("USDC");
     expect(screen.getByPlaceholderText("0.00")).toBeInTheDocument();
     expect(screen.getByPlaceholderText("Anonymous")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /donate/i })).toBeInTheDocument();
@@ -221,8 +224,8 @@ describe("DonateForm", () => {
 
     await waitFor(() =>
       expect(
-        screen.getByRole("option", { name: /no donation tokens available/i }),
-      ).toBeInTheDocument(),
+        screen.getByRole("combobox", { name: /token/i }),
+      ).toHaveTextContent("No donation tokens available"),
     );
     expect(screen.getByRole("combobox", { name: /token/i })).toBeDisabled();
   });
@@ -243,7 +246,7 @@ describe("DonateForm", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByText(/donation confirmed/i)).toBeInTheDocument();
+      expect(screen.getByText(/Donation confirmed! Tx/i)).toBeInTheDocument();
     });
     expect(donateOnChain).toHaveBeenCalledOnce();
     // The verify body carries tx_hash + off-chain content, no donation_id.
