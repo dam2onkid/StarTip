@@ -1,6 +1,6 @@
 # 02 - Worker Text-to-Speech endpoints
 
-Status: ready-for-agent
+Status: done
 Role: backend
 
 ## Parent
@@ -17,27 +17,27 @@ following the same shape as the existing `/verify` endpoint.
 
 ## Acceptance criteria
 
-- [ ] A `TtsProvider` interface is defined: synthesize(text, voice) -> audio
+- [x] A `TtsProvider` interface is defined: synthesize(text, voice) -> audio
       bytes, and list the Voices a Provider supports (optionally filtered by
       locale).
-- [ ] An edge-tts-backed implementation of `TtsProvider` is wired up as the
+- [x] An edge-tts-backed implementation of `TtsProvider` is wired up as the
       Worker's active Provider.
-- [ ] A Hono endpoint (e.g. `POST /tts`) accepts reading text + a Voice
+- [x] A Hono endpoint (e.g. `POST /tts`) accepts reading text + a Voice
       identifier, calls the active Provider, and returns synthesized audio
       bytes in a single response (no streaming).
-- [ ] The synthesize endpoint enforces an 8-second timeout; on timeout or any
+- [x] The synthesize endpoint enforces an 8-second timeout; on timeout or any
       Provider error it returns an error response. There is no retry.
-- [ ] A Hono endpoint (e.g. `GET /tts/voices`) returns the active Provider's
+- [x] A Hono endpoint (e.g. `GET /tts/voices`) returns the active Provider's
       Voice list.
-- [ ] Both endpoints require the same bearer `WORKER_SECRET` auth as
+- [x] Both endpoints require the same bearer `WORKER_SECRET` auth as
       `/verify` and reject requests without it (401).
-- [ ] Unit tests mirror `apps/worker/src/server.test.ts`: a
+- [x] Unit tests mirror `apps/worker/src/server.test.ts`: a
       `createTtsApp(deps, options, secret)`-style factory takes an injected
       `TtsProvider` (mocked, never a real edge-tts network call) and tests
       exercise auth (401), invalid body (400), the timeout/provider-error
       path (no retry), and the happy-path synthesize + voices responses via
       `app.request(...)`.
-- [ ] No caching of synthesized audio (each Donation's reading text is
+- [x] No caching of synthesized audio (each Donation's reading text is
       unique; nothing to cache).
 
 ## Blocked by

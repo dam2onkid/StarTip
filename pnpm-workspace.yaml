@@ -11,6 +11,7 @@ allowBuilds:
   blake-hash: false
   bufferutil: false
   esbuild: true
+  msedge-tts: false
   protobufjs: false
   secp256k1: false
   sharp: true

@@ -19,6 +19,7 @@ export const env = z
     INDEXER_START_LEDGER: z.coerce.number().int().min(0).default(0),
     VERIFY_POLL_MAX_MS: z.coerce.number().int().default(30_000),
     VERIFY_POLL_INTERVAL_MS: z.coerce.number().int().default(1_000),
+    TTS_SYNTHESIZE_TIMEOUT_MS: z.coerce.number().int().default(8_000),
   })
   .parse(process.env);
 
