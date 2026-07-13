@@ -1,5 +1,9 @@
 Status: done
 
+## Parent
+
+`/private/var/folders/tk/rmcx56cx2gz8r5jfsgdrnn5m0000gn/T/architecture-review-20260712-142520.html` (StarTip architecture review)
+
 # Create the DonationRouter invocation module and migrate registration + active-creator actions
 
 ## What to build

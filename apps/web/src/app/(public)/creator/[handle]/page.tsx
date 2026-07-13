@@ -7,6 +7,11 @@ import {
 } from "@/lib/creators/leaderboard";
 import { goalProgress, type GoalDonationRow } from "@/lib/creators/goal";
 import { rawToDisplayAmount } from "@/lib/stellar/amount";
+import {
+  buildTokenMap,
+  getTokenDisplay,
+  type TokenAllowlistEntry,
+} from "@/lib/donations/token";
 import { ShareButtons } from "@/components/creator/share-buttons";
 import { BackButton } from "@/components/creator/back-button";
 import { QrCode } from "@/components/creator/qr-code";
@@ -66,13 +71,20 @@ export default async function CreatorPage({
     .eq("moderation_status", "visible");
 
   const rowsWithToken = (donations ?? []) as (LeaderboardRow & { token: string })[];
-  const rows: LeaderboardRow[] = rowsWithToken.map(({ donor_name, amount, user_id }) => ({
+  const rows: LeaderboardRow[] = rowsWithToken.map(({ donor_name, amount, user_id, token }) => ({
     donor_name,
     amount,
     user_id,
+    token,
   }));
   const stats = sumDonationStats(rows);
   const leaderboard = aggregateLeaderboard(rows);
+
+  // Token allowlist: needed to convert raw totals to display units with symbol.
+  const { data: tokens } = await service
+    .from("tokens")
+    .select("contract_address,symbol,name,issuer,decimals,icon_url");
+  const tokenAllowlist = (tokens ?? []) as TokenAllowlistEntry[];
 
   // Donation goal: read the Creator's `donation_goals` row (public SELECT,
   // service role bypasses RLS) and compute progress from the visible
@@ -126,8 +138,10 @@ export default async function CreatorPage({
       bannerUrl={p.banner_url}
       bio={p.bio}
       total={stats.total}
+      totalToken={stats.token}
       count={stats.count}
       leaderboard={leaderboard}
+      tokens={tokenAllowlist}
       goal={goal}
     />
   );
@@ -144,8 +158,10 @@ export function CreatorPageShell({
   bannerUrl = null,
   bio,
   total,
+  totalToken,
   count,
   leaderboard,
+  tokens = [],
   goal = null,
 }: {
   handle: string;
@@ -155,8 +171,10 @@ export function CreatorPageShell({
   bannerUrl?: string | null;
   bio: string | null;
   total: string;
+  totalToken?: string;
   count: number;
-  leaderboard: { donor_name: string; total_amount: string }[];
+  leaderboard: { donor_name: string; total_amount: string; token?: string }[];
+  tokens?: TokenAllowlistEntry[];
   /** Donation goal progress snapshot, or `null` when no goal is set. */
   goal?: {
     current: string;
@@ -167,6 +185,9 @@ export function CreatorPageShell({
     decimals: number;
   } | null;
 }) {
+  const tokenMap = buildTokenMap(tokens);
+  const totalDisplay = getTokenDisplay(total, totalToken, tokenMap);
+
   return (
     <section className="relative w-full">
       {/* Banner (Twitter-style cover). Absolutely positioned and pulled up
@@ -300,7 +321,8 @@ export function CreatorPageShell({
                   className="font-mono text-lg text-foreground"
                   data-testid="total-received"
                 >
-                  {total}
+                  {totalDisplay.amount}
+                  {totalDisplay.symbol ? ` ${totalDisplay.symbol}` : ""}
                 </dd>
               </div>
               <div className="h-px bg-foreground/10" />
@@ -400,22 +422,30 @@ export function CreatorPageShell({
             </p>
           ) : (
             <ol className="flex flex-col gap-2" data-testid="creator-leaderboard">
-              {leaderboard.map((entry, i) => (
-                <li
-                  key={entry.donor_name}
-                  className="flex items-center justify-between rounded-md bg-background/40 px-3 py-2 ring-1 ring-foreground/5"
-                >
-                  <span className="flex items-center gap-3">
-                    <span className="font-mono text-xs text-muted-foreground">
-                      {String(i + 1).padStart(2, "0")}
+              {leaderboard.map((entry, i) => {
+                const display = getTokenDisplay(
+                  entry.total_amount,
+                  entry.token,
+                  tokenMap,
+                );
+                return (
+                  <li
+                    key={entry.donor_name + (entry.token ?? "")}
+                    className="flex items-center justify-between rounded-md bg-background/40 px-3 py-2 ring-1 ring-foreground/5"
+                  >
+                    <span className="flex items-center gap-3">
+                      <span className="font-mono text-xs text-muted-foreground">
+                        {String(i + 1).padStart(2, "0")}
+                      </span>
+                      <span className="font-medium text-foreground">{entry.donor_name}</span>
                     </span>
-                    <span className="font-medium text-foreground">{entry.donor_name}</span>
-                  </span>
-                  <span className="font-mono text-sm text-muted-foreground">
-                    {entry.total_amount}
-                  </span>
-                </li>
-              ))}
+                    <span className="font-mono text-sm text-muted-foreground">
+                      {display.amount}
+                      {display.symbol ? ` ${display.symbol}` : ""}
+                    </span>
+                  </li>
+                );
+              })}
             </ol>
           )}
         </aside>

@@ -33,6 +33,11 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Separator } from "@/components/ui/separator"
+import {
+  buildTokenMap,
+  getTokenDisplay,
+  type TokenAllowlistEntry,
+} from "@/lib/donations/token"
 
 export interface ExploreDiscoveryCreator {
   handle: string
@@ -44,6 +49,7 @@ export interface ExploreDiscoveryCreator {
 export interface ExploreDiscoveryLeaderboardEntry {
   donor_name: string
   total_amount: string
+  token?: string
 }
 
 type CreatorSort = "name-asc" | "name-desc" | "handle-asc" | "handle-desc"
@@ -60,18 +66,22 @@ const collator = new Intl.Collator("en", { sensitivity: "base" })
 export function ExploreDiscovery({
   creators,
   leaderboard,
+  tokens = [],
   creatorsError = false,
   leaderboardError = false,
   searchQuery = "",
 }: {
   creators: ExploreDiscoveryCreator[]
   leaderboard: ExploreDiscoveryLeaderboardEntry[]
+  tokens?: TokenAllowlistEntry[]
   creatorsError?: boolean
   leaderboardError?: boolean
   searchQuery?: string
 }) {
   const [query, setQuery] = useState(searchQuery)
   const [sort, setSort] = useState<CreatorSort>("name-asc")
+
+  const tokenMap = useMemo(() => buildTokenMap(tokens), [tokens])
 
   const visibleCreators = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase()
@@ -265,22 +275,30 @@ export function ExploreDiscovery({
                 </p>
               ) : (
                 <ol className="flex flex-col gap-2" data-testid="global-leaderboard">
-                  {leaderboard.map((entry, index) => (
-                    <li
-                      key={entry.donor_name}
-                      className="grid grid-cols-[2.5rem_minmax(0,1fr)_auto] items-center gap-3 rounded-md border border-border bg-background/30 px-3 py-2"
-                    >
-                      <span className="font-mono text-xs text-muted-foreground">
-                        {String(index + 1).padStart(2, "0")}
-                      </span>
-                      <span className="truncate font-medium text-foreground">
-                        {entry.donor_name}
-                      </span>
-                      <span className="font-mono text-sm text-muted-foreground">
-                        {entry.total_amount}
-                      </span>
-                    </li>
-                  ))}
+                  {leaderboard.map((entry, index) => {
+                    const display = getTokenDisplay(
+                      entry.total_amount,
+                      entry.token,
+                      tokenMap,
+                    )
+                    return (
+                      <li
+                        key={entry.donor_name + (entry.token ?? "")}
+                        className="grid grid-cols-[2.5rem_minmax(0,1fr)_auto] items-center gap-3 rounded-md border border-border bg-background/30 px-3 py-2"
+                      >
+                        <span className="font-mono text-xs text-muted-foreground">
+                          {String(index + 1).padStart(2, "0")}
+                        </span>
+                        <span className="truncate font-medium text-foreground">
+                          {entry.donor_name}
+                        </span>
+                        <span className="font-mono text-sm text-muted-foreground">
+                          {display.amount}
+                          {display.symbol ? ` ${display.symbol}` : ""}
+                        </span>
+                      </li>
+                    )
+                  })}
                 </ol>
               )}
             </CardContent>

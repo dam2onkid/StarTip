@@ -760,7 +760,7 @@ body {
   min-width: 0;
 }
 .dashboard .creator-settings-list > [data-slot="card"]:has(textarea),
-.dashboard .creator-settings-list > [data-slot="card"]:has([data-testid="moderation-list"]) {
+.dashboard .creator-settings-list > [data-slot="card"].creator-moderation-card {
   grid-column: 1 / -1;
 }
 .dashboard .creator-moderation-card {
@@ -904,6 +904,16 @@ body {
 .dashboard .creator-moderation-action {
   display: flex;
   justify-content: flex-end;
+}
+.dashboard .creator-moderation-empty {
+  display: flex;
+  justify-content: center;
+  padding: 1.5rem 0;
+}
+.dashboard .creator-moderation-empty .empty-state {
+  align-items: center;
+  text-align: center;
+  max-width: 28rem;
 }
 .dashboard .creator-profile-editor {
   overflow: hidden;

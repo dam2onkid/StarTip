@@ -85,10 +85,12 @@ export function ModerationCard({
       </CardHeader>
       <CardContent>
         {rows.length === 0 ? (
-          <EmptyState
-            eyebrow="No Donations"
-            message="New donations will land here with visibility controls for your overlay."
-          />
+          <div className="creator-moderation-empty">
+            <EmptyState
+              eyebrow="No Donations"
+              message="New donations will land here with visibility controls for your overlay."
+            />
+          </div>
         ) : (
           <div className="creator-moderation-table" data-testid="moderation-list">
             <div className="creator-moderation-table-head" aria-hidden="true">

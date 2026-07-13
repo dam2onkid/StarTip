@@ -3,6 +3,7 @@ import {
   aggregateLeaderboard,
   type LeaderboardRow,
 } from "@/lib/creators/leaderboard";
+import { type TokenAllowlistEntry } from "@/lib/donations/token";
 import {
   ExploreDiscovery,
   type ExploreDiscoveryCreator,
@@ -46,10 +47,16 @@ export default async function ExplorePage({
         .select("handle,display_name,avatar_url,bio"),
       service
         .from("donations")
-        .select("donor_name,amount,user_id")
+        .select("donor_name,amount,user_id,token")
         .in("status", ["confirmed", "indexed"])
         .eq("moderation_status", "visible"),
     ]);
+
+  // Token allowlist: needed to convert raw leaderboard totals to display units.
+  const { data: tokenRows } = await service
+    .from("tokens")
+    .select("contract_address,symbol,name,issuer,decimals,icon_url");
+  const tokenAllowlist = (tokenRows ?? []) as TokenAllowlistEntry[];
 
   // A query error is not fatal to the whole page: render the section that
   // succeeded and surface a muted note for the failed one. Both being null
@@ -63,6 +70,7 @@ export default async function ExplorePage({
     <ExplorePageShell
       creators={creatorList}
       leaderboard={leaderboard}
+      tokens={tokenAllowlist}
       creatorsError={!!creatorsErr}
       leaderboardError={!!donationsErr}
       searchQuery={q}
@@ -84,12 +92,14 @@ export interface ExploreCreator {
 export function ExplorePageShell({
   creators,
   leaderboard,
+  tokens = [],
   creatorsError = false,
   leaderboardError = false,
   searchQuery = "",
 }: {
   creators: ExploreCreator[];
-  leaderboard: { donor_name: string; total_amount: string }[];
+  leaderboard: { donor_name: string; total_amount: string; token?: string }[];
+  tokens?: TokenAllowlistEntry[];
   creatorsError?: boolean;
   leaderboardError?: boolean;
   searchQuery?: string;
@@ -98,6 +108,7 @@ export function ExplorePageShell({
     <ExploreDiscovery
       creators={creators as ExploreDiscoveryCreator[]}
       leaderboard={leaderboard}
+      tokens={tokens}
       creatorsError={creatorsError}
       leaderboardError={leaderboardError}
       searchQuery={searchQuery}
