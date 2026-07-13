@@ -125,7 +125,9 @@ describe("<HowItWorks /> motion gating", () => {
   it("renders the section, heading, and all three steps by default (no-preference)", () => {
     render(<HowItWorks />);
     expect(document.getElementById("how-it-works")).not.toBeNull();
-    expect(screen.getByText("How it works")).toBeInTheDocument();
+    // The heading is animated by ScrambleText, which renders both a visible
+    // (aria-hidden) and an sr-only copy of the text.
+    expect(screen.getAllByText("How it works").length).toBeGreaterThan(0);
     for (const step of howItWorksSteps) {
       expect(screen.getByText(step.label)).toBeInTheDocument();
       expect(screen.getByText(step.body)).toBeInTheDocument();

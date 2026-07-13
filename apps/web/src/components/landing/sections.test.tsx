@@ -9,7 +9,9 @@ describe("<SecondaryCards />", () => {
   it("renders all three card headers, bodies, and CTA labels", () => {
     render(<SecondaryCards />);
     for (const card of secondaryCards) {
-      expect(screen.getByText(card.header)).toBeInTheDocument();
+      // ScrambleText renders both a visible (aria-hidden) and an sr-only copy
+      // of animated headers, so getByText would match twice.
+      expect(screen.getAllByText(card.header).length).toBeGreaterThan(0);
       expect(screen.getByText(card.body)).toBeInTheDocument();
       expect(
         screen.getByRole("link", { name: card.cta.label }),
@@ -53,9 +55,11 @@ describe("<HowItWorks />", () => {
 describe("<BuiltOnStellar />", () => {
   it("renders the three value prop headings and bodies plus the roadmap note", () => {
     render(<BuiltOnStellar />);
-    expect(screen.getByText("Fast.")).toBeInTheDocument();
-    expect(screen.getByText("Global.")).toBeInTheDocument();
-    expect(screen.getByText("Low fee.")).toBeInTheDocument();
+    // ScrambleText renders both a visible (aria-hidden) and an sr-only copy
+    // of animated headings, so getByText would match twice.
+    expect(screen.getAllByText("Fast.").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Global.").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Low fee.").length).toBeGreaterThan(0);
     expect(
       screen.getByText(
         "Stellar's anchor network enables cross-border cash-out to local currencies in 180+ countries. StarTip's MVP settles on Testnet; fiat off-ramp integration is on the roadmap.",
