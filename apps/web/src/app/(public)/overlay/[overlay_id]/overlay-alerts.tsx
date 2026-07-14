@@ -11,12 +11,13 @@ import {
   type OverlayToken,
 } from "@/lib/overlay/settings";
 import { rawToDisplayAmount } from "@/lib/stellar/amount";
+import { OverlayGoal, type OverlayGoal as OverlayGoalData } from "./overlay-goal";
 
 /**
  * Overlay client component. Renders donation alerts (Donor Name, amount +
- * token symbol, message) with enter animation and subscribes to Supabase
- * Realtime on `donations` so new confirmed/indexed visible donations appear
- * live without a page reload.
+ * token symbol, message) and a donation goal progress card, and subscribes to
+ * Supabase Realtime on `donations` so new confirmed/indexed visible donations
+ * appear live without a page reload.
  *
  * Overlay settings (spec §11.3) are passed from the server component:
  *   * `alert_duration_ms` - each queued alert auto-dismisses after this many
@@ -94,6 +95,7 @@ export function OverlayAlerts({
   initialDonations,
   tokenAllowlist,
   settings,
+  goal,
 }: {
   creatorProfileId: string;
   /** Opaque Overlay ID used to scope Text-to-Speech synthesis calls. */
@@ -102,6 +104,8 @@ export function OverlayAlerts({
   tokenAllowlist: OverlayToken[];
   /** Overlay settings from the server. Defaults apply when omitted. */
   settings?: OverlaySettings;
+  /** Donation goal progress snapshot from the server, or `null` when no goal is set. */
+  goal?: OverlayGoalData | null;
 }) {
   const resolvedSettings = settings ?? DEFAULT_SETTINGS;
   const durationMs = React.useMemo(() => alertDurationMs(resolvedSettings), [resolvedSettings]);
@@ -130,6 +134,20 @@ export function OverlayAlerts({
     setPrevSeeded(seeded);
     setQueue(seeded);
   }
+
+  // Live donation goal progress. The server seeds the initial progress; new
+  // Realtime INSERTs in the goal's token increment the current total.
+  const [goalProgress, setGoalProgress] = React.useState<OverlayGoalData | null>(goal ?? null);
+  const [prevGoal, setPrevGoal] = React.useState(goal);
+  if (goal !== prevGoal) {
+    setPrevGoal(goal);
+    setGoalProgress(goal ?? null);
+  }
+
+  const seenGoalIds = React.useRef(new Set<string>());
+  React.useEffect(() => {
+    seenGoalIds.current = new Set<string>();
+  }, [goal?.token]);
 
   const symbolByContract = React.useMemo(() => {
     const map = new Map<string, string>();
@@ -173,34 +191,67 @@ export function OverlayAlerts({
     [resolvedSettings],
   );
 
-  useOverlayRealtime(creatorProfileId, appendAlert, updateQueuedAlert);
+  const updateGoal = React.useCallback((row: OverlayDonation) => {
+    if (seenGoalIds.current.has(row.id)) return;
+    seenGoalIds.current.add(row.id);
+    setGoalProgress((prev) => {
+      if (!prev || row.token !== prev.token) return prev;
+      try {
+        const current = BigInt(prev.current) + BigInt(row.amount);
+        const target = BigInt(prev.target);
+        let pct = 0;
+        if (target > BigInt(0)) {
+          const ratio = (current * BigInt(100)) / target;
+          pct = ratio > BigInt(100) ? 100 : ratio < BigInt(0) ? 0 : Number(ratio);
+        }
+        return { ...prev, current: current.toString(), pct };
+      } catch {
+        return prev;
+      }
+    });
+  }, []);
+
+  const onInsert = React.useCallback(
+    (row: OverlayDonation) => {
+      // The donation goal counts every visible donation in the goal's token,
+      // regardless of the alert's min_amount threshold.
+      updateGoal(row);
+      appendAlert(row);
+    },
+    [appendAlert, updateGoal],
+  );
+
+  useOverlayRealtime(creatorProfileId, onInsert, updateQueuedAlert);
 
   const currentItem = queue[0] ?? null;
   const currentAlert = currentItem?.donation ?? null;
 
   return (
-    <div
-      data-testid="overlay-alerts"
-      aria-live="polite"
-      aria-atomic="true"
-      className="pointer-events-none fixed inset-0 flex items-center justify-center px-6 py-6"
-    >
-      <AnimatePresence initial={false}>
-        {currentAlert ? (
-          <AlertCard
-            key={currentAlert.id}
-            donation={currentAlert}
-            overlayId={overlayId}
-            isInsert={currentItem?.isInsert ?? false}
-            settings={resolvedSettings}
-            symbol={symbolByContract.get(currentAlert.token) ?? currentAlert.token}
-            decimals={decimalsByContract.get(currentAlert.token) ?? 0}
-            durationMs={durationMs}
-            onExpire={removeAlert}
-          />
-        ) : null}
-      </AnimatePresence>
-    </div>
+    <>
+      <div
+        data-testid="overlay-alerts"
+        aria-live="polite"
+        aria-atomic="true"
+        className="pointer-events-none fixed inset-0 flex items-center justify-center px-6 py-6"
+      >
+        <AnimatePresence initial={false}>
+          {currentAlert ? (
+            <AlertCard
+              key={currentAlert.id}
+              donation={currentAlert}
+              overlayId={overlayId}
+              isInsert={currentItem?.isInsert ?? false}
+              settings={resolvedSettings}
+              symbol={symbolByContract.get(currentAlert.token) ?? currentAlert.token}
+              decimals={decimalsByContract.get(currentAlert.token) ?? 0}
+              durationMs={durationMs}
+              onExpire={removeAlert}
+            />
+          ) : null}
+        </AnimatePresence>
+      </div>
+      {goalProgress && <OverlayGoal goal={goalProgress} />}
+    </>
   );
 }
 
@@ -386,7 +437,7 @@ function AlertCard({
       animate={rest}
       exit={enter}
       transition={{ type: "spring", stiffness: 220, damping: 26 }}
-      className="pointer-events-auto w-full max-w-xl rounded-lg bg-card/85 p-7 ring-1 ring-foreground/10 backdrop-blur-md"
+      className="pointer-events-auto w-full max-w-xl rounded-lg bg-card p-7 ring-1 ring-foreground/10 backdrop-blur-md"
     >
       <p className="break-words font-display text-[1.625rem] font-semibold leading-tight text-foreground">
         <span

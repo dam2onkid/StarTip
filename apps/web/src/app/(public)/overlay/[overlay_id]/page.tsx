@@ -1,6 +1,8 @@
 import { notFound } from "next/navigation";
 import { createServiceClient } from "@startip/shared/supabase/service";
+import { goalProgress } from "@/lib/creators/goal";
 import { OverlayAlerts } from "./overlay-alerts";
+import { type OverlayGoal } from "./overlay-goal";
 import {
   resolveOverlaySettings,
   type OverlayToken,
@@ -9,9 +11,10 @@ import {
 /**
  * `/overlay/[overlay_id]` - public OBS browser source. Resolves the opaque
  * Overlay ID to its `creator_profile_id` (registered + not paused), fetches
- * the token allowlist and the Creator's `overlay_settings` row, and hands them
- * to the `<OverlayAlerts>` client component which subscribes to Supabase
- * Realtime on `donations` for live alerts.
+ * the token allowlist, the Creator's `overlay_settings` row, and the active
+ * donation goal, and hands them to the `<OverlayAlerts>` client component
+ * which subscribes to Supabase Realtime on `donations` for live alerts and
+ * live goal progress updates.
  *
  * Overlay settings (spec §11.3): the server loads the Creator's
  * `overlay_settings` row (or falls back to defaults when no row exists) and
@@ -21,6 +24,12 @@ import {
  * client applies `shouldShowAlert` (suppress below `min_amount`),
  * `alertDurationMs` (auto-dismiss), and plays a sound on Realtime insert when
  * `sound_enabled` is true.
+ *
+ * Donation goal: the server loads the Creator's `donation_goals` row and sums
+ * all confirmed/indexed visible donations in the goal's token to compute the
+ * initial `{ current, target, pct }`. The client adds the amount of each
+ * subsequent Realtime INSERT in the goal's token to keep the bar live. The
+ * token's `symbol` and `decimals` are resolved from the allowlist for display.
  *
  * No auth required. The Overlay ID is resolved via the service role (bypasses
  * RLS) filtered to `onchain_registered = true AND paused = false`, so unknown
@@ -67,14 +76,52 @@ export default async function OverlayPage({
     notFound();
   }
 
-  const { data: settingsRow } = await service
-    .from("overlay_settings")
-    .select("alert_duration_ms,min_amount,sound_enabled,tts_enabled,tts_voice")
-    .eq("creator_profile_id", p.id)
-    .maybeSingle();
+  const [settingsResult, goalRowResult] = await Promise.all([
+    service
+      .from("overlay_settings")
+      .select("alert_duration_ms,min_amount,sound_enabled,tts_enabled,tts_voice")
+      .eq("creator_profile_id", p.id)
+      .maybeSingle(),
+    service
+      .from("donation_goals")
+      .select("target_amount,token")
+      .eq("creator_profile_id", p.id)
+      .maybeSingle(),
+  ]);
+
+  const { data: settingsRow } = settingsResult;
+  const { data: goalRow } = goalRowResult;
 
   const tokenAllowlist = (tokens ?? []) as OverlayToken[];
   const settings = resolveOverlaySettings(settingsRow, tokenAllowlist);
+
+  let goal: OverlayGoal | null = null;
+  if (goalRow) {
+    const g = goalRow as { target_amount: string | number; token: string };
+    const { data: goalDonations } = await service
+      .from("donations")
+      .select("amount,token")
+      .eq("creator_profile_id", p.id)
+      .eq("token", g.token)
+      .in("status", ["confirmed", "indexed"])
+      .eq("moderation_status", "visible");
+
+    const progress = goalProgress(
+      (goalDonations ?? []).map((d) => ({
+        token: String((d as { token: unknown }).token),
+        amount: String((d as { amount: unknown }).amount),
+      })),
+      { token: g.token, targetAmount: String(g.target_amount) },
+    );
+
+    const tokenEntry = tokenAllowlist.find((t) => t.contract_address === g.token);
+    goal = {
+      ...progress,
+      token: g.token,
+      symbol: tokenEntry?.symbol ?? g.token,
+      decimals: tokenEntry?.decimals ?? 0,
+    };
+  }
 
   return (
     <OverlayAlerts
@@ -83,6 +130,7 @@ export default async function OverlayPage({
       initialDonations={[]}
       tokenAllowlist={tokenAllowlist}
       settings={settings}
+      goal={goal}
     />
   );
 }

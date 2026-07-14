@@ -1061,3 +1061,158 @@ describe("OverlayAlerts - Alert Reading (Text-to-Speech)", () => {
     expect(global.fetch).not.toHaveBeenCalled();
   });
 });
+
+describe("OverlayAlerts - donation goal", () => {
+  const GOAL = {
+    current: "350000000",
+    target: "1000000000",
+    pct: 35,
+    token: "CUSDC",
+    symbol: "USDC",
+    decimals: 6,
+  };
+
+  it("renders the donation goal when a goal is set", () => {
+    render(
+      <OverlayAlerts
+        creatorProfileId="c1"
+        initialDonations={[]}
+        tokenAllowlist={[{ contract_address: "CUSDC", symbol: "USDC", decimals: 6 }]}
+        goal={GOAL}
+      />,
+    );
+
+    expect(screen.getByTestId("overlay-goal")).toBeInTheDocument();
+    expect(screen.getByTestId("overlay-goal-pct")).toHaveTextContent("35%");
+    expect(screen.getByTestId("overlay-goal-current")).toHaveTextContent("350");
+    expect(screen.getByTestId("overlay-goal-target")).toHaveTextContent("1000");
+    const indicator = screen
+      .getByTestId("overlay-goal-bar")
+      .querySelector('[data-slot="progress-indicator"]');
+    expect(indicator).toHaveStyle({ transform: "translateX(-65%)" });
+  });
+
+  it("makes the donation goal card draggable", () => {
+    render(
+      <OverlayAlerts
+        creatorProfileId="c1"
+        initialDonations={[]}
+        tokenAllowlist={[{ contract_address: "CUSDC", symbol: "USDC", decimals: 6 }]}
+        goal={GOAL}
+      />,
+    );
+
+    const card = screen.getByTestId("overlay-goal");
+    expect(card).toHaveClass("cursor-move");
+    expect(card).toHaveClass("select-none");
+  });
+
+  it("does not render the donation goal when no goal is set", () => {
+    render(
+      <OverlayAlerts
+        creatorProfileId="c1"
+        initialDonations={[]}
+        tokenAllowlist={TOKENS}
+      />,
+    );
+    expect(screen.queryByTestId("overlay-goal")).not.toBeInTheDocument();
+  });
+
+  it("updates the donation goal on Realtime INSERTs in the goal's token", async () => {
+    render(
+      <OverlayAlerts
+        creatorProfileId="c1"
+        initialDonations={[]}
+        tokenAllowlist={[{ contract_address: "CUSDC", symbol: "USDC", decimals: 6 }]}
+        goal={GOAL}
+        settings={{ soundEnabled: false }}
+      />,
+    );
+
+    await act(async () => {
+      realtimeInsertCb?.({
+        new: {
+          id: "g1",
+          donor_name: "Supporter",
+          amount: "150000000",
+          token: "CUSDC",
+          message: null,
+          created_at: "t",
+        },
+      });
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("overlay-goal-pct")).toHaveTextContent("50%");
+    });
+    expect(screen.getByTestId("overlay-goal-current")).toHaveTextContent("500");
+    const indicator = screen
+      .getByTestId("overlay-goal-bar")
+      .querySelector('[data-slot="progress-indicator"]');
+    expect(indicator).toHaveStyle({ transform: "translateX(-50%)" });
+  });
+
+  it("ignores Realtime INSERTs in a different token", async () => {
+    render(
+      <OverlayAlerts
+        creatorProfileId="c1"
+        initialDonations={[]}
+        tokenAllowlist={[
+          { contract_address: "CUSDC", symbol: "USDC", decimals: 6 },
+          { contract_address: "XLM_CONTRACT", symbol: "XLM", decimals: 7 },
+        ]}
+        goal={GOAL}
+        settings={{ soundEnabled: false }}
+      />,
+    );
+
+    await act(async () => {
+      realtimeInsertCb?.({
+        new: {
+          id: "x1",
+          donor_name: "Other",
+          amount: "90000000",
+          token: "XLM_CONTRACT",
+          message: null,
+          created_at: "t",
+        },
+      });
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("overlay-goal-pct")).toHaveTextContent("35%");
+    });
+    expect(screen.getByTestId("overlay-goal-current")).toHaveTextContent("350");
+  });
+
+  it("updates the donation goal even when the alert is below min_amount", async () => {
+    const settings: OverlaySettings = { minAmountRaw: "600000000", soundEnabled: false };
+    render(
+      <OverlayAlerts
+        creatorProfileId="c1"
+        initialDonations={[]}
+        tokenAllowlist={[{ contract_address: "CUSDC", symbol: "USDC", decimals: 6 }]}
+        goal={GOAL}
+        settings={settings}
+      />,
+    );
+
+    await act(async () => {
+      realtimeInsertCb?.({
+        new: {
+          id: "small",
+          donor_name: "Small",
+          amount: "50000000",
+          token: "CUSDC",
+          message: null,
+          created_at: "t",
+        },
+      });
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("overlay-goal-pct")).toHaveTextContent("40%");
+    });
+    expect(screen.queryByText("Small")).toBeNull();
+  });
+});
