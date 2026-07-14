@@ -2,9 +2,18 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, waitFor, act, within } from "@testing-library/react";
 import { useState } from "react";
+import { toast } from "sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import type { CreatorProfile, CreatorActiveData, CreatorDonationRow } from "@/app/(auth)/dashboard/creator/types";
 import { ActiveGate } from "@/app/(auth)/dashboard/creator/active";
+
+vi.mock("sonner", () => ({
+  toast: {
+    success: vi.fn(),
+    info: vi.fn(),
+    error: vi.fn(),
+  },
+}));
 
 const STUB_ADDRESS = "GDF6CFYOXQTZVSLLK2RTDAUZ6N2E72IL4K2L34HXZK32KBR4NLVPLUVA";
 
@@ -224,6 +233,9 @@ beforeEach(() => {
   readTreasuryAddress.mockReset().mockResolvedValue(null);
   payoutAddressWarning.mockReset().mockReturnValue(null);
   removeChannel.mockReset();
+  vi.mocked(toast, true).success.mockClear();
+  vi.mocked(toast, true).info.mockClear();
+  vi.mocked(toast, true).error.mockClear();
   global.fetch = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
     const u = url.toString();
     const method = init?.method ?? "GET";
@@ -335,7 +347,9 @@ describe("ActiveGate - payout", () => {
       fireEvent.click(screen.getByTestId("payout-update-submit"));
     });
     await waitFor(() => {
-      expect(screen.getByText(/Payout update submitted/i)).toBeInTheDocument();
+      expect(toast.info).toHaveBeenCalledWith(
+        "Payout update submitted. Your new address will appear shortly.",
+      );
     });
     expect(updateCreatorPayoutOnChain).toHaveBeenCalledWith({
       ownerAddress: STUB_ADDRESS,
@@ -365,7 +379,9 @@ describe("ActiveGate - payout", () => {
       fireEvent.click(screen.getByTestId("pause-toggle"));
     });
     await waitFor(() => {
-      expect(screen.getByText(/Pause submitted/i)).toBeInTheDocument();
+      expect(toast.info).toHaveBeenCalledWith(
+        "Pause submitted. Donations will stop shortly.",
+      );
     });
     expect(setCreatorActiveOnChain).toHaveBeenCalledWith({
       ownerAddress: STUB_ADDRESS,
@@ -416,7 +432,7 @@ describe("ActiveGate - overlay settings", () => {
       fireEvent.click(screen.getByTestId("overlay-settings-save"));
     });
     await waitFor(() => {
-      expect(screen.getByText(/Overlay settings saved/i)).toBeInTheDocument();
+      expect(toast.success).toHaveBeenCalledWith("Overlay settings saved.");
     });
     const put = puts.find((p) => p.method === "PUT");
     expect(put).toBeDefined();
@@ -481,7 +497,7 @@ describe("ActiveGate - overlay settings", () => {
       fireEvent.click(screen.getByTestId("overlay-settings-save"));
     });
     await waitFor(() => {
-      expect(screen.getByText(/Overlay settings saved/i)).toBeInTheDocument();
+      expect(toast.success).toHaveBeenCalledWith("Overlay settings saved.");
     });
 
     expect(puts).toHaveLength(1);
@@ -585,7 +601,7 @@ describe("ActiveGate - donation goal", () => {
       fireEvent.click(screen.getByTestId("donation-goal-save"));
     });
     await waitFor(() => {
-      expect(screen.getByText(/Donation goal saved/i)).toBeInTheDocument();
+      expect(toast.success).toHaveBeenCalledWith("Donation goal saved.");
     });
     const put = puts.find((p) => p.method === "PUT");
     expect(put).toBeDefined();
@@ -641,7 +657,7 @@ describe("ActiveGate - donation goal", () => {
       fireEvent.click(screen.getByTestId("donation-goal-clear"));
     });
     await waitFor(() => {
-      expect(screen.getByText(/Donation goal cleared/i)).toBeInTheDocument();
+      expect(toast.success).toHaveBeenCalledWith("Donation goal cleared.");
     });
     const put = puts.find((p) => p.method === "PUT");
     expect(put).toBeDefined();

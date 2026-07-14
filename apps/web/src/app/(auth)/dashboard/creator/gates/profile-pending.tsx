@@ -10,7 +10,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { StatusLine, humanError } from "../utils";
+import { StatusToast, humanError } from "../utils";
 import type { CreatorProfile, Status } from "../types";
 
 /** Gate 1: claim a Handle. */
@@ -150,7 +150,7 @@ export function ProfilePendingGate(args: {
             availability={availability}
           />
         </div>
-        <StatusLine status={status} />
+        <StatusToast status={status} />
       </CardContent>
     </Card>
   );

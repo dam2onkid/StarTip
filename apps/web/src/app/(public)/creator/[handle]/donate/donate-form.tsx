@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { toast } from "sonner";
-import { Wallet, ArrowRightLeft, AlertCircle, Sparkles, CheckIcon } from "lucide-react";
+import { Wallet, ArrowRightLeft, CheckIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -402,22 +402,6 @@ export function DonateForm({
               <p>
                 A trustline to this token is required. The next step will add it
                 and donate in one transaction.
-              </p>
-            </div>
-          )}
-
-          {state.error && (
-            <div role="alert" className="flex items-start gap-3 rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-              <AlertCircle className="mt-0.5 size-4 shrink-0" aria-hidden />
-              <p>{state.error}</p>
-            </div>
-          )}
-
-          {state.phase === "success" && state.txHash && (
-            <div className="flex items-start gap-3 rounded-xl border border-primary/20 bg-primary/10 px-4 py-3 text-sm text-primary">
-              <Sparkles className="mt-0.5 size-4 shrink-0" aria-hidden />
-              <p>
-                Donation confirmed! Tx: {state.txHash.slice(0, 10)}...
               </p>
             </div>
           )}

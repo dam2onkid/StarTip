@@ -246,7 +246,7 @@ describe("DonateForm", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByText(/Donation confirmed! Tx/i)).toBeInTheDocument();
+      expect(toastSuccess).toHaveBeenCalledOnce();
     });
     expect(donateOnChain).toHaveBeenCalledOnce();
     // The verify body carries tx_hash + off-chain content, no donation_id.
@@ -280,11 +280,6 @@ describe("DonateForm", () => {
       fireEvent.click(screen.getByRole("button", { name: /donate/i }));
     });
 
-    await waitFor(() => {
-      expect(screen.getByRole("alert")).toHaveTextContent(
-        /paused and cannot receive donations/i,
-      );
-    });
     // No success sound on the error path.
     expect(audioInstances).toHaveLength(0);
     // An error toast is shown instead of a success toast.
@@ -306,9 +301,9 @@ describe("DonateForm", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByRole("alert")).toHaveTextContent(
-        /paused and cannot receive donations/i,
-      );
+      expect(toastError).toHaveBeenCalledWith("Donation failed", {
+        description: expect.stringContaining("paused and cannot receive donations"),
+      });
     });
   });
 
@@ -325,7 +320,9 @@ describe("DonateForm", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByRole("alert")).toHaveTextContent(/creator_not_found/i);
+      expect(toastError).toHaveBeenCalledWith("Donation failed", {
+        description: expect.stringContaining("Server error: creator_not_found"),
+      });
     });
   });
 
@@ -342,7 +339,9 @@ describe("DonateForm", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByRole("alert")).toHaveTextContent(/tx_failed/i);
+      expect(toastError).toHaveBeenCalledWith("Donation failed", {
+        description: expect.stringContaining("Server error: tx_failed"),
+      });
     });
   });
 
@@ -473,9 +472,11 @@ describe("DonateForm", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByRole("alert")).toHaveTextContent(
-        /could not establish a trustline/i,
-      );
+      expect(toastError).toHaveBeenCalledWith("Donation failed", {
+        description: expect.stringContaining(
+          "Could not establish a trustline to this token",
+        ),
+      });
     });
   });
 

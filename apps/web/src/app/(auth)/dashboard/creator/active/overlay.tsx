@@ -13,7 +13,7 @@ import { displayToRawAmount, rawToDisplayAmount } from "@/lib/stellar/amount";
 import { DEFAULT_ALERT_DURATION_MS } from "@/lib/overlay/settings";
 import { type TokenAllowlistEntry } from "@/lib/donations/token";
 import { CardTitleWithInfo, CopyValueRow } from "../shared";
-import { StatusLine, computePct, overlaySettingsErrorMessage, goalErrorMessage } from "../utils";
+import { StatusToast, computePct, overlaySettingsErrorMessage, goalErrorMessage } from "../utils";
 import type { Status } from "../types";
 
 /** Overlay URL: show `/overlay/[overlay_id]` with a copy + regenerate action. */
@@ -37,7 +37,7 @@ export function OverlayUrlCard({
       const body = (await res.json()) as { overlay_id?: string; error?: string };
       if (res.status === 200 && body.overlay_id) {
         onRegenerate?.(body.overlay_id);
-        setStatus({ kind: "info", message: "Overlay URL regenerated." });
+        setStatus({ kind: "success", message: "Overlay URL regenerated." });
       } else {
         setStatus({
           kind: "error",
@@ -80,7 +80,7 @@ export function OverlayUrlCard({
         >
           Regenerate URL
         </Button>
-        <StatusLine status={status} />
+        <StatusToast status={status} />
       </CardContent>
     </Card>
   );
@@ -187,7 +187,7 @@ export function OverlaySettingsCard({ overlayId }: { overlayId: string | null | 
         };
         setMinAmount(String(body.min_amount));
         setTtsVoice(body.tts_voice ?? "");
-        setStatus({ kind: "info", message: "Overlay settings saved." });
+        setStatus({ kind: "success", message: "Overlay settings saved." });
       } else {
         const body = (await res.json()) as { error: string };
         setStatus({
@@ -334,7 +334,7 @@ export function OverlaySettingsCard({ overlayId }: { overlayId: string | null | 
         >
           Save
         </Button>
-        <StatusLine status={status} />
+        <StatusToast status={status} />
       </CardContent>
     </Card>
   );
@@ -446,7 +446,7 @@ export function DonationGoalCard({
         const tk = tokens.find((t) => t.contract_address === body.token);
         setTargetDisplay(tk ? rawToDisplayAmount(rawTarget, tk.decimals) : rawTarget);
         setStatus({
-          kind: "info",
+          kind: "success",
           message: rawTarget === "0" ? "Donation goal cleared." : "Donation goal saved.",
         });
       } else {
@@ -479,7 +479,7 @@ export function DonationGoalCard({
       if (res.status === 200) {
         setTargetDisplay("");
         setLiveTargetRaw("0");
-        setStatus({ kind: "info", message: "Donation goal cleared." });
+        setStatus({ kind: "success", message: "Donation goal cleared." });
       } else {
         const body = (await res.json()) as { error: string };
         setStatus({ kind: "error", message: goalErrorMessage(body.error) });
@@ -617,7 +617,7 @@ export function DonationGoalCard({
             Clear
           </Button>
         </div>
-        <StatusLine status={status} />
+        <StatusToast status={status} />
       </CardContent>
     </Card>
   );

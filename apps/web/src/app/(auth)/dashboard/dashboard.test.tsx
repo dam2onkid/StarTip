@@ -1,5 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor, act } from "@testing-library/react";
+import { toast } from "sonner";
+
+vi.mock("sonner", () => ({
+  toast: {
+    success: vi.fn(),
+    error: vi.fn(),
+  },
+}));
 
 // jsdom's `URL.createObjectURL` returns an opaque `blob:nodedata:` URL that
 // is unique per call and hard to assert on. The profile dialog uses it to
@@ -62,6 +70,8 @@ describe("/dashboard shell", () => {
     storageGetPublicUrl.mockReset();
     channel.mockReset();
     removeChannel.mockReset();
+    vi.mocked(toast, true).success.mockClear();
+    vi.mocked(toast, true).error.mockClear();
 
     updateEq.mockReturnValue({ error: null });
     fromUpdate.mockReturnValue({ eq: updateEq });
@@ -136,7 +146,7 @@ describe("/dashboard shell", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByTestId("creator-save-status")).toHaveTextContent(/saved/i);
+      expect(toast.success).toHaveBeenCalledWith("Profile saved.");
     });
     expect(fromUpdate).toHaveBeenCalledWith({
       display_name: "Ada Lovelace",
@@ -176,7 +186,7 @@ describe("/dashboard shell", () => {
       fireEvent.click(screen.getByTestId("creator-profile-save"));
     });
     await waitFor(() => {
-      expect(screen.getByTestId("creator-save-status")).toHaveTextContent(/saved/i);
+      expect(toast.success).toHaveBeenCalledWith("Profile saved.");
     });
     expect(storageUpload).toHaveBeenCalledWith(
       expect.stringMatching(/^u1\/banner-\d+\.png$/),

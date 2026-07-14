@@ -19,7 +19,7 @@ import {
 import { contractId } from "@/lib/stellar/client";
 import { friendlyOnchainError } from "@/lib/stellar/contract-errors";
 import { CardTitleWithInfo, AddressRow, PayoutAddressWarning } from "../shared";
-import { StatusLine } from "../utils";
+import { StatusToast } from "../utils";
 import type { CreatorProfile, Status } from "../types";
 
 export function PayoutSummaryCard({ current }: { current: CreatorProfile }) {
@@ -76,7 +76,7 @@ export function PayoutUpdateCard({ current }: { current: CreatorProfile }) {
         newPayoutAddress: payout.trim(),
       });
       setStatus({
-        kind: "info",
+        kind: "pending",
         message: "Payout update submitted. Your new address will appear shortly.",
       });
     } catch (e) {
@@ -103,7 +103,7 @@ export function PayoutUpdateCard({ current }: { current: CreatorProfile }) {
             className="flex-1"
             value={payout}
             onChange={(e) => { setPayout(e.target.value); setStatus({ kind: "idle" }); }}
-            disabled={status.kind === "busy" || status.kind === "info"}
+            disabled={status.kind === "busy" || status.kind === "pending"}
             autoComplete="off"
             spellCheck={false}
             placeholder="G…"
@@ -116,14 +116,14 @@ export function PayoutUpdateCard({ current }: { current: CreatorProfile }) {
           type="button"
           size="sm"
           onClick={submit}
-          loading={status.kind === "busy" || status.kind === "info"}
-          disabled={status.kind === "busy" || status.kind === "info" || payout.trim().length === 0}
+          loading={status.kind === "busy" || status.kind === "pending"}
+          disabled={status.kind === "busy" || status.kind === "pending" || payout.trim().length === 0}
           className="self-start"
           data-testid="payout-update-submit"
         >
-          {status.kind === "info" ? "Payout Update Pending" : "Update Payout"}
+          {status.kind === "pending" ? "Payout Update Pending" : "Update Payout"}
         </Button>
-        <StatusLine status={status} />
+        <StatusToast status={status} />
       </CardContent>
     </Card>
   );
@@ -144,7 +144,7 @@ export function PauseCard({ current }: { current: CreatorProfile }) {
         active: paused,
       });
       setStatus({
-        kind: "info",
+        kind: "pending",
         message: paused
           ? "Unpause submitted. Donations will resume shortly."
           : "Pause submitted. Donations will stop shortly.",
@@ -173,12 +173,12 @@ export function PauseCard({ current }: { current: CreatorProfile }) {
           size="sm"
           variant="outline"
           onClick={toggle}
-          loading={status.kind === "busy" || status.kind === "info"}
-          disabled={status.kind === "busy" || status.kind === "info"}
+          loading={status.kind === "busy" || status.kind === "pending"}
+          disabled={status.kind === "busy" || status.kind === "pending"}
           className="self-start"
           data-testid="pause-toggle"
         >
-          {status.kind === "info"
+          {status.kind === "pending"
             ? paused
               ? "Unpause pending"
               : "Pause pending"
@@ -186,7 +186,7 @@ export function PauseCard({ current }: { current: CreatorProfile }) {
               ? "Unpause"
               : "Pause"}
         </Button>
-        <StatusLine status={status} />
+        <StatusToast status={status} />
       </CardContent>
     </Card>
   );

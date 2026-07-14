@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { toast } from "sonner";
 import { ImageIcon, PencilIcon, Trash2Icon, XIcon } from "lucide-react";
 import { Grain } from "@/components/landing/grain";
 import { createBrowserClient } from "@/lib/supabase/client";
@@ -45,12 +46,6 @@ import { type TokenAllowlistEntry } from "@/lib/donations/token";
 
 type TabId = "donor" | "creator";
 
-type ProfileStatus =
-  | { kind: "idle" }
-  | { kind: "saving" }
-  | { kind: "saved" }
-  | { kind: "error"; message: string };
-
 const TABS: { id: TabId; label: string }[] = [
   { id: "donor", label: "Donor" },
   { id: "creator", label: "Creator" },
@@ -92,9 +87,7 @@ export function DashboardTabs({
     creatorProfile.banner_url ?? null,
   );
   const [bio, setBio] = React.useState(creatorProfile.bio ?? "");
-  const [profileStatus, setProfileStatus] = React.useState<ProfileStatus>({
-    kind: "idle",
-  });
+  const [isSaving, setIsSaving] = React.useState(false);
   // Local preview of a freshly picked file (before Save uploads it to
   // Supabase). `URL.createObjectURL` gives a blob: URL we can render
   // immediately so the dialog reflects the user's pick without a round-trip.
@@ -160,14 +153,14 @@ export function DashboardTabs({
     const file = fileInputRef.current?.files?.[0];
     if (avatarPreview) URL.revokeObjectURL(avatarPreview);
     setAvatarPreview(file ? URL.createObjectURL(file) : null);
-    setProfileStatus({ kind: "idle" });
+
   }
 
   function handleBannerFileChange() {
     const file = bannerInputRef.current?.files?.[0];
     if (bannerPreview) URL.revokeObjectURL(bannerPreview);
     setBannerPreview(file ? URL.createObjectURL(file) : null);
-    setProfileStatus({ kind: "idle" });
+
   }
 
   function clearPendingPreviews() {
@@ -178,7 +171,7 @@ export function DashboardTabs({
   }
 
   async function saveProfile() {
-    setProfileStatus({ kind: "saving" });
+    setIsSaving(true);
     try {
       const supabase = createBrowserClient();
       let nextAvatarUrl = avatarUrl;
@@ -236,7 +229,7 @@ export function DashboardTabs({
       if (fileInputRef.current) fileInputRef.current.value = "";
       if (bannerInputRef.current) bannerInputRef.current.value = "";
       clearPendingPreviews();
-      setProfileStatus({ kind: "saved" });
+      toast.success("Profile saved.");
     } catch (e) {
       let message = "Could not save profile.";
       if (e instanceof Error && e.message) {
@@ -249,12 +242,14 @@ export function DashboardTabs({
       ) {
         message = (e as { message: string }).message;
       }
-      setProfileStatus({ kind: "error", message });
+      toast.error(message);
+    } finally {
+      setIsSaving(false);
     }
   }
 
   async function removeBackground() {
-    setProfileStatus({ kind: "saving" });
+    setIsSaving(true);
     try {
       const supabase = createBrowserClient();
       const res = await supabase
@@ -265,12 +260,13 @@ export function DashboardTabs({
       setBannerUrl(null);
       if (bannerInputRef.current) bannerInputRef.current.value = "";
       clearPendingPreviews();
-      setProfileStatus({ kind: "saved" });
+      toast.success("Background removed.");
     } catch (e) {
-      setProfileStatus({
-        kind: "error",
-        message: e instanceof Error && e.message ? e.message : "Could not remove background.",
-      });
+      toast.error(
+        e instanceof Error && e.message ? e.message : "Could not remove background.",
+      );
+    } finally {
+      setIsSaving(false);
     }
   }
 
@@ -312,16 +308,16 @@ export function DashboardTabs({
                     displayName={displayName}
                     fileInputRef={fileInputRef}
                     bannerInputRef={bannerInputRef}
-                    status={profileStatus}
+                    isSaving={isSaving}
                     onDisplayNameChange={(next) => {
                       setDisplayName(next);
-                      setProfileStatus({ kind: "idle" });
+                  
                     }}
                     bio={bio}
                     bannerUrl={bannerUrl}
                     onBioChange={(next) => {
                       setBio(next);
-                      setProfileStatus({ kind: "idle" });
+                  
                     }}
                     onAvatarFileChange={handleAvatarFileChange}
                     onBannerFileChange={handleBannerFileChange}
@@ -473,7 +469,7 @@ function ProfileEditDialog({
   displayName,
   fileInputRef,
   bannerInputRef,
-  status,
+  isSaving,
   onBioChange,
   onDisplayNameChange,
   onAvatarFileChange,
@@ -489,7 +485,7 @@ function ProfileEditDialog({
   displayName: string;
   fileInputRef: React.RefObject<HTMLInputElement | null>;
   bannerInputRef: React.RefObject<HTMLInputElement | null>;
-  status: ProfileStatus;
+  isSaving: boolean;
   onBioChange: (value: string) => void;
   onDisplayNameChange: (value: string) => void;
   onAvatarFileChange: () => void;
@@ -529,8 +525,8 @@ function ProfileEditDialog({
             size="sm"
             variant="secondary"
             onClick={onSave}
-            loading={status.kind === "saving"}
-            disabled={status.kind === "saving"}
+            loading={isSaving}
+            disabled={isSaving}
             data-testid="creator-profile-save"
           >
             Save
@@ -566,8 +562,8 @@ function ProfileEditDialog({
                 size="icon-sm"
                 variant="ghost"
                 onClick={onRemoveBackground}
-                loading={status.kind === "saving"}
-                disabled={status.kind === "saving" || !bannerUrl}
+                loading={isSaving}
+                disabled={isSaving || !bannerUrl}
                 data-testid="creator-background-remove"
                 aria-label="Remove background"
               >
@@ -649,21 +645,7 @@ function ProfileEditDialog({
               autoComplete="off"
             />
           </div>
-          {status.kind === "saved" && (
-            <p className="creator-profile-status text-primary" aria-live="polite" data-testid="creator-save-status">
-              Profile saved.
-            </p>
-          )}
-          {status.kind === "error" && (
-            <p
-              className="creator-profile-status text-destructive"
-              aria-live="polite"
-              role="alert"
-              data-testid="creator-save-status"
-            >
-              {status.message}
-            </p>
-          )}
+
         </div>
       </DialogContent>
     </Dialog>

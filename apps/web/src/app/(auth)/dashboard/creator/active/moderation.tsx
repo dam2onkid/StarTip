@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { toast } from "sonner";
 import { EyeIcon, EyeOffIcon } from "lucide-react";
 import {
   Card,
@@ -12,6 +13,11 @@ import { createBrowserClient } from "@/lib/supabase/client";
 import { updateDonationModerationStatus } from "@/lib/creators/moderation";
 import { buildTokenMap, getTokenDisplay } from "@/lib/donations/token";
 import type { TokenAllowlistEntry } from "@/lib/donations/token";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { CardTitleWithInfo, EmptyState } from "../shared";
 import type { CreatorActiveData, CreatorDonationRow } from "../types";
 
@@ -26,7 +32,6 @@ export function ModerationCard({
   const recent = useMemo(() => activeData?.recent ?? [], [activeData?.recent]);
   const [rows, setRows] = useState<CreatorDonationRow[]>(recent);
   const [busyId, setBusyId] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
   const tokenMap = useMemo(() => buildTokenMap(tokens), [tokens]);
   const visibleCount = rows.filter((row) => row.moderation_status !== "hidden").length;
   const hiddenCount = rows.length - visibleCount;
@@ -35,7 +40,6 @@ export function ModerationCard({
   useEffect(() => {
     const id = window.setTimeout(() => {
       setRows(recent);
-      setError(null);
     }, 0);
     return () => window.clearTimeout(id);
   }, [recent]);
@@ -43,12 +47,11 @@ export function ModerationCard({
   async function toggle(row: CreatorDonationRow) {
     const next = row.moderation_status === "visible" ? "hidden" : "visible";
     setBusyId(row.id);
-    setError(null);
     try {
       const supabase = createBrowserClient();
       const res = await updateDonationModerationStatus(supabase, row.id, next);
       if (!res.ok) {
-        setError(res.error ?? "Could not update moderation status.");
+        toast.error(res.error ?? "Could not update moderation status.");
         return;
       }
       setRows((prev) =>
@@ -118,7 +121,18 @@ export function ModerationCard({
                     </span>
                     <span className="creator-moderation-donor">
                       <span>{d.donor_name || "Anonymous supporter"}</span>
-                      {d.message ? <small>{d.message}</small> : <small>No message</small>}
+                      {d.message ? (
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <small>{d.message}</small>
+                          </TooltipTrigger>
+                          <TooltipContent side="bottom" align="start">
+                            <p className="max-w-xs break-words">{d.message}</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      ) : (
+                        <small>No message</small>
+                      )}
                     </span>
                     <span
                       className="creator-moderation-status"
@@ -147,11 +161,6 @@ export function ModerationCard({
               })}
             </ul>
           </div>
-        )}
-        {error && (
-          <p className="mt-2 text-xs text-destructive" role="alert" data-testid="moderation-error">
-            {error}
-          </p>
         )}
       </CardContent>
     </Card>

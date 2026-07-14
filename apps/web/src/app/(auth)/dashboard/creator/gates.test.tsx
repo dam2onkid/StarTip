@@ -2,11 +2,20 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, waitFor, act } from "@testing-library/react";
 import { useState } from "react";
+import { toast } from "sonner";
 import type { CreatorProfile } from "@/app/(auth)/dashboard/creator/types";
 import { ProfilePendingGate } from "@/app/(auth)/dashboard/creator/gates/profile-pending";
 import { WalletPendingGate } from "@/app/(auth)/dashboard/creator/gates/wallet-pending";
 import { OnchainPendingGate } from "@/app/(auth)/dashboard/creator/gates/onchain-pending";
 import type { Status } from "@/app/(auth)/dashboard/creator/types";
+
+vi.mock("sonner", () => ({
+  toast: {
+    success: vi.fn(),
+    info: vi.fn(),
+    error: vi.fn(),
+  },
+}));
 
 const STUB_ADDRESS = "GDF6CFYOXQTZVSLLK2RTDAUZ6N2E72IL4K2L34HXZK32KBR4NLVPLUVA";
 
@@ -140,11 +149,11 @@ function OnchainPendingGateWrapper({
       status={status}
       setStatus={setStatus}
       onSubmitted={() => {
-        setStatus({ kind: "info", message: "Registration submitted." });
+        setStatus({ kind: "pending", message: "Registration submitted." });
         onSubmitted();
       }}
       onReconciled={(next) => {
-        setStatus({ kind: "info", message: "You are live on-chain." });
+        setStatus({ kind: "success", message: "You are live on-chain." });
         onReconciled(next);
       }}
     />
@@ -234,9 +243,9 @@ describe("WalletPendingGate", () => {
       fireEvent.click(screen.getByRole("button", { name: /sign challenge & link/i }));
     });
     await waitFor(() => {
-      expect(
-        screen.getByText(/Reconnect with a message-signing wallet like Freighter/i),
-      ).toBeInTheDocument();
+      expect(toast.error).toHaveBeenCalledWith(
+        expect.stringContaining("Reconnect with a message-signing wallet like Freighter"),
+      );
     });
   });
 });

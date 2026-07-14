@@ -18,7 +18,7 @@ import {
 import { contractId } from "@/lib/stellar/client";
 import { friendlyOnchainError } from "@/lib/stellar/contract-errors";
 import { PayoutAddressWarning } from "../shared";
-import { StatusLine } from "../utils";
+import { StatusToast } from "../utils";
 import type { CreatorProfile, Status } from "../types";
 
 interface ReconcileResponse {
@@ -149,7 +149,7 @@ export function OnchainPendingGate(args: {
     [payout, treasury],
   );
   const isSubmitting = status.kind === "busy";
-  const isAwaitingIndexer = submitted && status.kind === "info";
+  const isAwaitingIndexer = submitted && status.kind === "pending";
   const isRegisterLocked = isSubmitting || isAwaitingIndexer;
 
   async function register() {
@@ -209,7 +209,7 @@ export function OnchainPendingGate(args: {
         >
           {isAwaitingIndexer ? "Confirming registration" : "Register Creator"}
         </Button>
-        <StatusLine status={status} />
+        <StatusToast status={status} />
       </CardContent>
     </Card>
   );

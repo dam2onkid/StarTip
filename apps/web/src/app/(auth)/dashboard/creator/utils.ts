@@ -1,32 +1,21 @@
-import { createElement } from "react";
+"use client";
+
+import { useEffect } from "react";
+import { toast } from "sonner";
 import type { Status } from "./types";
 
-export function StatusLine({ status }: { status: Status }) {
-  if (status.kind === "idle" || status.kind === "busy") {
-    return status.kind === "busy"
-      ? createElement(
-          "p",
-          { className: "text-xs text-muted-foreground", "aria-live": "polite" },
-          "Working…",
-        )
-      : null;
-  }
-  if (status.kind === "info") {
-    return createElement(
-      "p",
-      { className: "text-xs text-primary", "aria-live": "polite" },
-      status.message,
-    );
-  }
-  return createElement(
-    "p",
-    {
-      className: "text-xs text-destructive",
-      "aria-live": "polite",
-      role: "alert",
-    },
-    status.message,
-  );
+export function StatusToast({ status }: { status: Status }) {
+  useEffect(() => {
+    if (status.kind === "pending") {
+      toast.info(status.message);
+    } else if (status.kind === "success") {
+      toast.success(status.message);
+    } else if (status.kind === "error") {
+      toast.error(status.message);
+    }
+  }, [status]);
+
+  return null;
 }
 
 export function humanError(code: string): string {

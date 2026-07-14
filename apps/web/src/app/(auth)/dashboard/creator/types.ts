@@ -51,8 +51,9 @@ export interface CreatorTabProps {
 export type Status =
   | { kind: "idle" }
   | { kind: "busy" }
-  | { kind: "error"; message: string }
-  | { kind: "info"; message: string };
+  | { kind: "pending"; message: string }
+  | { kind: "success"; message: string }
+  | { kind: "error"; message: string };
 
 export type CreatorSettingsTab =
   | "overview"

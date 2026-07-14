@@ -1,5 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { toast } from "sonner";
+
+vi.mock("sonner", () => ({
+  toast: {
+    error: vi.fn(),
+  },
+}));
 
 const signInWithPassword = vi.fn();
 const push = vi.fn();
@@ -36,6 +43,7 @@ describe("/login email + password form", () => {
     signInWithPassword.mockReset();
     push.mockReset();
     refresh.mockReset();
+    vi.mocked(toast, true).error.mockClear();
     setNext(null);
     setConfirmed(false);
   });
@@ -83,7 +91,7 @@ describe("/login email + password form", () => {
     await waitFor(() => expect(push).toHaveBeenCalledWith("/dashboard"));
   });
 
-  it("shows the error message when sign in fails", async () => {
+  it("shows the error toast when sign in fails", async () => {
     signInWithPassword.mockResolvedValue({
       data: {},
       error: { message: "Invalid login credentials" },
@@ -94,9 +102,7 @@ describe("/login email + password form", () => {
     await submitCredentials("fan@example.com", "wrongpass");
 
     await waitFor(() =>
-      expect(screen.getByTestId("login-error")).toHaveTextContent(
-        "Invalid login credentials",
-      ),
+      expect(toast.error).toHaveBeenCalledWith("Invalid login credentials"),
     );
     expect(push).not.toHaveBeenCalled();
   });
