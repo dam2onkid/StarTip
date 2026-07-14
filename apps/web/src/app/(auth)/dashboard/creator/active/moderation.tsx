@@ -2,15 +2,17 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { ArrowUpDown, EyeIcon, EyeOffIcon } from "lucide-react";
+import { ArrowUpDown, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, EyeIcon, EyeOffIcon } from "lucide-react";
 import {
   useReactTable,
   getCoreRowModel,
   getSortedRowModel,
   getFilteredRowModel,
+  getPaginationRowModel,
   flexRender,
   createColumnHelper,
   type SortingState,
+  type PaginationState,
 } from "@tanstack/react-table";
 import {
   Card,
@@ -194,6 +196,10 @@ export function ModerationCard({
   const [sorting, setSorting] = useState<SortingState>([
     { id: "createdAt", desc: true },
   ]);
+  const [pagination, setPagination] = useState<PaginationState>({
+    pageIndex: 0,
+    pageSize: 10,
+  });
   const tokenMap = useMemo(() => buildTokenMap(tokens), [tokens]);
   const visibleCount = rows.filter((row) => row.moderation_status !== "hidden").length;
   const hiddenCount = rows.length - visibleCount;
@@ -234,11 +240,14 @@ export function ModerationCard({
     columns,
     state: {
       sorting,
+      pagination,
     },
     onSortingChange: setSorting,
+    onPaginationChange: setPagination,
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
+    getPaginationRowModel: getPaginationRowModel(),
     getRowId: (row) => row.id,
   });
 
@@ -275,7 +284,7 @@ export function ModerationCard({
             />
           </div>
         ) : (
-          <div data-testid="moderation-list" className="rounded-md border">
+          <div data-testid="moderation-list" className="flex flex-col gap-4">
             <Table>
               <TableHeader>
                 {table.getHeaderGroups().map((headerGroup) => (
@@ -328,6 +337,57 @@ export function ModerationCard({
                 )}
               </TableBody>
             </Table>
+            <div className="flex items-center justify-between px-1">
+              <span className="text-sm text-muted-foreground">
+                {table.getFilteredRowModel().rows.length} donation
+                {table.getFilteredRowModel().rows.length === 1 ? "" : "s"}
+              </span>
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon-sm"
+                  onClick={() => table.setPageIndex(0)}
+                  disabled={!table.getCanPreviousPage()}
+                  aria-label="First page"
+                >
+                  <ChevronsLeft className="size-4" aria-hidden />
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon-sm"
+                  onClick={() => table.previousPage()}
+                  disabled={!table.getCanPreviousPage()}
+                  aria-label="Previous page"
+                >
+                  <ChevronLeft className="size-4" aria-hidden />
+                </Button>
+                <span className="text-sm tabular-nums">
+                  Page {table.getState().pagination.pageIndex + 1} of {table.getPageCount()}
+                </span>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon-sm"
+                  onClick={() => table.nextPage()}
+                  disabled={!table.getCanNextPage()}
+                  aria-label="Next page"
+                >
+                  <ChevronRight className="size-4" aria-hidden />
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon-sm"
+                  onClick={() => table.setPageIndex(table.getPageCount() - 1)}
+                  disabled={!table.getCanNextPage()}
+                  aria-label="Last page"
+                >
+                  <ChevronsRight className="size-4" aria-hidden />
+                </Button>
+              </div>
+            </div>
           </div>
         )}
       </CardContent>
