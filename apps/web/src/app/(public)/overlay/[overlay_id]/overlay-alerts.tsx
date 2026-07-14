@@ -309,10 +309,11 @@ function AlertCard({
   const expiryTimerRef = React.useRef<number | null>(null);
   const soundDurationMsRef = React.useRef<number>(0);
   const readingDurationMsRef = React.useRef<number>(0);
+  const readingStartedRef = React.useRef(false);
+  const readingAbortControllerRef = React.useRef<AbortController | null>(null);
 
   React.useEffect(() => {
     startTimeRef.current = Date.now();
-    let abortController: AbortController | null = null;
 
     const scheduleExpiry = (targetMs: number) => {
       if (expiryTimerRef.current) window.clearTimeout(expiryTimerRef.current);
@@ -328,11 +329,13 @@ function AlertCard({
     };
 
     const cleanup = () => {
-      abortController?.abort();
+      readingAbortControllerRef.current?.abort();
+      readingAbortControllerRef.current = null;
       if (expiryTimerRef.current) window.clearTimeout(expiryTimerRef.current);
       if (soundAudioRef.current) {
         soundAudioRef.current.onloadedmetadata = null;
         soundAudioRef.current.onended = null;
+        soundAudioRef.current.onerror = null;
         soundAudioRef.current.pause();
       }
       if (readingAudioRef.current) {
@@ -344,6 +347,7 @@ function AlertCard({
         URL.revokeObjectURL(readingBlobUrlRef.current);
         readingBlobUrlRef.current = null;
       }
+      readingStartedRef.current = false;
     };
 
     if (typeof Audio === "undefined" || !isInsert) {
@@ -363,6 +367,7 @@ function AlertCard({
       if (!overlayId || !voice) return;
 
       try {
+        if (signal.aborted) return;
         const res = await fetch("/api/tts", {
           method: "POST",
           headers: { "content-type": "application/json" },
@@ -372,6 +377,7 @@ function AlertCard({
         if (!res.ok) return;
 
         const blob = await res.blob();
+        if (signal.aborted) return;
         if (typeof URL === "undefined" || typeof URL.createObjectURL !== "function") return;
         const url = URL.createObjectURL(blob);
         readingBlobUrlRef.current = url;
@@ -392,8 +398,13 @@ function AlertCard({
     };
 
     const startReading = () => {
+      if (readingStartedRef.current) return;
       const voice = settingsRef.current.ttsVoice;
-      if (!settingsRef.current.ttsEnabled || !voice || !overlayIdRef.current || !abortController) return;
+      if (!settingsRef.current.ttsEnabled || !voice || !overlayIdRef.current) return;
+      readingStartedRef.current = true;
+      readingAbortControllerRef.current?.abort();
+      const ttsAbortController = new AbortController();
+      readingAbortControllerRef.current = ttsAbortController;
       const text = buildReadingText({
         donorName: donationRef.current.donor_name,
         amount: donationRef.current.amount,
@@ -402,10 +413,9 @@ function AlertCard({
         message: donationRef.current.message,
         voice,
       });
-      void playReading(text, abortController.signal);
+      void playReading(text, ttsAbortController.signal);
     };
 
-    abortController = new AbortController();
     scheduleExpiry(durationMsRef.current);
 
     if (soundEnabled) {
@@ -420,7 +430,12 @@ function AlertCard({
       audio.onended = () => {
         startReading();
       };
-      void audio.play().catch(() => {});
+      audio.onerror = () => {
+        startReading();
+      };
+      void audio.play().catch(() => {
+        startReading();
+      });
     } else {
       startReading();
     }

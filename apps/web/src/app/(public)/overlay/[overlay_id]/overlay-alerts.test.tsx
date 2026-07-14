@@ -741,6 +741,51 @@ describe("OverlayAlerts - Alert Reading (Text-to-Speech)", () => {
     });
   });
 
+  it("starts the reading when the alert sound play fails", async () => {
+    const settings: OverlaySettings = {
+      soundEnabled: true,
+      ttsEnabled: true,
+      ttsVoice: "en-US-EmmaNeural",
+    };
+    vi.mocked(global.fetch).mockResolvedValueOnce(readingResponse());
+    audioPlay.mockRejectedValueOnce(new Error("autoplay blocked"));
+
+    render(
+      <OverlayAlerts
+        creatorProfileId="c1"
+        overlayId="overlay-123"
+        initialDonations={[]}
+        tokenAllowlist={TOKENS}
+        settings={settings}
+      />,
+    );
+
+    await act(async () => {
+      realtimeInsertCb?.({
+        new: {
+          id: "d9",
+          donor_name: "Latecomer",
+          amount: "42",
+          token: "CUSDC",
+          message: "hi",
+          created_at: "t",
+        },
+      });
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Latecomer")).toBeInTheDocument();
+    });
+
+    await waitFor(() => {
+      expect(global.fetch).toHaveBeenCalledTimes(1);
+    });
+
+    const [url, init] = vi.mocked(global.fetch).mock.calls[0];
+    expect(url).toBe("/api/tts");
+    expect(init?.method).toBe("POST");
+  });
+
   it("does not request the reading before the alert sound finishes", async () => {
     const settings: OverlaySettings = {
       soundEnabled: true,
