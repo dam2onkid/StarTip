@@ -31,8 +31,8 @@ const STUB_EMAIL = "fan@example.com";
 
 async function establishSession(page: Page) {
   await page.goto("/login");
-  await page.getByLabel(/email/i).fill(STUB_EMAIL);
-  await page.getByLabel(/password/i).fill("secret123");
+  await page.getByLabel(/^email$/i).fill(STUB_EMAIL);
+  await page.getByLabel(/^password$/i).fill("secret123");
   await page.getByRole("button", { name: /sign in/i }).click();
   await expect(page).toHaveURL(/\/dashboard$/);
 }
@@ -113,6 +113,12 @@ test.describe("Nav auth-aware right cluster", () => {
       // /login instead of rendering the authed shell.
       await page.goto("/dashboard");
       await expect(page).toHaveURL(/\/login/);
+
+      // The root layout cache is also cleared: navigating back to the public
+      // landing page shows the unauthenticated CTA, not the cached avatar menu.
+      await page.goto("/");
+      await expect(nav.getByRole("link", { name: "Sign in/up" })).toBeVisible();
+      await expect(nav.getByRole("button", { name: /account menu for/i })).toHaveCount(0);
     });
   });
 });

@@ -311,10 +311,9 @@ export function startMockSupabase(port) {
     // or the post-confirmation state).
     if (req.method === "POST" && path === "/auth/v1/signup") {
       await readBody(req);
-      json(res, 200, {
-        user: STUB_USER,
-        session: SESSION,
-      });
+      // The auth client expects the /signup response to be a session object
+      // with a nested user, not the nested { user, session } wrapper.
+      json(res, 200, SESSION);
       return;
     }
 
