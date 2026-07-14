@@ -2,9 +2,18 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, waitFor, act, within } from "@testing-library/react";
 import { useState } from "react";
+import { toast } from "sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import type { CreatorProfile, CreatorActiveData, CreatorDonationRow } from "@/app/(auth)/dashboard/creator/types";
 import { ActiveGate } from "@/app/(auth)/dashboard/creator/active";
+
+vi.mock("sonner", () => ({
+  toast: {
+    success: vi.fn(),
+    info: vi.fn(),
+    error: vi.fn(),
+  },
+}));
 
 const STUB_ADDRESS = "GDF6CFYOXQTZVSLLK2RTDAUZ6N2E72IL4K2L34HXZK32KBR4NLVPLUVA";
 
@@ -135,6 +144,7 @@ function activeProfile(over: Partial<CreatorProfile> = {}): CreatorProfile {
     handle: "ada",
     owner_address: STUB_ADDRESS,
     onchain_registered: true,
+    overlay_id: "abc123",
     payout_address: "GBPAYOUT",
     paused: false,
     display_name: "Ada",
@@ -186,15 +196,22 @@ function mockFetch(responses: Array<(url: string, init?: RequestInit) => Respons
   global.fetch = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
     const u = url.toString();
     const method = init?.method ?? "GET";
-    if (u.includes("/api/overlay-settings") && method === "GET" && calls.length === 0) {
+    if (u.includes("/api/tts/voices") && method === "GET") {
+      return jsonRes(200, { voices: [] });
+    }
+    if (u.includes("/goal") && method === "GET") {
+      return jsonRes(200, null);
+    }
+    if (u.includes("/api/overlay-settings") && method === "GET") {
+      const next = calls.shift();
+      if (next) return next(u, init);
       return jsonRes(200, {
         alert_duration_ms: 10000,
         min_amount: "0",
         sound_enabled: true,
+        tts_enabled: false,
+        tts_voice: null,
       });
-    }
-    if (u.includes("/goal") && method === "GET") {
-      return jsonRes(200, null);
     }
     const next = calls.shift();
     if (!next) throw new Error(`unexpected fetch ${u}`);
@@ -216,12 +233,25 @@ beforeEach(() => {
   readTreasuryAddress.mockReset().mockResolvedValue(null);
   payoutAddressWarning.mockReset().mockReturnValue(null);
   removeChannel.mockReset();
-  global.fetch = vi.fn(async (url: string | URL | Request) => {
+  vi.mocked(toast, true).success.mockClear();
+  vi.mocked(toast, true).info.mockClear();
+  vi.mocked(toast, true).error.mockClear();
+  global.fetch = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
     const u = url.toString();
-    if (u.includes("/api/overlay-settings")) {
-      return jsonRes(200, { alert_duration_ms: 10000, min_amount: "0", sound_enabled: true });
+    const method = init?.method ?? "GET";
+    if (u.includes("/api/tts/voices") && method === "GET") {
+      return jsonRes(200, { voices: [] });
     }
-    if (u.includes("/goal")) {
+    if (u.includes("/api/overlay-settings") && method === "GET") {
+      return jsonRes(200, {
+        alert_duration_ms: 10000,
+        min_amount: "0",
+        sound_enabled: true,
+        tts_enabled: false,
+        tts_voice: null,
+      });
+    }
+    if (u.includes("/goal") && method === "GET") {
       return jsonRes(200, null);
     }
     throw new Error(`unexpected fetch ${u}`);
@@ -288,10 +318,10 @@ describe("ActiveGate - overview", () => {
 });
 
 describe("ActiveGate - profile & links", () => {
-  it("renders the overlay URL with the handle", async () => {
+  it("renders the overlay URL with the overlay_id", async () => {
     render(<ActiveGateWrapper initial={activeProfile()} data={activeData()} />);
     await openCreatorTab(/overlay/i);
-    expect(screen.getByTestId("overlay-url")).toHaveTextContent(/\/overlay\/ada/);
+    expect(screen.getByTestId("overlay-url")).toHaveTextContent(/\/overlay\/abc123/);
     expect(screen.getByTestId("overlay-copy")).toBeInTheDocument();
   });
 
@@ -317,7 +347,9 @@ describe("ActiveGate - payout", () => {
       fireEvent.click(screen.getByTestId("payout-update-submit"));
     });
     await waitFor(() => {
-      expect(screen.getByText(/Payout update submitted/i)).toBeInTheDocument();
+      expect(toast.info).toHaveBeenCalledWith(
+        "Payout update submitted. Your new address will appear shortly.",
+      );
     });
     expect(updateCreatorPayoutOnChain).toHaveBeenCalledWith({
       ownerAddress: STUB_ADDRESS,
@@ -347,7 +379,9 @@ describe("ActiveGate - payout", () => {
       fireEvent.click(screen.getByTestId("pause-toggle"));
     });
     await waitFor(() => {
-      expect(screen.getByText(/Pause submitted/i)).toBeInTheDocument();
+      expect(toast.info).toHaveBeenCalledWith(
+        "Pause submitted. Donations will stop shortly.",
+      );
     });
     expect(setCreatorActiveOnChain).toHaveBeenCalledWith({
       ownerAddress: STUB_ADDRESS,
@@ -398,7 +432,7 @@ describe("ActiveGate - overlay settings", () => {
       fireEvent.click(screen.getByTestId("overlay-settings-save"));
     });
     await waitFor(() => {
-      expect(screen.getByText(/Overlay settings saved/i)).toBeInTheDocument();
+      expect(toast.success).toHaveBeenCalledWith("Overlay settings saved.");
     });
     const put = puts.find((p) => p.method === "PUT");
     expect(put).toBeDefined();
@@ -407,6 +441,72 @@ describe("ActiveGate - overlay settings", () => {
       alert_duration_ms: 3000,
       min_amount: 2,
       sound_enabled: false,
+      tts_enabled: false,
+      tts_voice: null,
+    });
+  });
+
+  it("PUTs Alert Reading enabled with a selected Voice", async () => {
+    const puts: { body: unknown }[] = [];
+    global.fetch = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      const u = url.toString();
+      const method = init?.method ?? "GET";
+      if (u.includes("/api/tts/voices") && method === "GET") {
+        return jsonRes(200, {
+          voices: [
+            { id: "en-US-EmmaNeural", name: "Emma", locale: "en-US", gender: "Female" },
+          ],
+        });
+      }
+      if (u.includes("/api/overlay-settings") && method === "GET") {
+        return jsonRes(200, {
+          alert_duration_ms: 6000,
+          min_amount: "0",
+          sound_enabled: true,
+          tts_enabled: false,
+          tts_voice: null,
+        });
+      }
+      if (u.includes("/api/overlay-settings") && method === "PUT") {
+        puts.push({ body: JSON.parse(init?.body as string) });
+        return jsonRes(200, {
+          alert_duration_ms: 6000,
+          min_amount: "0",
+          sound_enabled: true,
+          tts_enabled: true,
+          tts_voice: "en-US-EmmaNeural",
+        });
+      }
+      throw new Error(`unexpected fetch ${u}`);
+    }) as unknown as typeof fetch;
+
+    render(<ActiveGateWrapper initial={activeProfile()} data={activeData()} />);
+    await openCreatorTab(/overlay/i);
+
+    const ttsToggle = await screen.findByTestId("overlay-tts-toggle");
+    await act(async () => {
+      fireEvent.click(ttsToggle);
+    });
+
+    const voiceSelect = await screen.findByTestId("overlay-voice-select");
+    await act(async () => {
+      fireEvent.change(voiceSelect, { target: { value: "en-US-EmmaNeural" } });
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("overlay-settings-save"));
+    });
+    await waitFor(() => {
+      expect(toast.success).toHaveBeenCalledWith("Overlay settings saved.");
+    });
+
+    expect(puts).toHaveLength(1);
+    expect(puts[0].body).toEqual({
+      alert_duration_ms: 6000,
+      min_amount: 0,
+      sound_enabled: true,
+      tts_enabled: true,
+      tts_voice: "en-US-EmmaNeural",
     });
   });
 });
@@ -425,8 +525,17 @@ describe("ActiveGate - donation goal", () => {
     global.fetch = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
       const u = url.toString();
       const method = init?.method ?? "GET";
+      if (u.includes("/api/tts/voices") && method === "GET") {
+        return jsonRes(200, { voices: [] });
+      }
       if (u.includes("/api/overlay-settings") && method === "GET") {
-        return jsonRes(200, { alert_duration_ms: 6000, min_amount: "0", sound_enabled: true });
+        return jsonRes(200, {
+          alert_duration_ms: 6000,
+          min_amount: "0",
+          sound_enabled: true,
+          tts_enabled: false,
+          tts_voice: null,
+        });
       }
       if (u.includes("/goal") && method === "GET") {
         return jsonRes(200, { target_amount: "1000000000", token: "CDUMMY-USDC-CONTRACT" });
@@ -453,7 +562,9 @@ describe("ActiveGate - donation goal", () => {
     });
     expect(screen.getByTestId("donation-goal-current")).toHaveTextContent("350");
     expect(screen.getByTestId("donation-goal-target")).toHaveTextContent(/1000/);
-    expect(screen.getByTestId("donation-goal-bar")).toHaveStyle({ transform: "scaleX(0.35)" });
+    const progressBar = screen.getByTestId("donation-goal-bar");
+    expect(progressBar).toHaveClass("w-full");
+    expect(progressBar).toHaveStyle({ transform: "scaleX(0.35)" });
   });
 
   it("PUTs the edited donation goal and shows a saved status", async () => {
@@ -461,8 +572,17 @@ describe("ActiveGate - donation goal", () => {
     global.fetch = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
       const u = url.toString();
       const method = init?.method ?? "GET";
+      if (u.includes("/api/tts/voices") && method === "GET") {
+        return jsonRes(200, { voices: [] });
+      }
       if (u.includes("/api/overlay-settings") && method === "GET") {
-        return jsonRes(200, { alert_duration_ms: 6000, min_amount: "0", sound_enabled: true });
+        return jsonRes(200, {
+          alert_duration_ms: 6000,
+          min_amount: "0",
+          sound_enabled: true,
+          tts_enabled: false,
+          tts_voice: null,
+        });
       }
       if (u.includes("/goal") && method === "GET") {
         return jsonRes(200, null);
@@ -483,7 +603,7 @@ describe("ActiveGate - donation goal", () => {
       fireEvent.click(screen.getByTestId("donation-goal-save"));
     });
     await waitFor(() => {
-      expect(screen.getByText(/Donation goal saved/i)).toBeInTheDocument();
+      expect(toast.success).toHaveBeenCalledWith("Donation goal saved.");
     });
     const put = puts.find((p) => p.method === "PUT");
     expect(put).toBeDefined();
@@ -499,8 +619,17 @@ describe("ActiveGate - donation goal", () => {
     global.fetch = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
       const u = url.toString();
       const method = init?.method ?? "GET";
+      if (u.includes("/api/tts/voices") && method === "GET") {
+        return jsonRes(200, { voices: [] });
+      }
       if (u.includes("/api/overlay-settings") && method === "GET") {
-        return jsonRes(200, { alert_duration_ms: 6000, min_amount: "0", sound_enabled: true });
+        return jsonRes(200, {
+          alert_duration_ms: 6000,
+          min_amount: "0",
+          sound_enabled: true,
+          tts_enabled: false,
+          tts_voice: null,
+        });
       }
       if (u.includes("/goal") && method === "GET") {
         return jsonRes(200, { target_amount: "1000000000", token: "CDUMMY-USDC-CONTRACT" });
@@ -530,7 +659,7 @@ describe("ActiveGate - donation goal", () => {
       fireEvent.click(screen.getByTestId("donation-goal-clear"));
     });
     await waitFor(() => {
-      expect(screen.getByText(/Donation goal cleared/i)).toBeInTheDocument();
+      expect(toast.success).toHaveBeenCalledWith("Donation goal cleared.");
     });
     const put = puts.find((p) => p.method === "PUT");
     expect(put).toBeDefined();

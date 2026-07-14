@@ -9,7 +9,7 @@ import { ProfilePendingGate } from "./creator/gates/profile-pending";
 import { WalletPendingGate } from "./creator/gates/wallet-pending";
 import { OnchainPendingGate } from "./creator/gates/onchain-pending";
 import { ActiveGate } from "./creator/active";
-import { StatusLine } from "./creator/utils";
+import { StatusToast } from "./creator/utils";
 import type { CreatorProfile, CreatorActiveData, CreatorDonationRow, CreatorTabProps, Status, CreatorSettingsTab, RealtimeStub } from "./creator/types";
 
 export type { CreatorProfile, CreatorActiveData, CreatorDonationRow, CreatorTabProps, Status, CreatorSettingsTab, RealtimeStub };
@@ -23,7 +23,7 @@ export function CreatorTab({ profile, activeData, tokens = [] }: CreatorTabProps
   // on the indexer. Re-attach when the profile id or gate changes.
   useOnchainRegisteredRealtime(current, (next) => {
     setCurrent((prev) => ({ ...prev, onchain_registered: true, ...next }));
-    setStatus({ kind: "info", message: "You are live on-chain. Creator is active." });
+    setStatus({ kind: "success", message: "You are live on-chain. Creator is active." });
   });
 
   return (
@@ -55,19 +55,23 @@ export function CreatorTab({ profile, activeData, tokens = [] }: CreatorTabProps
             setStatus={setStatus}
             onSubmitted={() =>
               setStatus({
-                kind: "info",
+                kind: "pending",
                 message: "Registration submitted. Your creator page will be ready shortly.",
               })
             }
             onReconciled={(next) => {
               setCurrent((prev) => ({ ...prev, onchain_registered: true, ...next }));
-              setStatus({ kind: "info", message: "You are live on-chain. Creator is active." });
+              setStatus({ kind: "success", message: "You are live on-chain. Creator is active." });
+            }}
+            onChangeWallet={() => {
+              setCurrent((prev) => ({ ...prev, owner_address: null }));
+              setStatus({ kind: "idle" });
             }}
           />
         )}
         {state === "active" && (
           <>
-            <StatusLine status={status} />
+            <StatusToast status={status} />
             <ActiveGate
               current={current}
               activeData={activeData}

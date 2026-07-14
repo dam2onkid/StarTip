@@ -10,6 +10,7 @@ export interface CreatorProfile {
   owner_address: string | null;
   /** The formatted Postgres `bytea` hex literal (`\x...`) for the handle hash. */
   handle_hash: string;
+  overlay_id: string | null;
 }
 
 /**
@@ -27,7 +28,7 @@ export async function resolveProfileByHandleHash(
   const handleHashBytea = toByteaHex(handleHash);
   const { data, error } = await supabase
     .from("profiles")
-    .select("id, owner_address")
+    .select("id, owner_address, overlay_id")
     .eq("handle_hash", handleHashBytea)
     .maybeSingle();
   if (error || !data) return null;
@@ -36,5 +37,6 @@ export async function resolveProfileByHandleHash(
     id: profile.id as string,
     owner_address: profile.owner_address ?? null,
     handle_hash: handleHashBytea,
+    overlay_id: profile.overlay_id ?? null,
   };
 }

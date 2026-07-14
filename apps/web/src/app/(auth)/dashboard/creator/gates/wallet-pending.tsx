@@ -16,7 +16,7 @@ import {
   classifySignMessageError,
 } from "@/lib/wallet/kit";
 import { friendlyOnchainError } from "@/lib/stellar/contract-errors";
-import { StatusLine, humanError } from "../utils";
+import { StatusToast, humanError } from "../utils";
 import type { CreatorProfile, Status } from "../types";
 
 /** Gate 2: link a wallet via signMessage. */
@@ -119,7 +119,7 @@ export function WalletPendingGate(args: {
             Sign challenge & link
           </Button>
         </div>
-        <StatusLine status={status} />
+        <StatusToast status={status} />
       </CardContent>
     </Card>
   );

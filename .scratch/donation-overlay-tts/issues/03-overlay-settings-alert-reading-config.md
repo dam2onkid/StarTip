@@ -1,6 +1,6 @@
 # 03 - Overlay settings: Alert Reading configuration
 
-Status: ready-for-agent
+Status: done
 Role: fullstack
 
 ## Parent

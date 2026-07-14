@@ -13,13 +13,44 @@ import { displayToRawAmount, rawToDisplayAmount } from "@/lib/stellar/amount";
 import { DEFAULT_ALERT_DURATION_MS } from "@/lib/overlay/settings";
 import { type TokenAllowlistEntry } from "@/lib/donations/token";
 import { CardTitleWithInfo, CopyValueRow } from "../shared";
-import { StatusLine, computePct, overlaySettingsErrorMessage, goalErrorMessage } from "../utils";
+import { StatusToast, computePct, overlaySettingsErrorMessage, goalErrorMessage } from "../utils";
 import type { Status } from "../types";
 
-/** Overlay URL: show `/overlay/[handle]` with a copy action. */
-export function OverlayUrlCard({ handle }: { handle: string | null }) {
-  const path = handle ? `/overlay/${handle}` : "";
-  if (!handle) return null;
+/** Overlay URL: show `/overlay/[overlay_id]` with a copy + regenerate action. */
+export function OverlayUrlCard({
+  overlayId,
+  onRegenerate,
+}: {
+  overlayId: string | null | undefined;
+  onRegenerate?: (newOverlayId: string) => void;
+}) {
+  const [regenerating, setRegenerating] = useState(false);
+  const [status, setStatus] = useState<Status>({ kind: "idle" });
+  const path = overlayId ? `/overlay/${overlayId}` : "";
+  if (!overlayId) return null;
+
+  async function regenerate() {
+    setRegenerating(true);
+    setStatus({ kind: "idle" });
+    try {
+      const res = await fetch("/api/overlay/regenerate", { method: "POST" });
+      const body = (await res.json()) as { overlay_id?: string; error?: string };
+      if (res.status === 200 && body.overlay_id) {
+        onRegenerate?.(body.overlay_id);
+        setStatus({ kind: "success", message: "Overlay URL regenerated." });
+      } else {
+        setStatus({
+          kind: "error",
+          message: overlaySettingsErrorMessage(body.error ?? "unknown"),
+        });
+      }
+    } catch {
+      setStatus({ kind: "error", message: "Could not regenerate the Overlay URL." });
+    } finally {
+      setRegenerating(false);
+    }
+  }
+
   return (
     <Card>
       <CardHeader>
@@ -28,7 +59,7 @@ export function OverlayUrlCard({ handle }: { handle: string | null }) {
           info="Add this URL as a browser source in OBS to show donation alerts on your stream."
         />
       </CardHeader>
-      <CardContent className="flex flex-col gap-3">
+      <CardContent className="flex flex-col gap-3" data-testid="overlay-url-card">
         <CopyValueRow
           label="Overlay URL"
           value={path}
@@ -37,51 +68,102 @@ export function OverlayUrlCard({ handle }: { handle: string | null }) {
           testId="overlay-url"
           copyTestId="overlay-copy"
         />
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          onClick={regenerate}
+          loading={regenerating}
+          disabled={regenerating}
+          className="self-start"
+          data-testid="overlay-regenerate"
+        >
+          Regenerate URL
+        </Button>
+        <StatusToast status={status} />
       </CardContent>
     </Card>
   );
 }
 
+interface TtsVoice {
+  id: string;
+  name: string;
+  locale: string;
+  gender: string;
+}
+
 /**
- * Overlay Settings card: configure alert duration, min amount, and sound.
+ * Overlay Settings card: configure alert duration, min amount, sound, and
+ * Alert Reading (Text-to-Speech) voice.
  */
-export function OverlaySettingsCard({ handle }: { handle: string | null }) {
+export function OverlaySettingsCard({ overlayId }: { overlayId: string | null | undefined }) {
   const [durationMs, setDurationMs] = useState<number>(DEFAULT_ALERT_DURATION_MS);
   const [minAmount, setMinAmount] = useState<string>("0");
   const [soundEnabled, setSoundEnabled] = useState<boolean>(true);
+  const [ttsEnabled, setTtsEnabled] = useState<boolean>(false);
+  const [ttsVoice, setTtsVoice] = useState<string>("");
+  const [voices, setVoices] = useState<TtsVoice[]>([]);
   const [loading, setLoading] = useState(true);
+
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState<Status>({ kind: "idle" });
 
-  // Load the current settings on mount (and when the handle changes).
+  // Load the current settings and the available TTS voices on mount (and when
+  // the overlay ID changes). Both are fetched in parallel and the form stays
+  // disabled until they settle so the user cannot save stale defaults.
   useEffect(() => {
-    if (!handle) return;
+    if (!overlayId) return;
     let alive = true;
-    fetch(`/api/overlay-settings?handle=${encodeURIComponent(handle)}`)
+
+    const settingsPromise = fetch(
+      `/api/overlay-settings?overlay_id=${encodeURIComponent(overlayId)}`,
+    )
       .then(async (res) => {
         if (!res.ok) return;
-        const body = (await res.json()) as {
+        return (await res.json()) as {
           alert_duration_ms?: number;
           min_amount?: string | number;
           sound_enabled?: boolean;
+          tts_enabled?: boolean;
+          tts_voice?: string | null;
         };
-        if (!alive) return;
-        setDurationMs(body.alert_duration_ms ?? DEFAULT_ALERT_DURATION_MS);
-        setMinAmount(String(body.min_amount ?? "0"));
-        setSoundEnabled(body.sound_enabled !== false);
       })
       .catch(() => {
         // Network error: keep defaults; the user can still save.
-      })
-      .finally(() => {
-        if (alive) setLoading(false);
+        return undefined;
       });
+
+    const voicesPromise = fetch("/api/tts/voices")
+      .then(async (res) => {
+        if (!res.ok) return [];
+        const body = (await res.json()) as { voices?: TtsVoice[] };
+        return Array.isArray(body.voices) ? body.voices : [];
+      })
+      .catch(() => {
+        // Voice list is optional: the picker falls back to empty.
+        return [];
+      });
+
+    Promise.all([settingsPromise, voicesPromise]).then(([settings, voices]) => {
+      if (!alive) return;
+      setVoices(voices);
+      if (settings) {
+        setDurationMs(settings.alert_duration_ms ?? DEFAULT_ALERT_DURATION_MS);
+        setMinAmount(String(settings.min_amount ?? "0"));
+        setSoundEnabled(settings.sound_enabled === true);
+        setTtsEnabled(settings.tts_enabled === true);
+        setTtsVoice(settings.tts_voice ?? "");
+      }
+      setLoading(false);
+    });
+
     return () => {
       alive = false;
     };
-  }, [handle]);
+  }, [overlayId]);
 
-  if (!handle) return null;
+  if (!overlayId) return null;
 
   async function save() {
     setSaving(true);
@@ -94,14 +176,18 @@ export function OverlaySettingsCard({ handle }: { handle: string | null }) {
           alert_duration_ms: durationMs,
           min_amount: Number(minAmount),
           sound_enabled: soundEnabled,
+          tts_enabled: ttsEnabled,
+          tts_voice: ttsVoice || null,
         }),
       });
       if (res.status === 200) {
         const body = (await res.json()) as {
           min_amount: string | number;
+          tts_voice: string | null;
         };
         setMinAmount(String(body.min_amount));
-        setStatus({ kind: "info", message: "Overlay settings saved." });
+        setTtsVoice(body.tts_voice ?? "");
+        setStatus({ kind: "success", message: "Overlay settings saved." });
       } else {
         const body = (await res.json()) as { error: string };
         setStatus({
@@ -121,7 +207,7 @@ export function OverlaySettingsCard({ handle }: { handle: string | null }) {
       <CardHeader>
         <CardTitleWithInfo
           title="Overlay settings"
-          info="Control how donation alerts behave on your stream overlay: how long each alert stays on screen, the minimum donation amount that triggers an alert, and whether a sound plays on new donations."
+          info="Control how donation alerts behave on your stream overlay: how long each alert stays on screen, the minimum donation amount that triggers an alert, sound, and Alert Reading."
         />
       </CardHeader>
       <CardContent className="flex flex-col gap-4" data-testid="overlay-settings-card">
@@ -191,6 +277,52 @@ export function OverlaySettingsCard({ handle }: { handle: string | null }) {
           </label>
         </div>
 
+        <div className="flex items-center gap-2">
+          <input
+            id="overlay-tts-toggle"
+            type="checkbox"
+            className="h-4 w-4 rounded border-foreground/20 accent-primary"
+            checked={ttsEnabled}
+            disabled={loading || saving}
+            onChange={(e) => setTtsEnabled(e.target.checked)}
+            data-testid="overlay-tts-toggle"
+          />
+          <label
+            className="text-xs text-muted-foreground"
+            htmlFor="overlay-tts-toggle"
+          >
+            Read donation alerts aloud
+          </label>
+        </div>
+
+        <div className="flex flex-col gap-1">
+          <label
+            className="text-xs text-muted-foreground"
+            htmlFor="overlay-voice-select"
+          >
+            Voice
+          </label>
+          <select
+            id="overlay-voice-select"
+            className="max-w-[12rem] rounded-md border border-foreground/10 bg-background px-3 py-2 text-sm"
+            value={ttsVoice}
+            disabled={loading || saving}
+            onChange={(e) => setTtsVoice(e.target.value)}
+            data-testid="overlay-voice-select"
+          >
+            <option value="">No voice selected</option>
+            {voices.map((voice) => (
+              <option key={voice.id} value={voice.id}>
+                {voice.name} ({voice.locale})
+              </option>
+            ))}
+          </select>
+          <p className="text-[0.65rem] text-muted-foreground/70">
+            The voice used when Alert Reading is on. The list is always the
+            Worker&apos;s currently supported voices.
+          </p>
+        </div>
+
         <Button
           type="button"
           size="sm"
@@ -202,7 +334,7 @@ export function OverlaySettingsCard({ handle }: { handle: string | null }) {
         >
           Save
         </Button>
-        <StatusLine status={status} />
+        <StatusToast status={status} />
       </CardContent>
     </Card>
   );
@@ -314,7 +446,7 @@ export function DonationGoalCard({
         const tk = tokens.find((t) => t.contract_address === body.token);
         setTargetDisplay(tk ? rawToDisplayAmount(rawTarget, tk.decimals) : rawTarget);
         setStatus({
-          kind: "info",
+          kind: "success",
           message: rawTarget === "0" ? "Donation goal cleared." : "Donation goal saved.",
         });
       } else {
@@ -347,7 +479,7 @@ export function DonationGoalCard({
       if (res.status === 200) {
         setTargetDisplay("");
         setLiveTargetRaw("0");
-        setStatus({ kind: "info", message: "Donation goal cleared." });
+        setStatus({ kind: "success", message: "Donation goal cleared." });
       } else {
         const body = (await res.json()) as { error: string };
         setStatus({ kind: "error", message: goalErrorMessage(body.error) });
@@ -391,7 +523,7 @@ export function DonationGoalCard({
               className="relative h-2 w-full overflow-hidden rounded-full bg-foreground/8"
             >
               <div
-                className="absolute inset-y-0 left-0 origin-left rounded-full bg-primary/70 transition-transform duration-500 ease-out"
+                className="absolute inset-y-0 left-0 w-full origin-left rounded-full bg-primary/70 transition-transform duration-500 ease-out"
                 style={{ transform: `scaleX(${pct / 100})` }}
                 data-testid="donation-goal-bar"
               />
@@ -485,7 +617,7 @@ export function DonationGoalCard({
             Clear
           </Button>
         </div>
-        <StatusLine status={status} />
+        <StatusToast status={status} />
       </CardContent>
     </Card>
   );

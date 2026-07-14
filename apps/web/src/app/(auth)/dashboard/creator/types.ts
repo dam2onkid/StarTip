@@ -13,6 +13,8 @@ export interface CreatorProfile extends OnboardingProfile {
   bio: string | null;
   /** On-chain payout address; set by the indexer after `CreatorRegistered`. */
   payout_address?: string | null;
+  /** Opaque token for the private OBS browser source. */
+  overlay_id?: string | null;
   /** Mirrored by the indexer from `CreatorActiveChanged` (`paused = !active`). */
   paused?: boolean;
 }
@@ -49,8 +51,9 @@ export interface CreatorTabProps {
 export type Status =
   | { kind: "idle" }
   | { kind: "busy" }
-  | { kind: "error"; message: string }
-  | { kind: "info"; message: string };
+  | { kind: "pending"; message: string }
+  | { kind: "success"; message: string }
+  | { kind: "error"; message: string };
 
 export type CreatorSettingsTab =
   | "overview"

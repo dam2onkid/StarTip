@@ -12,7 +12,6 @@ import { Menu, X, Bell } from "lucide-react";
 import { DropdownMenu } from "radix-ui";
 import { Button } from "@/components/ui/button";
 import { Magnetic } from "@/components/landing/magnetic";
-import { DonateWalletConnector } from "@/components/landing/donate-wallet-connector";
 import { NavAvatarMenu } from "@/components/landing/nav-avatar-menu";
 import { useLogout } from "@/hooks/use-logout";
 import { usePrefersReducedMotion } from "@/hooks/use-prefers-reduced-motion";
@@ -42,9 +41,7 @@ import { cn } from "@/lib/utils";
  * `/login`. Authenticated: the CTA is replaced by a static notification bell
  * (icon-only button with an empty-state dropdown) and an avatar menu
  * (`NavAvatarMenu`) showing display_name + email, a Dashboard link, and a
- * Logout item that reuses the shared `useLogout` handler. The Donate Wallet
- * connector (issue 02) is always visible in both auth states, surfacing the
- * browser wallet connected via the Stellar Wallets Kit. The active link is
+ * Logout item that reuses the shared `useLogout` handler. The active link is
  * driven by the current pathname (the left links are real routes, not
  * same-page scroll-spy anchors).
  *
@@ -206,14 +203,9 @@ export function SiteNav({ auth = { state: "unauthenticated" } }: { auth?: NavAut
           </ul>
         </div>
 
-        {/* Right cluster: Donate Wallet connector + auth-aware CTA / bell +
-            avatar menu (desktop) + mobile toggle */}
+        {/* Right cluster: auth-aware CTA / bell + avatar menu (desktop) +
+            mobile toggle */}
         <div className="flex items-center gap-2">
-          {/* Donate Wallet connector — desktop right cluster. On mobile it
-              renders inside the dropdown below, mirroring the right cluster. */}
-          <div className="hidden md:block">
-            <DonateWalletConnector />
-          </div>
           {authed ? (
             <>
               {/* Notification bell, desktop right cluster. Static placeholder
@@ -275,11 +267,11 @@ export function SiteNav({ auth = { state: "unauthenticated" } }: { auth?: NavAut
         </div>
       </nav>
 
-      {/* Mobile dropdown: links + Donate Wallet connector + auth-aware right
-          cluster actions, animated. Mirrors the left cluster and the desktop
-          right cluster. Authed: Dashboard link + Log out (reuses the shared
-          useLogout handler). Unauth: the "Sign in/up" CTA. The desktop
-          bell is an icon-only affordance, so it is not mirrored here. */}
+      {/* Mobile dropdown: links + auth-aware right cluster actions, animated.
+          Mirrors the left cluster and the desktop right cluster. Authed:
+          Dashboard link + Log out (reuses the shared useLogout handler). Unauth:
+          the "Sign in/up" CTA. The desktop bell is an icon-only affordance, so
+          it is not mirrored here. */}
       <AnimatePresence>
         {menuOpen && (
           <motion.div
@@ -301,9 +293,6 @@ export function SiteNav({ auth = { state: "unauthenticated" } }: { auth?: NavAut
                   </Link>
                 </li>
               ))}
-              <li className="px-2 pt-2">
-                <DonateWalletConnector />
-              </li>
               {authed ? (
                 <>
                   <li className="p-2">

@@ -109,6 +109,7 @@ export type Database = {
           onchain_registered: boolean
           onchain_registered_at: string | null
           owner_address: string | null
+          overlay_id: string | null
           paused: boolean
           payout_address: string | null
           user_id: string
@@ -126,6 +127,7 @@ export type Database = {
           onchain_registered?: boolean
           onchain_registered_at?: string | null
           owner_address?: string | null
+          overlay_id?: string | null
           paused?: boolean
           payout_address?: string | null
           user_id: string
@@ -143,6 +145,7 @@ export type Database = {
           onchain_registered?: boolean
           onchain_registered_at?: string | null
           owner_address?: string | null
+          overlay_id?: string | null
           paused?: boolean
           payout_address?: string | null
           user_id?: string
@@ -180,6 +183,53 @@ export type Database = {
           symbol?: string
         }
         Relationships: []
+      }
+      overlay_settings: {
+        Row: {
+          alert_duration_ms: number
+          created_at: string
+          creator_profile_id: string
+          id: string
+          min_amount: number
+          sound_enabled: boolean
+          theme: string
+          tts_enabled: boolean
+          tts_voice: string | null
+          updated_at: string
+        }
+        Insert: {
+          alert_duration_ms?: number
+          created_at?: string
+          creator_profile_id: string
+          id?: string
+          min_amount?: number
+          sound_enabled?: boolean
+          theme?: string
+          tts_enabled?: boolean
+          tts_voice?: string | null
+          updated_at?: string
+        }
+        Update: {
+          alert_duration_ms?: number
+          created_at?: string
+          creator_profile_id?: string
+          id?: string
+          min_amount?: number
+          sound_enabled?: boolean
+          theme?: string
+          tts_enabled?: boolean
+          tts_voice?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "overlay_settings_creator_profile_id_fkey"
+            columns: ["creator_profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
     }
     Views: {

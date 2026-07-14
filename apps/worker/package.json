@@ -11,17 +11,18 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@hono/node-server": "^1.14.0",
     "@startip/shared": "workspace:*",
     "@stellar/stellar-sdk": "^16.0.1",
     "@supabase/supabase-js": "^2.108.2",
     "hono": "^4.7.0",
-    "@hono/node-server": "^1.14.0",
+    "msedge-tts": "2.0.6",
     "zod": "^4.4.3"
   },
   "devDependencies": {
     "@types/node": "^20",
-    "tsx": "^4.19.0",
     "tsup": "^8.5.0",
+    "tsx": "^4.19.0",
     "typescript": "^5",
     "vitest": "^4.1.9"
   }

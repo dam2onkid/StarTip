@@ -3,6 +3,7 @@
 import { useState, type FormEvent } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
+import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { createBrowserClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -39,15 +40,13 @@ export function SignupForm({
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
-  const [error, setError] = useState<string | null>(null);
   const [sent, setSent] = useState(false);
   const [loading, setLoading] = useState(false);
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setError(null);
     if (password !== confirm) {
-      setError("Passwords do not match.");
+      toast.error("Passwords do not match.");
       return;
     }
     setLoading(true);
@@ -59,7 +58,7 @@ export function SignupForm({
       options: { emailRedirectTo },
     });
     if (error) {
-      setError(error.message);
+      toast.error(error.message);
       setLoading(false);
       return;
     }
@@ -163,15 +162,7 @@ export function SignupForm({
               <Button type="submit" size="lg" loading={loading} className="w-full">
                 Sign up
               </Button>
-              {error && (
-                <p
-                  aria-live="polite"
-                  data-testid="signup-error"
-                  className="text-sm text-red-400"
-                >
-                  {error}
-                </p>
-              )}
+
               <FieldDescription className="text-center">
                 Already have an account?{" "}
                 <Link

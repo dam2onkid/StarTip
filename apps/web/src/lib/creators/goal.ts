@@ -1,13 +1,10 @@
-import "server-only";
-
 /**
  * Donation goal progress aggregation.
  *
  * A Creator sets a donation goal (a target amount denominated in a single
  * token from the allowlist) for their profile. The dashboard renders a
- * progress card (current amount vs. target) and the public Creator profile
- * renders a progress bar. The progress reflects only confirmed/indexed
- * visible donations in the goal's token.
+ * progress card (current amount vs. target), the public Creator profile renders
+ * a progress bar, and the overlay shows the progress to stream viewers.
  *
  * `amount` and `targetAmount` are raw i128 numeric strings (the same units
  * stored on the `donations` row and the `donation_goals.target_amount`
@@ -15,6 +12,9 @@ import "server-only";
  * (low-decimals tokens can exceed `Number.MAX_SAFE_INTEGER`) are handled
  * exactly. The displayed total is the raw integer; the UI converts to display
  * units using the token's `decimals` when needed.
+ *
+ * The module has no `server-only` marker and imports nothing, so it is safe to
+ * import from client components, server components, and tests alike.
  *
  * Mirrors the `aggregateLeaderboard` / `sumDonationStats` pattern in
  * `leaderboard.ts`.

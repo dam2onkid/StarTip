@@ -84,6 +84,13 @@ export function createVerifyApp(
     if (typeof input?.tx_hash !== "string" || !input.tx_hash.trim()) {
       return c.json({ error: "invalid_body" }, 400);
     }
+    if (
+      input.user_id !== undefined &&
+      input.user_id !== null &&
+      (typeof input.user_id !== "string" || !input.user_id.trim())
+    ) {
+      return c.json({ error: "invalid_body" }, 400);
+    }
 
     // 3. Poll.
     const result = await pollVerify(

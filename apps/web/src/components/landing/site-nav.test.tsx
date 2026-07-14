@@ -64,15 +64,9 @@ vi.mock("framer-motion", async () => {
 });
 
 const { SiteNav } = await import("@/components/landing/site-nav");
-const { DonateWalletProvider } = await import(
-  "@/components/landing/donate-wallet-context"
-);
 
-// SiteNav renders DonateWalletConnector, which reads the shared wallet state
-// from DonateWalletProvider. Wrap every render in the provider so the
-// connector mounts the same way it does under the root Providers wrapper.
 function renderNav(ui: React.ReactElement) {
-  return render(<DonateWalletProvider>{ui}</DonateWalletProvider>);
+  return render(ui);
 }
 
 /**

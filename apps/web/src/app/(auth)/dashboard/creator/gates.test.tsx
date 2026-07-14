@@ -2,17 +2,27 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, waitFor, act } from "@testing-library/react";
 import { useState } from "react";
+import { toast } from "sonner";
 import type { CreatorProfile } from "@/app/(auth)/dashboard/creator/types";
 import { ProfilePendingGate } from "@/app/(auth)/dashboard/creator/gates/profile-pending";
 import { WalletPendingGate } from "@/app/(auth)/dashboard/creator/gates/wallet-pending";
 import { OnchainPendingGate } from "@/app/(auth)/dashboard/creator/gates/onchain-pending";
 import type { Status } from "@/app/(auth)/dashboard/creator/types";
 
+vi.mock("sonner", () => ({
+  toast: {
+    success: vi.fn(),
+    info: vi.fn(),
+    error: vi.fn(),
+  },
+}));
+
 const STUB_ADDRESS = "GDF6CFYOXQTZVSLLK2RTDAUZ6N2E72IL4K2L34HXZK32KBR4NLVPLUVA";
 
 const connectWallet = vi.hoisted(() => vi.fn());
 const getWalletAddress = vi.hoisted(() => vi.fn());
 const signWalletMessage = vi.hoisted(() => vi.fn());
+const disconnectWallet = vi.hoisted(() => vi.fn());
 const classifySignMessageError = vi.hoisted(() => vi.fn((): "unsupported" | "unknown" => "unknown"));
 const registerCreatorOnChain = vi.hoisted(() => vi.fn());
 const readTreasuryAddress = vi.hoisted(() => vi.fn(async () => null));
@@ -22,6 +32,7 @@ vi.mock("@/lib/wallet/kit", () => ({
   connectWallet,
   getWalletAddress,
   signWalletMessage,
+  disconnectWallet,
   classifySignMessageError,
 }));
 
@@ -48,6 +59,7 @@ function profile(over: Partial<CreatorProfile> = {}): CreatorProfile {
     handle: null,
     owner_address: null,
     onchain_registered: false,
+    overlay_id: null,
     paused: false,
     ...over,
   };
@@ -74,6 +86,7 @@ beforeEach(() => {
   connectWallet.mockReset();
   getWalletAddress.mockReset();
   signWalletMessage.mockReset();
+  disconnectWallet.mockReset().mockResolvedValue(undefined);
   classifySignMessageError.mockReset().mockReturnValue("unknown");
   registerCreatorOnChain.mockReset();
   readTreasuryAddress.mockReset().mockResolvedValue(null);
@@ -127,10 +140,12 @@ function OnchainPendingGateWrapper({
   current,
   onSubmitted,
   onReconciled,
+  onChangeWallet,
 }: {
   current: CreatorProfile;
   onSubmitted: () => void;
   onReconciled: (next: Partial<CreatorProfile>) => void;
+  onChangeWallet: () => void;
 }) {
   const [status, setStatus] = useState<Status>({ kind: "idle" });
   return (
@@ -139,13 +154,14 @@ function OnchainPendingGateWrapper({
       status={status}
       setStatus={setStatus}
       onSubmitted={() => {
-        setStatus({ kind: "info", message: "Registration submitted." });
+        setStatus({ kind: "pending", message: "Registration submitted." });
         onSubmitted();
       }}
       onReconciled={(next) => {
-        setStatus({ kind: "info", message: "You are live on-chain." });
+        setStatus({ kind: "success", message: "You are live on-chain." });
         onReconciled(next);
       }}
+      onChangeWallet={onChangeWallet}
     />
   );
 }
@@ -233,9 +249,9 @@ describe("WalletPendingGate", () => {
       fireEvent.click(screen.getByRole("button", { name: /sign challenge & link/i }));
     });
     await waitFor(() => {
-      expect(
-        screen.getByText(/Reconnect with a message-signing wallet like Freighter/i),
-      ).toBeInTheDocument();
+      expect(toast.error).toHaveBeenCalledWith(
+        expect.stringContaining("Reconnect with a message-signing wallet like Freighter"),
+      );
     });
   });
 });
@@ -251,6 +267,7 @@ describe("OnchainPendingGate", () => {
         current={profile({ handle: "ada", owner_address: STUB_ADDRESS })}
         onSubmitted={onSubmitted}
         onReconciled={onReconciled}
+        onChangeWallet={vi.fn()}
       />,
     );
     const input = screen.getByPlaceholderText("G…");
@@ -281,6 +298,7 @@ describe("OnchainPendingGate", () => {
         current={profile({ handle: "ada", owner_address: STUB_ADDRESS })}
         onSubmitted={vi.fn()}
         onReconciled={vi.fn()}
+        onChangeWallet={vi.fn()}
       />,
     );
     await act(async () => {
@@ -305,6 +323,7 @@ describe("OnchainPendingGate", () => {
         current={profile({ handle: "ada", owner_address: STUB_ADDRESS })}
         onSubmitted={vi.fn()}
         onReconciled={vi.fn()}
+        onChangeWallet={vi.fn()}
       />,
     );
     await act(async () => {
@@ -317,16 +336,37 @@ describe("OnchainPendingGate", () => {
 
   it("calls onReconciled when the mount reconcile finds the creator registered", async () => {
     const onReconciled = vi.fn();
-    mockFetch([() => jsonRes(200, { onchain_registered: true, payout_address: "GBPAYOUT" })]);
+    mockFetch([() => jsonRes(200, { onchain_registered: true, payout_address: "GBPAYOUT", overlay_id: "abc123" })]);
     render(
       <OnchainPendingGateWrapper
         current={profile({ handle: "ada", owner_address: STUB_ADDRESS })}
         onSubmitted={vi.fn()}
         onReconciled={onReconciled}
+        onChangeWallet={vi.fn()}
       />,
     );
     await waitFor(() => {
-      expect(onReconciled).toHaveBeenCalledWith({ payout_address: "GBPAYOUT" });
+      expect(onReconciled).toHaveBeenCalledWith({ payout_address: "GBPAYOUT", overlay_id: "abc123" });
+    });
+  });
+
+  it("disconnects the wallet and calls onChangeWallet when change wallet is clicked", async () => {
+    mockFetch([() => jsonRes(200, { onchain_registered: false })]);
+    const onChangeWallet = vi.fn();
+    render(
+      <OnchainPendingGateWrapper
+        current={profile({ handle: "ada", owner_address: STUB_ADDRESS })}
+        onSubmitted={vi.fn()}
+        onReconciled={vi.fn()}
+        onChangeWallet={onChangeWallet}
+      />,
+    );
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /change wallet/i }));
+    });
+    await waitFor(() => {
+      expect(disconnectWallet).toHaveBeenCalled();
+      expect(onChangeWallet).toHaveBeenCalled();
     });
   });
 });

@@ -39,7 +39,8 @@ export function GateStepper({ state }: { state: OnboardingState }) {
         className="relative mb-4 h-1 w-full overflow-hidden rounded-full bg-foreground/8"
       >
         <div
-          className="absolute inset-y-0 left-0 origin-left rounded-full bg-primary/70 transition-transform duration-500 ease-out"
+          className="absolute inset-y-0 left-0 w-full origin-left rounded-full bg-primary/70 transition-transform duration-500 ease-out"
+          data-testid="gate-stepper-bar"
           style={{ transform: `scaleX(${progress / 100})` }}
         />
       </div>

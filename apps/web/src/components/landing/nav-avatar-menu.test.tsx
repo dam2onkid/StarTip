@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, waitFor, act } from "@testing-library/react";
 
 /**
@@ -14,21 +14,46 @@ import { render, screen, fireEvent, waitFor, act } from "@testing-library/react"
  */
 
 const signOut = vi.fn(async () => ({ error: null }));
-const push = vi.fn();
-const refresh = vi.fn();
+const setHref = vi.fn();
+
+let hrefValue = "";
+let originalLocation: Location;
 
 vi.mock("@/lib/supabase/client", () => ({
   createBrowserClient: () => ({ auth: { signOut } }),
 }));
 
 vi.mock("next/navigation", () => ({
-  useRouter: () => ({ push, refresh }),
+  useRouter: () => ({}),
 }));
 
 beforeEach(() => {
   signOut.mockClear();
-  push.mockClear();
-  refresh.mockClear();
+  setHref.mockClear();
+  hrefValue = "";
+  originalLocation = window.location;
+
+  Object.defineProperty(window, "location", {
+    value: {
+      set href(v: string) {
+        setHref(v);
+        hrefValue = v;
+      },
+      get href() {
+        return hrefValue;
+      },
+    },
+    configurable: true,
+    writable: true,
+  });
+});
+
+afterEach(() => {
+  Object.defineProperty(window, "location", {
+    value: originalLocation,
+    configurable: true,
+    writable: true,
+  });
 });
 
 async function renderMenu(props: {
@@ -108,7 +133,7 @@ describe("NavAvatarMenu: dropdown", () => {
     expect(dash).toHaveAttribute("href", "/dashboard");
   });
 
-  it("Logout item calls the shared useLogout handler (signOut + refresh + push /login)", async () => {
+  it("Logout item calls the shared useLogout handler (signOut + navigate to /login)", async () => {
     await renderMenu();
     await openMenu();
 
@@ -117,7 +142,7 @@ describe("NavAvatarMenu: dropdown", () => {
     });
 
     await waitFor(() => expect(signOut).toHaveBeenCalledOnce());
-    expect(refresh).toHaveBeenCalledOnce();
-    expect(push).toHaveBeenCalledWith("/login");
+    expect(setHref).toHaveBeenCalledWith("/login");
+    expect(window.location.href).toBe("/login");
   });
 });

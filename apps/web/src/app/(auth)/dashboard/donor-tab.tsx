@@ -1,5 +1,23 @@
 "use client";
 
+import { useMemo, useState } from "react";
+import {
+  ArrowUpDown,
+  ChevronLeft,
+  ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
+} from "lucide-react";
+import {
+  useReactTable,
+  getCoreRowModel,
+  getSortedRowModel,
+  getPaginationRowModel,
+  flexRender,
+  createColumnHelper,
+  type SortingState,
+  type PaginationState,
+} from "@tanstack/react-table";
 import {
   Card,
   CardContent,
@@ -7,6 +25,15 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import {
   buildTokenMap,
   getTokenDisplay,
@@ -55,6 +82,212 @@ export interface DonorTabProps {
   tokens?: TokenAllowlistEntry[];
 }
 
+const columnHelper = createColumnHelper<DonorDonation>();
+
+function SortableHeader({ label }: { label: string }) {
+  return (
+    <span className="inline-flex items-center gap-1">
+      {label}
+      <ArrowUpDown className="size-3" aria-hidden />
+    </span>
+  );
+}
+
+function DonationHistoryTable({
+  donations,
+  tokenMap,
+}: {
+  donations: DonorDonation[];
+  tokenMap: Map<string, TokenAllowlistEntry>;
+}) {
+  const [sorting, setSorting] = useState<SortingState>([
+    { id: "createdAt", desc: true },
+  ]);
+  const [pagination, setPagination] = useState<PaginationState>({
+    pageIndex: 0,
+    pageSize: 10,
+  });
+
+  const columns = useMemo(
+    () => [
+      columnHelper.accessor(
+        (row) => BigInt(row.amount),
+        {
+          id: "amount",
+          header: () => <SortableHeader label="Amount" />,
+          cell: ({ row }) => {
+            const display = getTokenDisplay(row.original.amount, row.original.token, tokenMap);
+            return (
+              <span className="font-mono">
+                {display.amount}
+                {display.symbol ? ` ${display.symbol}` : ""}
+              </span>
+            );
+          },
+          enableSorting: true,
+        },
+      ),
+      columnHelper.accessor("message", {
+        id: "message",
+        header: "Message",
+        cell: ({ getValue }) => {
+          const message = getValue();
+          return message ? (
+            <span className="text-sm text-muted-foreground">{message}</span>
+          ) : (
+            <span className="text-sm text-muted-foreground">-</span>
+          );
+        },
+        enableSorting: false,
+      }),
+      columnHelper.accessor("status", {
+        id: "status",
+        header: "Status",
+        cell: ({ getValue }) => (
+          <span className="text-sm text-muted-foreground">{getValue()}</span>
+        ),
+        enableSorting: true,
+      }),
+      columnHelper.accessor("created_at", {
+        id: "createdAt",
+        header: () => <SortableHeader label="Date" />,
+        cell: ({ getValue }) => {
+          const value = getValue();
+          if (!value) return null;
+          return (
+            <time dateTime={value} className="text-sm text-muted-foreground">
+              {new Date(value).toLocaleDateString()}
+            </time>
+          );
+        },
+        enableSorting: true,
+      }),
+    ],
+    [tokenMap],
+  );
+
+  // eslint-disable-next-line react-hooks/incompatible-library
+  const table = useReactTable({
+    data: donations,
+    columns,
+    state: {
+      sorting,
+      pagination,
+    },
+    onSortingChange: setSorting,
+    onPaginationChange: setPagination,
+    getCoreRowModel: getCoreRowModel(),
+    getSortedRowModel: getSortedRowModel(),
+    getPaginationRowModel: getPaginationRowModel(),
+    getRowId: (row) => row.id,
+  });
+
+  return (
+    <div data-testid="donor-history" className="flex flex-col gap-4">
+      <Table>
+        <TableHeader>
+          {table.getHeaderGroups().map((headerGroup) => (
+            <TableRow key={headerGroup.id}>
+              {headerGroup.headers.map((header) => (
+                <TableHead
+                  key={header.id}
+                  className={header.column.getCanSort() ? "cursor-pointer select-none" : ""}
+                  onClick={
+                    header.column.getCanSort()
+                      ? () => header.column.toggleSorting()
+                      : undefined
+                  }
+                  aria-sort={
+                    header.column.getIsSorted() === "asc"
+                      ? "ascending"
+                      : header.column.getIsSorted() === "desc"
+                        ? "descending"
+                        : "none"
+                  }
+                >
+                  {header.isPlaceholder
+                    ? null
+                    : flexRender(header.column.columnDef.header, header.getContext())}
+                </TableHead>
+              ))}
+            </TableRow>
+          ))}
+        </TableHeader>
+        <TableBody>
+          {table.getRowModel().rows.length ? (
+            table.getRowModel().rows.map((row) => (
+              <TableRow key={row.id}>
+                {row.getVisibleCells().map((cell) => (
+                  <TableCell key={cell.id}>
+                    {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                  </TableCell>
+                ))}
+              </TableRow>
+            ))
+          ) : (
+            <TableRow>
+              <TableCell colSpan={columns.length} className="h-24 text-center">
+                No results.
+              </TableCell>
+            </TableRow>
+          )}
+        </TableBody>
+      </Table>
+      <div className="flex items-center justify-between px-1">
+        <span className="text-sm text-muted-foreground">
+          {table.getFilteredRowModel().rows.length} donation
+          {table.getFilteredRowModel().rows.length === 1 ? "" : "s"}
+        </span>
+        <div className="flex items-center gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            size="icon-sm"
+            onClick={() => table.setPageIndex(0)}
+            disabled={!table.getCanPreviousPage()}
+            aria-label="First page"
+          >
+            <ChevronsLeft className="size-4" aria-hidden />
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="icon-sm"
+            onClick={() => table.previousPage()}
+            disabled={!table.getCanPreviousPage()}
+            aria-label="Previous page"
+          >
+            <ChevronLeft className="size-4" aria-hidden />
+          </Button>
+          <span className="text-sm tabular-nums">
+            Page {table.getState().pagination.pageIndex + 1} of {table.getPageCount()}
+          </span>
+          <Button
+            type="button"
+            variant="outline"
+            size="icon-sm"
+            onClick={() => table.nextPage()}
+            disabled={!table.getCanNextPage()}
+            aria-label="Next page"
+          >
+            <ChevronRight className="size-4" aria-hidden />
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="icon-sm"
+            onClick={() => table.setPageIndex(table.getPageCount() - 1)}
+            disabled={!table.getCanNextPage()}
+            aria-label="Last page"
+          >
+            <ChevronsRight className="size-4" aria-hidden />
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function DonorTab({
   donations,
   globalRank,
@@ -81,33 +314,7 @@ export function DonorTab({
               You have not donated yet. Browse creators and tip to appear here.
             </p>
           ) : (
-            <ul className="flex flex-col gap-2" data-testid="donor-history">
-              {donations.map((d) => {
-                const display = getTokenDisplay(d.amount, d.token, tokenMap);
-                return (
-                  <li
-                    key={d.id}
-                    className="row-inset flex items-center justify-between px-3 py-2"
-                  >
-                    <span className="flex flex-col">
-                      <span className="font-mono text-sm text-foreground">
-                        {display.amount}
-                        {display.symbol ? ` ${display.symbol}` : ""}
-                      </span>
-                      {d.message && (
-                        <span className="text-xs text-muted-foreground">{d.message}</span>
-                      )}
-                    </span>
-                    <span className="flex flex-col items-end">
-                      <span className="text-xs text-muted-foreground">
-                        {new Date(d.created_at).toLocaleDateString()}
-                      </span>
-                      <span className="text-xs text-muted-foreground">{d.status}</span>
-                    </span>
-                  </li>
-                );
-              })}
-            </ul>
+            <DonationHistoryTable donations={donations} tokenMap={tokenMap} />
           )}
         </CardContent>
       </Card>

@@ -22,7 +22,7 @@ import {
 import { type TokenAllowlistEntry } from "@/lib/donations/token";
 
 /**
- * `/dashboard` — authed shell for the `(auth)` route group.
+ * `/dashboard` - authed shell for the `(auth)` route group.
  *
  * Reads the Supabase session via `lib/supabase/server.ts` and redirects to
  * `/login` when there is no user. Otherwise loads:
@@ -32,7 +32,7 @@ import { type TokenAllowlistEntry } from "@/lib/donations/token";
  *   * the caller's donation history via the donor RLS path
  *     (`auth.uid() = donations.user_id`), most recent first,
  *   * all confirmed/indexed visible donations (service role, for leaderboard
- *     rank computation — the donor RLS path only exposes the caller's own
+ *     rank computation - the donor RLS path only exposes the caller's own
  *     donations, so the global + per-creator ranks are computed server-side
  *     from the full donation set).
  *
@@ -62,7 +62,7 @@ export default async function DashboardPage() {
   const { data: profile } = await supabase
     .from("profiles")
     .select(
-      "id,user_id,display_name,avatar_url,banner_url,bio,handle,owner_address,onchain_registered,payout_address,paused",
+      "id,user_id,display_name,avatar_url,banner_url,bio,handle,owner_address,onchain_registered,overlay_id,payout_address,paused",
     )
     .eq("user_id", user.id)
     .maybeSingle();
@@ -77,6 +77,7 @@ export default async function DashboardPage() {
     handle: string | null;
     owner_address: string | null;
     onchain_registered: boolean;
+    overlay_id: string | null;
     payout_address?: string | null;
     paused: boolean;
   } | null;
@@ -92,10 +93,11 @@ export default async function DashboardPage() {
         handle: p.handle,
         owner_address: p.owner_address,
         onchain_registered: p.onchain_registered,
+        overlay_id: p.overlay_id,
         payout_address: p.payout_address,
         paused: p.paused,
       }
-    : // No profile row yet (should not happen — autocreate trigger) — start at
+    : // No profile row yet (should not happen - autocreate trigger) - start at
       // gate 1 with a synthetic id so Realtime can still attach if one appears.
       {
         id: "",
@@ -237,6 +239,7 @@ export function DashboardShell({
     handle: null,
     owner_address: null,
     onchain_registered: false,
+    overlay_id: null,
     paused: false,
   };
   return (

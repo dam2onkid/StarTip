@@ -1,5 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { toast } from "sonner";
+
+vi.mock("sonner", () => ({
+  toast: {
+    error: vi.fn(),
+  },
+}));
 
 const signUp = vi.fn();
 const push = vi.fn();
@@ -39,6 +46,7 @@ describe("/signup email + password form", () => {
     signUp.mockReset();
     push.mockReset();
     refresh.mockReset();
+    vi.mocked(toast, true).error.mockClear();
     setNext(null);
   });
 
@@ -111,21 +119,19 @@ describe("/signup email + password form", () => {
     await waitFor(() => expect(push).toHaveBeenCalledWith("/dashboard"));
   });
 
-  it("shows an error when passwords do not match", async () => {
+  it("shows a toast error when passwords do not match", async () => {
     const { default: SignupPage } = await import("@/app/(public)/signup/page");
     render(<SignupPage />);
 
     await submitSignup("fan@example.com", "secret123", "different");
 
     await waitFor(() =>
-      expect(screen.getByTestId("signup-error")).toHaveTextContent(
-        /passwords do not match/i,
-      ),
+      expect(toast.error).toHaveBeenCalledWith("Passwords do not match."),
     );
     expect(signUp).not.toHaveBeenCalled();
   });
 
-  it("shows the error message when signUp fails", async () => {
+  it("shows the error toast when signUp fails", async () => {
     signUp.mockResolvedValue({
       data: {},
       error: { message: "User already registered" },
@@ -136,9 +142,7 @@ describe("/signup email + password form", () => {
     await submitSignup("fan@example.com", "secret123", "secret123");
 
     await waitFor(() =>
-      expect(screen.getByTestId("signup-error")).toHaveTextContent(
-        "User already registered",
-      ),
+      expect(toast.error).toHaveBeenCalledWith("User already registered"),
     );
     expect(push).not.toHaveBeenCalled();
   });

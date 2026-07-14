@@ -1,6 +1,6 @@
 # Donation Overlay Text-to-Speech
 
-Status: ready-for-agent
+Status: done
 
 ## Problem Statement
 

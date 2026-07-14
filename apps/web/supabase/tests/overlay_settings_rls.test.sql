@@ -16,7 +16,7 @@
 --   * DELETE denied to clients (no policy).
 
 begin;
-select plan(17);
+select plan(19);
 
 -- Schema.
 
@@ -26,10 +26,13 @@ select col_type_is('public', 'overlay_settings', 'creator_profile_id', 'uuid', '
 select col_type_is('public', 'overlay_settings', 'alert_duration_ms', 'integer', 'alert_duration_ms is integer');
 select col_type_is('public', 'overlay_settings', 'min_amount', 'numeric', 'min_amount is numeric');
 select col_type_is('public', 'overlay_settings', 'sound_enabled', 'boolean', 'sound_enabled is boolean');
+select col_type_is('public', 'overlay_settings', 'tts_enabled', 'boolean', 'tts_enabled is boolean');
+select col_type_is('public', 'overlay_settings', 'tts_voice', 'text', 'tts_voice is text');
 select col_default_is('public', 'overlay_settings', 'alert_duration_ms', '6000', 'alert_duration_ms defaults to 6000');
 select col_default_is('public', 'overlay_settings', 'min_amount', '0', 'min_amount defaults to 0');
 select col_default_is('public', 'overlay_settings', 'sound_enabled', 'true', 'sound_enabled defaults to true');
 select col_default_is('public', 'overlay_settings', 'theme', '''default''::text', 'theme defaults to default');
+select col_default_is('public', 'overlay_settings', 'tts_enabled', 'false', 'tts_enabled defaults to false');
 
 -- Fixtures: creator A, an unrelated user B.
 insert into auth.users (id, email, encrypted_password, aud, role, email_confirmed_at, instance_id)
@@ -74,11 +77,11 @@ reset role;
 set local role authenticated;
 set local request.jwt.claim.sub to 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
 update public.overlay_settings
-  set alert_duration_ms = 4000, min_amount = 10, sound_enabled = false
+  set alert_duration_ms = 4000, min_amount = 10, sound_enabled = false, tts_enabled = true, tts_voice = 'en-US-EmmaNeural'
   where creator_profile_id = (select id from public.profiles where user_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa');
 select results_eq(
-  $$ select alert_duration_ms, min_amount, sound_enabled from public.overlay_settings $$,
-  $$ select 4000, 10::numeric, false $$,
+  $$ select alert_duration_ms, min_amount, sound_enabled, tts_enabled, tts_voice from public.overlay_settings $$,
+  $$ select 4000, 10::numeric, false, true, 'en-US-EmmaNeural' $$,
   'owner can UPDATE their own overlay_settings row'
 );
 reset role;

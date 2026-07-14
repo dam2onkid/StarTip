@@ -3,6 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { TokenMetadata } from "../stellar/token";
 import { classifyMessage } from "../donations/moderation";
 import { resolveProfileByHandleHash } from "../profiles/creator-profile-resolver";
+import { ensureOverlayId } from "../overlay/id";
 
 /** RPC surface the indexer depends on (structural subset of rpc.Server). */
 export interface RpcLike {
@@ -173,6 +174,7 @@ async function dispatchCreatorRegistered(
       onchain_registered: true,
       onchain_registered_at: nowIso(),
       payout_address: payoutAddress,
+      overlay_id: ensureOverlayId(profile),
     })
     .eq("handle_hash", profile.handle_hash);
 }

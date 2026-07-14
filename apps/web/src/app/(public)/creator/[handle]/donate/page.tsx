@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { createServiceClient } from "@startip/shared/supabase/service";
+import { createServerClient } from "@/lib/supabase/server";
 import { DonateForm } from "./donate-form";
 
 interface DonateCreatorIdentity {
@@ -29,13 +30,18 @@ export default async function DonatePage({
   const normalized = handle.trim().toLowerCase();
 
   const service = createServiceClient();
-  const { data: profile } = await service
-    .from("profiles")
-    .select("handle,display_name,avatar_url,onchain_registered,paused")
-    .eq("handle", normalized)
-    .maybeSingle();
+  const supabase = await createServerClient();
 
-  const p = profile as {
+  const [creatorResult, authResult] = await Promise.all([
+    service
+      .from("profiles")
+      .select("handle,display_name,avatar_url,onchain_registered,paused")
+      .eq("handle", normalized)
+      .maybeSingle(),
+    supabase.auth.getUser(),
+  ]);
+
+  const p = creatorResult.data as {
     handle: string;
     display_name: string;
     avatar_url: string | null;
@@ -47,6 +53,17 @@ export default async function DonatePage({
     notFound();
   }
 
+  const user = authResult.data.user;
+  let donorDisplayName: string | undefined;
+  if (user) {
+    const { data: donorProfile } = await supabase
+      .from("profiles")
+      .select("display_name")
+      .eq("user_id", user.id)
+      .maybeSingle();
+    donorDisplayName = donorProfile?.display_name;
+  }
+
   return (
     <DonatePageShell
       creator={{
@@ -54,11 +71,18 @@ export default async function DonatePage({
         displayName: p.display_name,
         avatarUrl: p.avatar_url,
       }}
+      donorDisplayName={donorDisplayName}
     />
   );
 }
 
-export function DonatePageShell({ creator }: { creator: DonateCreatorIdentity }) {
+export function DonatePageShell({
+  creator,
+  donorDisplayName,
+}: {
+  creator: DonateCreatorIdentity;
+  donorDisplayName?: string;
+}) {
   const creatorHref = `/creator/${encodeURIComponent(creator.handle)}`;
 
   return (
@@ -78,6 +102,7 @@ export function DonatePageShell({ creator }: { creator: DonateCreatorIdentity })
         handle={creator.handle}
         displayName={creator.displayName}
         avatarUrl={creator.avatarUrl}
+        donorDisplayName={donorDisplayName}
       />
     </section>
   );

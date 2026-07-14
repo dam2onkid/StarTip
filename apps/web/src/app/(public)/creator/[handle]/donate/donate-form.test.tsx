@@ -160,13 +160,13 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-async function renderAndConnect(handle = "ada") {
+async function renderAndConnect(handle = "ada", donorDisplayName?: string) {
   const { DonateWalletProvider } = await import("@/components/landing/donate-wallet-context");
   const { DonateForm } = await import("./donate-form");
   connectWallet.mockResolvedValue({ address: STUB_ADDRESS });
   render(
     <DonateWalletProvider>
-      <DonateForm handle={handle} />
+      <DonateForm handle={handle} donorDisplayName={donorDisplayName} />
     </DonateWalletProvider>,
   );
   await act(async () => {
@@ -202,6 +202,29 @@ describe("DonateForm", () => {
   it("shows the connected wallet", async () => {
     await renderAndConnect();
     expect(screen.getByText(/Connected wallet/i)).toBeInTheDocument();
+  });
+
+  it("allows changing the connected wallet", async () => {
+    connectWallet.mockResolvedValue({ address: STUB_ADDRESS });
+    disconnectWallet.mockResolvedValue(undefined);
+    const { DonateWalletProvider } = await import("@/components/landing/donate-wallet-context");
+    const { DonateForm } = await import("./donate-form");
+    render(
+      <DonateWalletProvider>
+        <DonateForm handle="ada" />
+      </DonateWalletProvider>,
+    );
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /connect wallet/i }));
+    });
+    await waitFor(() => expect(screen.getByText(/Connected wallet/i)).toBeInTheDocument());
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /change/i }));
+    });
+    await waitFor(() => {
+      expect(disconnectWallet).toHaveBeenCalled();
+      expect(screen.getByText(/Connect your wallet/i)).toBeInTheDocument();
+    });
   });
 
   it("renders the token picker, amount, and donate button after connecting", async () => {
@@ -246,7 +269,7 @@ describe("DonateForm", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByText(/Donation confirmed! Tx/i)).toBeInTheDocument();
+      expect(toastSuccess).toHaveBeenCalledOnce();
     });
     expect(donateOnChain).toHaveBeenCalledOnce();
     // The verify body carries tx_hash + off-chain content, no donation_id.
@@ -280,11 +303,6 @@ describe("DonateForm", () => {
       fireEvent.click(screen.getByRole("button", { name: /donate/i }));
     });
 
-    await waitFor(() => {
-      expect(screen.getByRole("alert")).toHaveTextContent(
-        /paused and cannot receive donations/i,
-      );
-    });
     // No success sound on the error path.
     expect(audioInstances).toHaveLength(0);
     // An error toast is shown instead of a success toast.
@@ -306,9 +324,9 @@ describe("DonateForm", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByRole("alert")).toHaveTextContent(
-        /paused and cannot receive donations/i,
-      );
+      expect(toastError).toHaveBeenCalledWith("Donation failed", {
+        description: expect.stringContaining("paused and cannot receive donations"),
+      });
     });
   });
 
@@ -325,7 +343,9 @@ describe("DonateForm", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByRole("alert")).toHaveTextContent(/creator_not_found/i);
+      expect(toastError).toHaveBeenCalledWith("Donation failed", {
+        description: expect.stringContaining("Server error: creator_not_found"),
+      });
     });
   });
 
@@ -342,7 +362,9 @@ describe("DonateForm", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByRole("alert")).toHaveTextContent(/tx_failed/i);
+      expect(toastError).toHaveBeenCalledWith("Donation failed", {
+        description: expect.stringContaining("Server error: tx_failed"),
+      });
     });
   });
 
@@ -473,10 +495,35 @@ describe("DonateForm", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByRole("alert")).toHaveTextContent(
-        /could not establish a trustline/i,
-      );
+      expect(toastError).toHaveBeenCalledWith("Donation failed", {
+        description: expect.stringContaining(
+          "Could not establish a trustline to this token",
+        ),
+      });
     });
+  });
+
+  it("hides the donor name input and uses the logged-in display name when provided", async () => {
+    donateOnChain.mockResolvedValue({ status: "PENDING", hash: "deadbeef".repeat(8) });
+    mockFetch([() => jsonRes(200, { status: "confirmed" })]);
+    await renderAndConnect("ada", "Fan");
+
+    expect(screen.queryByPlaceholderText("Anonymous")).not.toBeInTheDocument();
+
+    await act(async () => {
+      fireEvent.change(screen.getByPlaceholderText("0.00"), { target: { value: "1.0" } });
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /donate/i }));
+    });
+
+    await waitFor(() => expect(toastSuccess).toHaveBeenCalledOnce());
+    const verifyCall = (global.fetch as unknown as { mock: { calls: [string, RequestInit][] } }).mock.calls.find(
+      (c) => c[0].includes("/api/donations/verify"),
+    );
+    expect(verifyCall).toBeDefined();
+    const verifyBody = JSON.parse(verifyCall![1].body as string);
+    expect(verifyBody.donor_name).toBe("Fan");
   });
 
 });

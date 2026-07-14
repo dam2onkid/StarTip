@@ -80,12 +80,15 @@ describe("POST /api/creators/reconcile", () => {
 
   it("returns 200 onchain_registered:true without on-chain read when already active", async () => {
     requireAuthedProfileMock.mockResolvedValue(
-      authContext({ id: "p1", user_id: USER_ID, handle: "ada", owner_address: OWNER, onchain_registered: true }),
+      authContext(
+        { id: "p1", user_id: USER_ID, handle: "ada", owner_address: OWNER, onchain_registered: true, overlay_id: "abc123", payout_address: OWNER },
+        serviceFrom,
+      ),
     );
     const { POST } = await import("@/app/api/creators/reconcile/route");
     const res = await POST();
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ onchain_registered: true });
+    expect(await res.json()).toEqual({ onchain_registered: true, overlay_id: "abc123", payout_address: OWNER });
     expect(readCreatorOnChain).not.toHaveBeenCalled();
   });
 
@@ -132,12 +135,15 @@ describe("POST /api/creators/reconcile", () => {
     const { POST } = await import("@/app/api/creators/reconcile/route");
     const res = await POST();
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ onchain_registered: true, payout_address: OWNER });
+    const body = await res.json();
+    expect(body).toMatchObject({ onchain_registered: true, payout_address: OWNER });
+    expect(body.overlay_id).toMatch(/^[0-9a-f]{32}$/);
     expect(recorder.payload).toMatchObject({
       onchain_registered: true,
       payout_address: OWNER,
     });
     expect((recorder.payload as { onchain_registered_at: string }).onchain_registered_at).toBeTruthy();
+    expect((recorder.payload as { overlay_id: string }).overlay_id).toMatch(/^[0-9a-f]{32}$/);
     expect(recorder.filter).toEqual({ c: "user_id", v: USER_ID });
   });
 
