@@ -90,20 +90,41 @@ function TokenIcon({
   );
 }
 
-function WalletBadge({ address }: { address: string }) {
+function WalletBadge({
+  address,
+  onChange,
+  changing,
+}: {
+  address: string;
+  onChange: () => void;
+  changing: boolean;
+}) {
   return (
-    <div className="flex items-center gap-3 rounded-xl border border-foreground/10 bg-foreground/[0.03] px-4 py-3">
-      <div className="flex size-9 items-center justify-center rounded-full bg-primary/10">
-        <Wallet className="size-4 text-primary" aria-hidden />
+    <div className="flex items-center justify-between gap-3 rounded-xl border border-foreground/10 bg-foreground/[0.03] px-4 py-3">
+      <div className="flex items-center gap-3 min-w-0">
+        <div className="flex size-9 items-center justify-center rounded-full bg-primary/10">
+          <Wallet className="size-4 text-primary" aria-hidden />
+        </div>
+        <div className="min-w-0">
+          <p className="font-mono text-[0.65rem] uppercase tracking-widest text-muted-foreground">
+            Connected wallet
+          </p>
+          <p className="truncate font-mono text-sm text-foreground">
+            {address.slice(0, 8)}...{address.slice(-6)}
+          </p>
+        </div>
       </div>
-      <div className="min-w-0">
-        <p className="font-mono text-[0.65rem] uppercase tracking-widest text-muted-foreground">
-          Connected wallet
-        </p>
-        <p className="truncate font-mono text-sm text-foreground">
-          {address.slice(0, 8)}...{address.slice(-6)}
-        </p>
-      </div>
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        onClick={() => void onChange()}
+        loading={changing}
+        disabled={changing}
+        className="h-auto px-2 py-1 text-xs"
+      >
+        Change
+      </Button>
     </div>
   );
 }
@@ -144,7 +165,13 @@ export function DonateForm({
   avatarUrl = null,
   donorDisplayName,
 }: DonateFormProps) {
-  const { address: walletAddress, connect, connecting: connectingWallet } = useDonateWallet();
+  const {
+    address: walletAddress,
+    connect,
+    disconnect,
+    connecting: connectingWallet,
+  } = useDonateWallet();
+  const [changingWallet, setChangingWallet] = React.useState(false);
   const { state, start } = useDonationFlow();
   const { tokens, status: tokenLoadState } = useTokenAllowlist();
 
@@ -247,7 +274,18 @@ export function DonateForm({
       </CardHeader>
       <CardContent className="flex flex-col gap-6">
         {walletAddress ? (
-          <WalletBadge address={walletAddress} />
+          <WalletBadge
+            address={walletAddress}
+            onChange={async () => {
+              setChangingWallet(true);
+              try {
+                await disconnect();
+              } finally {
+                setChangingWallet(false);
+              }
+            }}
+            changing={changingWallet}
+          />
         ) : (
           <ConnectWalletPrompt
             onConnect={connect}

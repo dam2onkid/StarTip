@@ -204,6 +204,29 @@ describe("DonateForm", () => {
     expect(screen.getByText(/Connected wallet/i)).toBeInTheDocument();
   });
 
+  it("allows changing the connected wallet", async () => {
+    connectWallet.mockResolvedValue({ address: STUB_ADDRESS });
+    disconnectWallet.mockResolvedValue(undefined);
+    const { DonateWalletProvider } = await import("@/components/landing/donate-wallet-context");
+    const { DonateForm } = await import("./donate-form");
+    render(
+      <DonateWalletProvider>
+        <DonateForm handle="ada" />
+      </DonateWalletProvider>,
+    );
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /connect wallet/i }));
+    });
+    await waitFor(() => expect(screen.getByText(/Connected wallet/i)).toBeInTheDocument());
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /change/i }));
+    });
+    await waitFor(() => {
+      expect(disconnectWallet).toHaveBeenCalled();
+      expect(screen.getByText(/Connect your wallet/i)).toBeInTheDocument();
+    });
+  });
+
   it("renders the token picker, amount, and donate button after connecting", async () => {
     await renderAndConnect();
     expect(screen.getByRole("combobox", { name: /token/i })).toHaveTextContent("USDC");
