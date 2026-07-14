@@ -298,6 +298,30 @@ describe("verifyDonation", () => {
     });
   });
 
+  it("stores user_id on insert when an authenticated donor is provided", async () => {
+    supabaseMock.setResponder("donations:select", () => ({ data: null, error: null }));
+    supabaseMock.setResponder("profiles:select", () => ({ data: { id: "p1" }, error: null }));
+    getTransaction.mockResolvedValue(makeSuccessTxResponse(makeDonationReceivedEvent("USDC"), DONOR));
+    const { verifyDonation } = await import("./confirm");
+    const res = await verifyDonation(deps(), { tx_hash: TX_HASH, user_id: "u-donor" });
+    expect(res.status).toBe(200);
+    const insert = findCall(supabaseMock.calls, "donations", "insert");
+    expect(insert!.payload).toMatchObject({
+      user_id: "u-donor",
+    });
+  });
+
+  it("does not store user_id on insert when none is provided", async () => {
+    supabaseMock.setResponder("donations:select", () => ({ data: null, error: null }));
+    supabaseMock.setResponder("profiles:select", () => ({ data: { id: "p1" }, error: null }));
+    getTransaction.mockResolvedValue(makeSuccessTxResponse(makeDonationReceivedEvent("USDC"), DONOR));
+    const { verifyDonation } = await import("./confirm");
+    const res = await verifyDonation(deps(), { tx_hash: TX_HASH });
+    expect(res.status).toBe(200);
+    const insert = findCall(supabaseMock.calls, "donations", "insert");
+    expect((insert!.payload as Record<string, unknown>).user_id).toBeUndefined();
+  });
+
   it("promotes an indexed row to confirmed, filling message and donor_name from the body when the row has indexer defaults", async () => {
     supabaseMock.setResponder("donations:select", () => ({
       data: { id: "d9", status: "indexed", message: null, donor_name: "Anonymous" },
@@ -338,6 +362,32 @@ describe("verifyDonation", () => {
     const update = findCall(supabaseMock.calls, "donations", "update");
     expect((update!.payload as Record<string, unknown>).message).toBeUndefined();
     expect((update!.payload as Record<string, unknown>).donor_name).toBeUndefined();
+  });
+
+  it("sets user_id on promote when the existing row has none", async () => {
+    supabaseMock.setResponder("donations:select", () => ({
+      data: { id: "d9", status: "indexed", message: null, donor_name: "Anonymous", user_id: null },
+      error: null,
+    }));
+    getTransaction.mockResolvedValue(makeSuccessTxResponse(makeDonationReceivedEvent("USDC"), DONOR));
+    const { verifyDonation } = await import("./confirm");
+    const res = await verifyDonation(deps(), { tx_hash: TX_HASH, user_id: "u-donor" });
+    expect(res.status).toBe(200);
+    const update = findCall(supabaseMock.calls, "donations", "update");
+    expect((update!.payload as Record<string, unknown>).user_id).toBe("u-donor");
+  });
+
+  it("does not overwrite an existing user_id on promote", async () => {
+    supabaseMock.setResponder("donations:select", () => ({
+      data: { id: "d9", status: "indexed", message: null, donor_name: "Anonymous", user_id: "u-existing" },
+      error: null,
+    }));
+    getTransaction.mockResolvedValue(makeSuccessTxResponse(makeDonationReceivedEvent("USDC"), DONOR));
+    const { verifyDonation } = await import("./confirm");
+    const res = await verifyDonation(deps(), { tx_hash: TX_HASH, user_id: "u-new" });
+    expect(res.status).toBe(200);
+    const update = findCall(supabaseMock.calls, "donations", "update");
+    expect((update!.payload as Record<string, unknown>).user_id).toBeUndefined();
   });
 
   it("is an idempotent no-op (no update) when the row is already confirmed", async () => {

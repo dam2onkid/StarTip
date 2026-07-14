@@ -35,6 +35,8 @@ export interface VerifyInput {
   tx_hash: string;
   message?: string | null;
   donor_name?: string;
+  /** Supabase auth user id of the logged-in donor, if any. Anonymous donors omit this. */
+  user_id?: string;
 }
 
 export interface VerifySuccessBody {
@@ -59,6 +61,7 @@ interface DonationRow {
   status: string;
   message?: string | null;
   donor_name?: string | null;
+  user_id?: string | null;
 }
 
 interface ProfileRow {
@@ -134,6 +137,7 @@ export async function verifyDonation(
 
   const message = input.message ?? null;
   const donorName = input.donor_name ?? null;
+  const userId = input.user_id?.trim() || undefined;
 
   let tx: StellarSdk.rpc.Api.GetTransactionResponse;
   try {
@@ -181,7 +185,7 @@ export async function verifyDonation(
   // 1. Match an existing row by tx_hash (the sole natural key per ADR-0005).
   const { data: existing, error: selErr } = await service
     .from("donations")
-    .select("id,status,message,donor_name")
+    .select("id,status,message,donor_name,user_id")
     .eq("tx_hash", txHash)
     .maybeSingle();
   if (selErr) return { status: 500, body: { error: "db_error" } };
@@ -202,6 +206,9 @@ export async function verifyDonation(
       donor_address: donorAddress,
       confirmed_at: nowIso(),
     };
+    if (userId && !existingRow.user_id) {
+      update.user_id = userId;
+    }
     if (existingRow.message == null && message != null) {
       update.message = message;
     }
@@ -239,7 +246,7 @@ export async function verifyDonation(
   if (profileErr) return { status: 500, body: { error: "db_error" } };
   if (!profile) return { status: 409, body: { error: "creator_not_found" } };
 
-  const { error: insErr } = await service.from("donations").insert({
+  const insert: Record<string, unknown> = {
     tx_hash: txHash,
     creator_profile_id: (profile as ProfileRow).id,
     handle_hash: handleHashBytea,
@@ -251,7 +258,11 @@ export async function verifyDonation(
     message: message,
     moderation_status: classifyMessage(message, donorName ?? "Anonymous"),
     confirmed_at: nowIso(),
-  });
+  };
+  if (userId) {
+    insert.user_id = userId;
+  }
+  const { error: insErr } = await service.from("donations").insert(insert);
   if (insErr) return { status: 500, body: { error: "db_error" } };
   return { status: 200, body: { status: "confirmed" } };
 }

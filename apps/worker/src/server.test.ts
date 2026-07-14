@@ -296,6 +296,12 @@ describe("POST /verify", () => {
     expect(await res.json()).toEqual({ status: "confirmed" });
   });
 
+  it("returns 400 invalid_body when user_id is present but not a non-empty string", async () => {
+    const res = await postVerify({ tx_hash: TX_HASH, user_id: "" });
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: "invalid_body" });
+  });
+
   it("returns 409 tx_failed when the tx status is FAILED", async () => {
     getTransaction.mockResolvedValue(makeFailedResponse());
     const res = await postVerify({ tx_hash: TX_HASH });
