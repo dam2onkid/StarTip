@@ -129,7 +129,7 @@ describe("public route placeholders", () => {
   it("/docs renders a placeholder heading", () => {
     render(<DocsPage />);
     expect(
-      screen.getByRole("heading", { name: /docs/i }),
+      screen.getByRole("heading", { name: /documentation/i }),
     ).toBeInTheDocument();
   });
 });
