@@ -521,6 +521,8 @@ export function startMockSupabase(port) {
           alert_duration_ms: patch.alert_duration_ms ?? 10000,
           min_amount: patch.min_amount ?? "0",
           sound_enabled: patch.sound_enabled ?? true,
+          tts_enabled: patch.tts_enabled ?? false,
+          tts_voice: patch.tts_voice ?? null,
           theme: "default",
         };
         json(res, 200, overlaySettingsRow);

@@ -18,7 +18,7 @@ export async function POST(request: NextRequest) {
   } catch {
     return NextResponse.json({ error: "invalid_body" }, { status: 400 });
   }
-  const workerRes = await fetch(`${env.WORKER_URL}/verify`, {
+  const workerRes = await fetch(new URL("/verify", env.WORKER_URL), {
     method: "POST",
     headers: {
       "content-type": "application/json",

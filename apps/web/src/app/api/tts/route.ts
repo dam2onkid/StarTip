@@ -64,7 +64,7 @@ export async function POST(request: NextRequest) {
   const timeoutId = setTimeout(() => controller.abort(), TTS_PROXY_TIMEOUT_MS);
 
   try {
-    const workerRes = await fetch(`${env.WORKER_URL}/tts`, {
+    const workerRes = await fetch(new URL("/tts", env.WORKER_URL), {
       method: "POST",
       headers: {
         "content-type": "application/json",

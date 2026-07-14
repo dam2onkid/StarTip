@@ -105,6 +105,7 @@ export function OverlaySettingsCard({ overlayId }: { overlayId: string | null | 
   const [ttsVoice, setTtsVoice] = useState<string>("");
   const [voices, setVoices] = useState<TtsVoice[]>([]);
   const [loading, setLoading] = useState(true);
+
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState<Status>({ kind: "idle" });
 
@@ -120,37 +121,41 @@ export function OverlaySettingsCard({ overlayId }: { overlayId: string | null | 
     )
       .then(async (res) => {
         if (!res.ok) return;
-        const body = (await res.json()) as {
+        return (await res.json()) as {
           alert_duration_ms?: number;
           min_amount?: string | number;
           sound_enabled?: boolean;
           tts_enabled?: boolean;
           tts_voice?: string | null;
         };
-        if (!alive) return;
-        setDurationMs(body.alert_duration_ms ?? DEFAULT_ALERT_DURATION_MS);
-        setMinAmount(String(body.min_amount ?? "0"));
-        setSoundEnabled(body.sound_enabled === true);
-        setTtsEnabled(body.tts_enabled === true);
-        setTtsVoice(body.tts_voice ?? "");
       })
       .catch(() => {
         // Network error: keep defaults; the user can still save.
+        return undefined;
       });
 
     const voicesPromise = fetch("/api/tts/voices")
       .then(async (res) => {
-        if (!res.ok) return;
+        if (!res.ok) return [];
         const body = (await res.json()) as { voices?: TtsVoice[] };
-        if (!alive) return;
-        setVoices(Array.isArray(body.voices) ? body.voices : []);
+        return Array.isArray(body.voices) ? body.voices : [];
       })
       .catch(() => {
         // Voice list is optional: the picker falls back to empty.
+        return [];
       });
 
-    Promise.all([settingsPromise, voicesPromise]).finally(() => {
-      if (alive) setLoading(false);
+    Promise.all([settingsPromise, voicesPromise]).then(([settings, voices]) => {
+      if (!alive) return;
+      setVoices(voices);
+      if (settings) {
+        setDurationMs(settings.alert_duration_ms ?? DEFAULT_ALERT_DURATION_MS);
+        setMinAmount(String(settings.min_amount ?? "0"));
+        setSoundEnabled(settings.sound_enabled === true);
+        setTtsEnabled(settings.tts_enabled === true);
+        setTtsVoice(settings.tts_voice ?? "");
+      }
+      setLoading(false);
     });
 
     return () => {

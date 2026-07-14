@@ -84,7 +84,7 @@ async function isKnownTtsVoice(voice: string): Promise<boolean> {
   try {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 5000);
-    const workerRes = await fetch(`${env.WORKER_URL}/tts/voices`, {
+    const workerRes = await fetch(new URL("/tts/voices", env.WORKER_URL), {
       headers: {
         authorization: `Bearer ${env.WORKER_SECRET}`,
       },

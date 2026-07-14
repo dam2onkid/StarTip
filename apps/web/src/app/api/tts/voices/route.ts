@@ -16,7 +16,7 @@ export async function GET(request: NextRequest) {
 
   const locale = request.nextUrl.searchParams.get("locale") ?? undefined;
 
-  const workerUrl = new URL(`${env.WORKER_URL}/tts/voices`);
+  const workerUrl = new URL("/tts/voices", env.WORKER_URL);
   if (locale) {
     workerUrl.searchParams.set("locale", locale);
   }
