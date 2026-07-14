@@ -160,13 +160,13 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-async function renderAndConnect(handle = "ada") {
+async function renderAndConnect(handle = "ada", donorDisplayName?: string) {
   const { DonateWalletProvider } = await import("@/components/landing/donate-wallet-context");
   const { DonateForm } = await import("./donate-form");
   connectWallet.mockResolvedValue({ address: STUB_ADDRESS });
   render(
     <DonateWalletProvider>
-      <DonateForm handle={handle} />
+      <DonateForm handle={handle} donorDisplayName={donorDisplayName} />
     </DonateWalletProvider>,
   );
   await act(async () => {
@@ -478,6 +478,29 @@ describe("DonateForm", () => {
         ),
       });
     });
+  });
+
+  it("hides the donor name input and uses the logged-in display name when provided", async () => {
+    donateOnChain.mockResolvedValue({ status: "PENDING", hash: "deadbeef".repeat(8) });
+    mockFetch([() => jsonRes(200, { status: "confirmed" })]);
+    await renderAndConnect("ada", "Fan");
+
+    expect(screen.queryByPlaceholderText("Anonymous")).not.toBeInTheDocument();
+
+    await act(async () => {
+      fireEvent.change(screen.getByPlaceholderText("0.00"), { target: { value: "1.0" } });
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /donate/i }));
+    });
+
+    await waitFor(() => expect(toastSuccess).toHaveBeenCalledOnce());
+    const verifyCall = (global.fetch as unknown as { mock: { calls: [string, RequestInit][] } }).mock.calls.find(
+      (c) => c[0].includes("/api/donations/verify"),
+    );
+    expect(verifyCall).toBeDefined();
+    const verifyBody = JSON.parse(verifyCall![1].body as string);
+    expect(verifyBody.donor_name).toBe("Fan");
   });
 
 });

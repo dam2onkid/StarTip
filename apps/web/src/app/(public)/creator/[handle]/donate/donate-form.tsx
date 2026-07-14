@@ -33,6 +33,7 @@ interface DonateFormProps {
   handle: string;
   displayName?: string;
   avatarUrl?: string | null;
+  donorDisplayName?: string;
 }
 
 function creatorInitial(displayName: string): string {
@@ -141,6 +142,7 @@ export function DonateForm({
   handle,
   displayName = handle,
   avatarUrl = null,
+  donorDisplayName,
 }: DonateFormProps) {
   const { address: walletAddress, connect, connecting: connectingWallet } = useDonateWallet();
   const { state, start } = useDonationFlow();
@@ -150,7 +152,7 @@ export function DonateForm({
   const [amount, setAmount] = React.useState("");
   const [quickSelect, setQuickSelect] = React.useState<string | null>(null);
   const [message, setMessage] = React.useState("");
-  const [donorName, setDonorName] = React.useState("");
+  const [donorName, setDonorName] = React.useState(donorDisplayName ?? "");
 
   const effectiveSelectedToken =
     selectedToken && tokens.some((t) => t.contract_address === selectedToken)
@@ -363,21 +365,28 @@ export function DonateForm({
               </div>
             </Field>
 
-            <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-              <Field>
-                <FieldLabel htmlFor="donate-name" className="font-mono text-xs uppercase tracking-[0.12em] text-muted-foreground">
-                  Name (optional)
-                </FieldLabel>
-                <Input
-                  id="donate-name"
-                  type="text"
-                  value={donorName}
-                  onChange={(e) => setDonorName(e.target.value)}
-                  disabled={busy}
-                  placeholder="Anonymous"
-                  className="h-12 border-foreground/10 bg-foreground/[0.03] text-base transition-colors hover:bg-foreground/[0.06]"
-                />
-              </Field>
+            <div
+              className={cn(
+                "grid grid-cols-1 gap-6",
+                !donorDisplayName && "md:grid-cols-2",
+              )}
+            >
+              {!donorDisplayName && (
+                <Field>
+                  <FieldLabel htmlFor="donate-name" className="font-mono text-xs uppercase tracking-[0.12em] text-muted-foreground">
+                    Name (optional)
+                  </FieldLabel>
+                  <Input
+                    id="donate-name"
+                    type="text"
+                    value={donorName}
+                    onChange={(e) => setDonorName(e.target.value)}
+                    disabled={busy}
+                    placeholder="Anonymous"
+                    className="h-12 border-foreground/10 bg-foreground/[0.03] text-base transition-colors hover:bg-foreground/[0.06]"
+                  />
+                </Field>
+              )}
 
               <Field>
                 <FieldLabel htmlFor="donate-message" className="font-mono text-xs uppercase tracking-[0.12em] text-muted-foreground">
