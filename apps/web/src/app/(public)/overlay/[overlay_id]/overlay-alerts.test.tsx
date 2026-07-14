@@ -69,7 +69,19 @@ vi.mock("@/lib/supabase/client", () => ({
 // Realtime insert (the overlay plays a sound on insert). Each test can spy on
 // `Audio` to assert sound gating; the mock records the URL and resolves play.
 const audioPlay = vi.fn(() => Promise.resolve());
-const audioInstances: { src: string; volume: number; played: boolean }[] = [];
+let originalFetch: typeof fetch | undefined;
+let originalCreateObjectURL: typeof URL.createObjectURL | undefined;
+let originalRevokeObjectURL: typeof URL.revokeObjectURL | undefined;
+const audioInstances: {
+  src: string;
+  volume: number;
+  played: boolean;
+  duration: number;
+  onloadedmetadata: (() => void) | null;
+  onended: (() => void) | null;
+  onerror: (() => void) | null;
+  pause: ReturnType<typeof vi.fn>;
+}[] = [];
 
 beforeEach(() => {
   realtimeInsertCb = null;
@@ -77,17 +89,33 @@ beforeEach(() => {
   removeChannel.mockClear();
   audioPlay.mockClear();
   audioInstances.length = 0;
+  // Capture the original globals so afterEach can restore them.
+  originalFetch = global.fetch as typeof fetch | undefined;
+  originalCreateObjectURL = URL.createObjectURL;
+  originalRevokeObjectURL = URL.revokeObjectURL;
+  // Stub the global `fetch` and `URL` so TTS tests can observe the synthesize
+  // request and the blob URL path without real network traffic.
+  global.fetch = vi.fn();
+  Object.assign(URL, {
+    createObjectURL: vi.fn(() => "blob:fake-url"),
+    revokeObjectURL: vi.fn(),
+  });
   // Stub the global Audio constructor so `new Audio(url)` returns a controllable
-  // object. Tests that care about sound assert on `audioInstances`.
+  // object. Tests that care about sound/reading assert on `audioInstances`.
   vi.stubGlobal("Audio", vi.fn(function (this: unknown, url: string) {
     const inst = {
       src: url,
       volume: 1,
       played: false,
+      duration: 0,
+      onloadedmetadata: null as (() => void) | null,
+      onended: null as (() => void) | null,
+      onerror: null as (() => void) | null,
       play: vi.fn(() => {
         inst.played = true;
         return audioPlay();
       }),
+      pause: vi.fn(),
     };
     audioInstances.push(inst);
     return inst;
@@ -97,6 +125,11 @@ beforeEach(() => {
 afterEach(() => {
   // Clear any stub a test may have installed on the window.
   (window as unknown as { __STARTIP_OVERLAY_REALTIME_STUB__?: OverlayRealtimeStub }).__STARTIP_OVERLAY_REALTIME_STUB__ = undefined;
+  // Restore globals that were assigned directly (vi.unstubAllGlobals only
+  // restores globals stubbed with vi.stubGlobal).
+  global.fetch = originalFetch as typeof fetch;
+  URL.createObjectURL = originalCreateObjectURL as typeof URL.createObjectURL;
+  URL.revokeObjectURL = originalRevokeObjectURL as typeof URL.revokeObjectURL;
   vi.unstubAllGlobals();
   vi.useRealTimers();
 });
@@ -631,5 +664,400 @@ describe("OverlayAlerts - overlay settings (auto-dismiss, min_amount, sound)", (
       vi.advanceTimersByTime(9999);
     });
     expect(screen.getAllByTestId("overlay-alert")).toHaveLength(1);
+  });
+});
+
+describe("OverlayAlerts - Alert Reading (Text-to-Speech)", () => {
+  function readingResponse(body: Uint8Array<ArrayBuffer> = new Uint8Array([1, 2, 3])) {
+    return new Response(body, {
+      status: 200,
+      headers: { "content-type": "audio/mpeg" },
+    });
+  }
+
+  it("plays the alert sound first, then fetches and plays the reading", async () => {
+    const settings: OverlaySettings = {
+      soundEnabled: true,
+      ttsEnabled: true,
+      ttsVoice: "en-US-EmmaNeural",
+    };
+    vi.mocked(global.fetch).mockResolvedValueOnce(readingResponse());
+
+    render(
+      <OverlayAlerts
+        creatorProfileId="c1"
+        overlayId="overlay-123"
+        initialDonations={[]}
+        tokenAllowlist={TOKENS}
+        settings={settings}
+      />,
+    );
+
+    await act(async () => {
+      realtimeInsertCb?.({
+        new: {
+          id: "d9",
+          donor_name: "Latecomer",
+          amount: "42",
+          token: "CUSDC",
+          message: "hi",
+          created_at: "t",
+        },
+      });
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Latecomer")).toBeInTheDocument();
+    });
+
+    // Only the alert sound is created at first.
+    expect(audioInstances).toHaveLength(1);
+    expect(audioInstances[0].src).toBe("/alert.mp3");
+    expect(audioInstances[0].played).toBe(true);
+    expect(global.fetch).not.toHaveBeenCalled();
+
+    // Simulate the alert sound finishing.
+    await act(async () => {
+      audioInstances[0].onended?.();
+    });
+
+    await waitFor(() => {
+      expect(audioInstances).toHaveLength(2);
+    });
+
+    // The reading audio is created from the synthesized blob URL and played.
+    expect(audioInstances[1].src).toBe("blob:fake-url");
+    expect(audioInstances[1].played).toBe(true);
+    expect(vi.mocked(global.fetch)).toHaveBeenCalledTimes(1);
+
+    const [url, init] = vi.mocked(global.fetch).mock.calls[0];
+    expect(url).toBe("/api/tts");
+    expect(init?.method).toBe("POST");
+    const body = JSON.parse(init?.body as string);
+    expect(body).toEqual({
+      overlay_id: "overlay-123",
+      text: "Latecomer donated 42 USDC. hi",
+      voice: "en-US-EmmaNeural",
+    });
+  });
+
+  it("does not request the reading before the alert sound finishes", async () => {
+    const settings: OverlaySettings = {
+      soundEnabled: true,
+      ttsEnabled: true,
+      ttsVoice: "en-US-EmmaNeural",
+    };
+
+    render(
+      <OverlayAlerts
+        creatorProfileId="c1"
+        overlayId="overlay-123"
+        initialDonations={[]}
+        tokenAllowlist={TOKENS}
+        settings={settings}
+      />,
+    );
+
+    await act(async () => {
+      realtimeInsertCb?.({
+        new: {
+          id: "d9",
+          donor_name: "Latecomer",
+          amount: "42",
+          token: "CUSDC",
+          message: "hi",
+          created_at: "t",
+        },
+      });
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Latecomer")).toBeInTheDocument();
+    });
+
+    expect(audioInstances).toHaveLength(1);
+    expect(global.fetch).not.toHaveBeenCalled();
+
+    // Metadata alone is not enough; the reading starts when playback ends.
+    await act(async () => {
+      audioInstances[0].onloadedmetadata?.();
+    });
+    expect(global.fetch).not.toHaveBeenCalled();
+
+    await act(async () => {
+      audioInstances[0].onended?.();
+    });
+    await waitFor(() => {
+      expect(global.fetch).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it("keeps the alert on screen until the reading finishes when reading is longer than alert_duration_ms", async () => {
+    const settings: OverlaySettings = {
+      alertDurationMs: 1000,
+      soundEnabled: false,
+      ttsEnabled: true,
+      ttsVoice: "en-US-EmmaNeural",
+    };
+    vi.mocked(global.fetch).mockResolvedValueOnce(readingResponse());
+
+    render(
+      <OverlayAlerts
+        creatorProfileId="c1"
+        overlayId="overlay-123"
+        initialDonations={[]}
+        tokenAllowlist={TOKENS}
+        settings={settings}
+      />,
+    );
+
+    await act(async () => {
+      realtimeInsertCb?.({
+        new: {
+          id: "d9",
+          donor_name: "Latecomer",
+          amount: "42",
+          token: "CUSDC",
+          message: "hi",
+          created_at: "t",
+        },
+      });
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Latecomer")).toBeInTheDocument();
+    });
+    await waitFor(() => {
+      expect(audioInstances).toHaveLength(1);
+    });
+
+    // Simulate the reading audio being 2 seconds long.
+    await act(async () => {
+      audioInstances[0].duration = 2;
+      audioInstances[0].onloadedmetadata?.();
+    });
+
+    // The alert is longer than the plain 1000ms duration.
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+    expect(screen.getAllByTestId("overlay-alert")).toHaveLength(1);
+
+    await waitFor(
+      () => {
+        expect(screen.queryAllByTestId("overlay-alert")).toHaveLength(0);
+      },
+      { timeout: 3000 },
+    );
+  });
+
+  it("falls back to the plain duration when reading synthesis fails", async () => {
+    const settings: OverlaySettings = {
+      alertDurationMs: 1000,
+      soundEnabled: false,
+      ttsEnabled: true,
+      ttsVoice: "en-US-EmmaNeural",
+    };
+    vi.mocked(global.fetch).mockRejectedValueOnce(new Error("synthesis failed"));
+
+    render(
+      <OverlayAlerts
+        creatorProfileId="c1"
+        overlayId="overlay-123"
+        initialDonations={[]}
+        tokenAllowlist={TOKENS}
+        settings={settings}
+      />,
+    );
+
+    await act(async () => {
+      realtimeInsertCb?.({
+        new: {
+          id: "d9",
+          donor_name: "Latecomer",
+          amount: "42",
+          token: "CUSDC",
+          message: "hi",
+          created_at: "t",
+        },
+      });
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Latecomer")).toBeInTheDocument();
+    });
+
+    await waitFor(
+      () => {
+        expect(screen.queryAllByTestId("overlay-alert")).toHaveLength(0);
+      },
+      { timeout: 3000 },
+    );
+  });
+
+  it("falls back to the plain duration when the worker returns a non-ok response", async () => {
+    const settings: OverlaySettings = {
+      alertDurationMs: 1000,
+      soundEnabled: false,
+      ttsEnabled: true,
+      ttsVoice: "en-US-EmmaNeural",
+    };
+    vi.mocked(global.fetch).mockResolvedValueOnce(
+      new Response(JSON.stringify({ error: "synthesis_failed" }), {
+        status: 500,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+
+    render(
+      <OverlayAlerts
+        creatorProfileId="c1"
+        overlayId="overlay-123"
+        initialDonations={[]}
+        tokenAllowlist={TOKENS}
+        settings={settings}
+      />,
+    );
+
+    await act(async () => {
+      realtimeInsertCb?.({
+        new: {
+          id: "d9",
+          donor_name: "Latecomer",
+          amount: "42",
+          token: "CUSDC",
+          message: "hi",
+          created_at: "t",
+        },
+      });
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Latecomer")).toBeInTheDocument();
+    });
+
+    await waitFor(
+      () => {
+        expect(screen.queryAllByTestId("overlay-alert")).toHaveLength(0);
+      },
+      { timeout: 3000 },
+    );
+  });
+
+  it("does not read donations below the min_amount threshold", async () => {
+    const settings: OverlaySettings = {
+      minAmountRaw: "200",
+      ttsEnabled: true,
+      ttsVoice: "en-US-EmmaNeural",
+    };
+
+    render(
+      <OverlayAlerts
+        creatorProfileId="c1"
+        overlayId="overlay-123"
+        initialDonations={[]}
+        tokenAllowlist={TOKENS}
+        settings={settings}
+      />,
+    );
+
+    await act(async () => {
+      realtimeInsertCb?.({
+        new: {
+          id: "small",
+          donor_name: "Small",
+          amount: "42",
+          token: "CUSDC",
+          message: "hi",
+          created_at: "t",
+        },
+      });
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByText("Small")).toBeNull();
+    });
+    expect(screen.queryAllByTestId("overlay-alert")).toHaveLength(0);
+    expect(audioInstances).toHaveLength(0);
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  it("does not read when tts_voice is not set", async () => {
+    const settings: OverlaySettings = {
+      soundEnabled: true,
+      ttsEnabled: true,
+    };
+
+    render(
+      <OverlayAlerts
+        creatorProfileId="c1"
+        overlayId="overlay-123"
+        initialDonations={[]}
+        tokenAllowlist={TOKENS}
+        settings={settings}
+      />,
+    );
+
+    await act(async () => {
+      realtimeInsertCb?.({
+        new: {
+          id: "d9",
+          donor_name: "Latecomer",
+          amount: "42",
+          token: "CUSDC",
+          message: "hi",
+          created_at: "t",
+        },
+      });
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Latecomer")).toBeInTheDocument();
+    });
+
+    // The alert sound plays, then startReading returns because no voice is set.
+    await act(async () => {
+      audioInstances[0].onended?.();
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(audioInstances).toHaveLength(1);
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  it("does not read when overlay_id is not provided", async () => {
+    const settings: OverlaySettings = {
+      soundEnabled: false,
+      ttsEnabled: true,
+      ttsVoice: "en-US-EmmaNeural",
+    };
+
+    render(
+      <OverlayAlerts
+        creatorProfileId="c1"
+        initialDonations={[]}
+        tokenAllowlist={TOKENS}
+        settings={settings}
+      />,
+    );
+
+    await act(async () => {
+      realtimeInsertCb?.({
+        new: {
+          id: "d9",
+          donor_name: "Latecomer",
+          amount: "42",
+          token: "CUSDC",
+          message: "hi",
+          created_at: "t",
+        },
+      });
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Latecomer")).toBeInTheDocument();
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(audioInstances).toHaveLength(0);
+    expect(global.fetch).not.toHaveBeenCalled();
   });
 });

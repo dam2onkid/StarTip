@@ -2,7 +2,7 @@
 import { describe, it, expect } from "vitest";
 
 /**
- * lib/overlay/settings — pure, client-safe helpers for the Overlay.
+ * lib/overlay/settings - pure, client-safe helpers for the Overlay.
  *
  * `shouldShowAlert` suppresses donations whose raw `amount` is below the
  * Creator's `min_amount` (already converted to raw units by the server
@@ -182,5 +182,91 @@ describe("alertDurationMs", () => {
   it("clamps a super-60000 value down to the 60000 ceiling", async () => {
     const { alertDurationMs } = await import("@/lib/overlay/settings");
     expect(alertDurationMs({ alertDurationMs: 99999 })).toBe(60000);
+  });
+});
+
+describe("voiceLocale", () => {
+  it("extracts the locale from an edge-tts style voice identifier", async () => {
+    const { voiceLocale } = await import("@/lib/overlay/settings");
+    expect(voiceLocale("en-US-EmmaNeural")).toBe("en-US");
+    expect(voiceLocale("vi-VN-HoaiMyNeural")).toBe("vi-VN");
+  });
+
+  it("falls back to en-US when the voice identifier has no locale", async () => {
+    const { voiceLocale } = await import("@/lib/overlay/settings");
+    expect(voiceLocale("EmmaNeural")).toBe("en-US");
+  });
+});
+
+describe("buildReadingText", () => {
+  it("builds an English Alert Reading from donor, display amount, symbol, and message", async () => {
+    const { buildReadingText } = await import("@/lib/overlay/settings");
+    const text = buildReadingText({
+      donorName: "Ada",
+      amount: "90000000",
+      symbol: "XLM",
+      decimals: 7,
+      message: "Go team!",
+      voice: "en-US-EmmaNeural",
+    });
+    expect(text).toBe("Ada donated 9 XLM. Go team!");
+  });
+
+  it("omits the message when null", async () => {
+    const { buildReadingText } = await import("@/lib/overlay/settings");
+    const text = buildReadingText({
+      donorName: "Bob",
+      amount: "1500000",
+      symbol: "USDC",
+      decimals: 6,
+      message: null,
+      voice: "en-US-EmmaNeural",
+    });
+    expect(text).toBe("Bob donated 1.5 USDC.");
+  });
+
+  it("uses a Vietnamese template for a Vietnamese voice locale", async () => {
+    const { buildReadingText } = await import("@/lib/overlay/settings");
+    const text = buildReadingText({
+      donorName: "Lan",
+      amount: "100",
+      symbol: "VND",
+      decimals: 0,
+      message: "Cố lên!",
+      voice: "vi-VN-HoaiMyNeural",
+    });
+    expect(text).toBe("Lan đã quyên góp 100 VND. Cố lên!");
+  });
+
+  it("falls back to English for an unknown voice locale", async () => {
+    const { buildReadingText } = await import("@/lib/overlay/settings");
+    const text = buildReadingText({
+      donorName: "Ada",
+      amount: "100",
+      symbol: "XLM",
+      decimals: 0,
+      message: "Hi",
+      voice: "xx-XX-UnknownNeural",
+    });
+    expect(text).toBe("Ada donated 100 XLM. Hi");
+  });
+
+  it("caps the message portion to the first ~200 characters", async () => {
+    const { buildReadingText, TTS_READING_MESSAGE_MAX_LENGTH } = await import(
+      "@/lib/overlay/settings"
+    );
+    const longMessage = "a".repeat(TTS_READING_MESSAGE_MAX_LENGTH + 40);
+    const text = buildReadingText({
+      donorName: "Ada",
+      amount: "100",
+      symbol: "XLM",
+      decimals: 0,
+      message: longMessage,
+      voice: "en-US-EmmaNeural",
+    });
+    const prefix = "Ada donated 100 XLM. ";
+    const messagePortion = text.slice(prefix.length);
+    expect(messagePortion.length).toBeLessThanOrEqual(TTS_READING_MESSAGE_MAX_LENGTH);
+    expect(longMessage.startsWith(messagePortion)).toBe(true);
   });
 });

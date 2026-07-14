@@ -45,11 +45,17 @@ export default async function OverlayPage({
   const normalized = overlay_id.trim();
   const service = createServiceClient();
 
-  const { data: profile } = await service
-    .from("profiles")
-    .select("id,onchain_registered,paused")
-    .eq("overlay_id", normalized)
-    .maybeSingle();
+  const [profileResult, tokensResult] = await Promise.all([
+    service
+      .from("profiles")
+      .select("id,onchain_registered,paused")
+      .eq("overlay_id", normalized)
+      .maybeSingle(),
+    service.from("tokens").select("contract_address,symbol,decimals"),
+  ]);
+
+  const { data: profile } = profileResult;
+  const { data: tokens } = tokensResult;
 
   const p = profile as {
     id: string;
@@ -60,10 +66,6 @@ export default async function OverlayPage({
   if (!p || !p.onchain_registered || p.paused) {
     notFound();
   }
-
-  const { data: tokens } = await service
-    .from("tokens")
-    .select("contract_address,symbol,decimals");
 
   const { data: settingsRow } = await service
     .from("overlay_settings")
@@ -77,6 +79,7 @@ export default async function OverlayPage({
   return (
     <OverlayAlerts
       creatorProfileId={p.id}
+      overlayId={normalized}
       initialDonations={[]}
       tokenAllowlist={tokenAllowlist}
       settings={settings}

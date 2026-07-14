@@ -6,6 +6,7 @@ import { createBrowserClient } from "@/lib/supabase/client";
 import {
   shouldShowAlert,
   alertDurationMs,
+  buildReadingText,
   type OverlaySettings,
   type OverlayToken,
 } from "@/lib/overlay/settings";
@@ -69,6 +70,12 @@ export interface OverlayRealtimeStub {
   subscribe(onInsert: (row: OverlayDonation) => void): () => void;
 }
 
+interface QueueItem {
+  donation: OverlayDonation;
+  /** True when this alert came from a Realtime INSERT (not the initial seed). */
+  isInsert: boolean;
+}
+
 declare global {
   interface Window {
     __STARTIP_OVERLAY_REALTIME_STUB__?: OverlayRealtimeStub;
@@ -83,11 +90,14 @@ const DEFAULT_SETTINGS: OverlaySettings = {};
 
 export function OverlayAlerts({
   creatorProfileId,
+  overlayId,
   initialDonations,
   tokenAllowlist,
   settings,
 }: {
   creatorProfileId: string;
+  /** Opaque Overlay ID used to scope Text-to-Speech synthesis calls. */
+  overlayId?: string;
   initialDonations: OverlayDonation[];
   tokenAllowlist: OverlayToken[];
   /** Overlay settings from the server. Defaults apply when omitted. */
@@ -95,20 +105,23 @@ export function OverlayAlerts({
 }) {
   const resolvedSettings = settings ?? DEFAULT_SETTINGS;
   const durationMs = React.useMemo(() => alertDurationMs(resolvedSettings), [resolvedSettings]);
-  const soundEnabled = resolvedSettings.soundEnabled !== false;
 
   // Apply the min_amount filter to the initial server-rendered donations.
   const seeded = React.useMemo(
-    () => initialDonations.filter((d) => shouldShowAlert(d, resolvedSettings)),
+    () =>
+      initialDonations
+        .filter((d) => shouldShowAlert(d, resolvedSettings))
+        .map((d) => ({ donation: d, isInsert: false })),
     [initialDonations, resolvedSettings],
   );
-  const [queue, setQueue] = React.useState<OverlayDonation[]>(seeded);
+
+  const [queue, setQueue] = React.useState<QueueItem[]>(seeded);
 
   // Re-seed when the server snapshot changes (e.g. settings updated). The
   // `seeded` array is memoized, so this only runs when the initial donations
   // or settings actually change. Adjusting state during render (storing the
-  // previous `seeded` reference and calling setAlerts when it changes) is the
-  // React-recommended replacement for the `useEffect(() => setAlerts(seeded))`
+  // previous `seeded` reference and calling setQueue when it changes) is the
+  // React-recommended replacement for the `useEffect(() => setQueue(seeded))`
   // anti-pattern: React re-renders synchronously before commit instead of
   // cascading an effect-driven update after commit.
   // https://react.dev/learn/you-might-not-need-an-effect#adjusting-some-state-when-a-prop-changes
@@ -133,16 +146,16 @@ export function OverlayAlerts({
   }, [tokenAllowlist]);
 
   const removeAlert = React.useCallback((id: string) => {
-    setQueue((prev) => (prev[0]?.id === id ? prev.slice(1) : prev));
+    setQueue((prev) => (prev[0]?.donation.id === id ? prev.slice(1) : prev));
   }, []);
 
   const updateQueuedAlert = React.useCallback((row: OverlayDonation) => {
     if (!shouldShowAlert(row, resolvedSettings)) return;
     setQueue((prev) => {
-      const index = prev.findIndex((d) => d.id === row.id);
-      if (index === -1) return [...prev, row];
+      const index = prev.findIndex((item) => item.donation.id === row.id);
+      if (index === -1) return [...prev, { donation: row, isInsert: false }];
       const next = prev.slice();
-      next[index] = row;
+      next[index] = { ...next[index], donation: row };
       return next;
     });
   }, [resolvedSettings]);
@@ -153,19 +166,17 @@ export function OverlayAlerts({
       if (!shouldShowAlert(row, resolvedSettings)) return;
       setQueue((prev) => {
         // De-duplicate by id (Realtime may re-deliver).
-        if (prev.some((d) => d.id === row.id)) return prev;
-        return [...prev, row];
+        if (prev.some((item) => item.donation.id === row.id)) return prev;
+        return [...prev, { donation: row, isInsert: true }];
       });
-      // Play the alert sound on Realtime insert when enabled. No sound on the
-      // initial server-rendered donations (those are not "inserts").
-      if (soundEnabled) playAlertSound();
     },
-    [resolvedSettings, soundEnabled],
+    [resolvedSettings],
   );
 
   useOverlayRealtime(creatorProfileId, appendAlert, updateQueuedAlert);
 
-  const currentAlert = queue[0] ?? null;
+  const currentItem = queue[0] ?? null;
+  const currentAlert = currentItem?.donation ?? null;
 
   return (
     <div
@@ -179,6 +190,9 @@ export function OverlayAlerts({
           <AlertCard
             key={currentAlert.id}
             donation={currentAlert}
+            overlayId={overlayId}
+            isInsert={currentItem?.isInsert ?? false}
+            settings={resolvedSettings}
             symbol={symbolByContract.get(currentAlert.token) ?? currentAlert.token}
             decimals={decimalsByContract.get(currentAlert.token) ?? 0}
             durationMs={durationMs}
@@ -192,12 +206,18 @@ export function OverlayAlerts({
 
 function AlertCard({
   donation,
+  overlayId,
+  isInsert,
+  settings,
   symbol,
   decimals,
   durationMs,
   onExpire,
 }: {
   donation: OverlayDonation;
+  overlayId?: string;
+  isInsert: boolean;
+  settings: OverlaySettings;
   symbol: string;
   decimals: number;
   durationMs: number;
@@ -209,14 +229,153 @@ function AlertCard({
   const enter = reduceMotion ? { opacity: 0 } : { opacity: 0, x: -48 };
   const rest = reduceMotion ? { opacity: 1 } : { opacity: 1, x: 0 };
 
-  // Auto-dismiss: start a timer on mount, remove the alert on expiry. Cleared
-  // on unmount so a dropped alert (cap reached, parent re-seed) does not fire
-  // a stale removal. `prefers-reduced-motion` does not disable the timer (it
-  // only affects the animation).
+  const soundEnabled = settings.soundEnabled !== false;
+  const ttsEnabled = settings.ttsEnabled === true && !!settings.ttsVoice && !!overlayId;
+  const ttsVoice = settings.ttsVoice ?? null;
+
+  const donationRef = React.useRef(donation);
+  const symbolRef = React.useRef(symbol);
+  const decimalsRef = React.useRef(decimals);
+  const overlayIdRef = React.useRef(overlayId);
+  const settingsRef = React.useRef(settings);
+  const durationMsRef = React.useRef(durationMs);
+  const onExpireRef = React.useRef(onExpire);
+
   React.useEffect(() => {
-    const id = window.setTimeout(() => onExpire(donation.id), durationMs);
-    return () => window.clearTimeout(id);
-  }, [donation.id, durationMs, onExpire]);
+    donationRef.current = donation;
+    symbolRef.current = symbol;
+    decimalsRef.current = decimals;
+    overlayIdRef.current = overlayId;
+    settingsRef.current = settings;
+    durationMsRef.current = durationMs;
+    onExpireRef.current = onExpire;
+  });
+
+  const soundAudioRef = React.useRef<HTMLAudioElement | null>(null);
+  const readingAudioRef = React.useRef<HTMLAudioElement | null>(null);
+  const readingBlobUrlRef = React.useRef<string | null>(null);
+  const startTimeRef = React.useRef<number>(0);
+  const expiryTimerRef = React.useRef<number | null>(null);
+  const soundDurationMsRef = React.useRef<number>(0);
+  const readingDurationMsRef = React.useRef<number>(0);
+
+  React.useEffect(() => {
+    startTimeRef.current = Date.now();
+    let abortController: AbortController | null = null;
+
+    const scheduleExpiry = (targetMs: number) => {
+      if (expiryTimerRef.current) window.clearTimeout(expiryTimerRef.current);
+      const elapsed = Date.now() - startTimeRef.current;
+      const remaining = Math.max(0, targetMs - elapsed);
+      if (remaining === 0) {
+        onExpireRef.current(donation.id);
+      } else {
+        expiryTimerRef.current = window.setTimeout(() => {
+          onExpireRef.current(donation.id);
+        }, remaining);
+      }
+    };
+
+    const cleanup = () => {
+      abortController?.abort();
+      if (expiryTimerRef.current) window.clearTimeout(expiryTimerRef.current);
+      if (soundAudioRef.current) {
+        soundAudioRef.current.onloadedmetadata = null;
+        soundAudioRef.current.onended = null;
+        soundAudioRef.current.pause();
+      }
+      if (readingAudioRef.current) {
+        readingAudioRef.current.onloadedmetadata = null;
+        readingAudioRef.current.onerror = null;
+        readingAudioRef.current.pause();
+      }
+      if (readingBlobUrlRef.current && typeof URL !== "undefined" && typeof URL.revokeObjectURL === "function") {
+        URL.revokeObjectURL(readingBlobUrlRef.current);
+        readingBlobUrlRef.current = null;
+      }
+    };
+
+    if (typeof Audio === "undefined" || !isInsert) {
+      scheduleExpiry(durationMsRef.current);
+      return cleanup;
+    }
+
+    const applyAudioDuration = () => {
+      const totalAudioMs = soundDurationMsRef.current + readingDurationMsRef.current;
+      if (totalAudioMs <= durationMsRef.current) return;
+      scheduleExpiry(totalAudioMs);
+    };
+
+    const playReading = async (text: string, signal: AbortSignal) => {
+      const overlayId = overlayIdRef.current;
+      const voice = settingsRef.current.ttsVoice;
+      if (!overlayId || !voice) return;
+
+      try {
+        const res = await fetch("/api/tts", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ overlay_id: overlayId, text, voice }),
+          signal,
+        });
+        if (!res.ok) return;
+
+        const blob = await res.blob();
+        if (typeof URL === "undefined" || typeof URL.createObjectURL !== "function") return;
+        const url = URL.createObjectURL(blob);
+        readingBlobUrlRef.current = url;
+
+        const audio = new Audio(url);
+        readingAudioRef.current = audio;
+        audio.onloadedmetadata = () => {
+          if (Number.isFinite(audio.duration) && audio.duration > 0) {
+            readingDurationMsRef.current = Math.round(audio.duration * 1000);
+          }
+          applyAudioDuration();
+        };
+        audio.onerror = () => {};
+        void audio.play().catch(() => {});
+      } catch {
+        // Silent. The fallback timer still fires.
+      }
+    };
+
+    const startReading = () => {
+      const voice = settingsRef.current.ttsVoice;
+      if (!settingsRef.current.ttsEnabled || !voice || !overlayIdRef.current || !abortController) return;
+      const text = buildReadingText({
+        donorName: donationRef.current.donor_name,
+        amount: donationRef.current.amount,
+        symbol: symbolRef.current,
+        decimals: decimalsRef.current,
+        message: donationRef.current.message,
+        voice,
+      });
+      void playReading(text, abortController.signal);
+    };
+
+    abortController = new AbortController();
+    scheduleExpiry(durationMsRef.current);
+
+    if (soundEnabled) {
+      const audio = new Audio(ALERT_SOUND_URL);
+      audio.volume = 0.8;
+      soundAudioRef.current = audio;
+      audio.onloadedmetadata = () => {
+        if (Number.isFinite(audio.duration) && audio.duration > 0) {
+          soundDurationMsRef.current = Math.round(audio.duration * 1000);
+        }
+      };
+      audio.onended = () => {
+        startReading();
+      };
+      void audio.play().catch(() => {});
+    } else {
+      startReading();
+    }
+
+    return cleanup;
+  }, [donation.id, durationMs, isInsert, soundEnabled, ttsEnabled, ttsVoice]);
 
   const amount = rawToDisplayAmount(donation.amount, decimals);
 
@@ -254,25 +413,6 @@ function AlertCard({
       ) : null}
     </motion.div>
   );
-}
-
-/**
- * Play the bundled alert sound. Swallows autoplay errors: the Overlay is a
- * browser source and the browser may block `play()` until a user interaction
- * (OBS provides the interaction context in production). Exposed for test
- * spying via the `Audio` global.
- */
-function playAlertSound(): void {
-  if (typeof Audio === "undefined") return;
-  try {
-    const audio = new Audio(ALERT_SOUND_URL);
-    audio.volume = 0.8;
-    void audio.play().catch(() => {
-      // Autoplay blocked or decode error: silent. The alert still renders.
-    });
-  } catch {
-    // `new Audio` or `play` threw: silent.
-  }
 }
 
 /**

@@ -1,6 +1,6 @@
 # 05 - Overlay Alert Reading playback
 
-Status: ready-for-agent
+Status: done
 Role: frontend
 
 ## Parent

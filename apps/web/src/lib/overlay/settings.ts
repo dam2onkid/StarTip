@@ -14,7 +14,7 @@
  * to import from client components, server components, and tests alike.
  */
 
-import { displayToRawAmount } from "@/lib/stellar/amount";
+import { displayToRawAmount, rawToDisplayAmount } from "@/lib/stellar/amount";
 
 /** The default alert duration (ms) when no row exists or the field is missing. */
 export const DEFAULT_ALERT_DURATION_MS = 10000;
@@ -87,9 +87,7 @@ export function resolveOverlaySettings(
   if (row.tts_enabled !== null) {
     settings.ttsEnabled = row.tts_enabled;
   }
-  if ("tts_voice" in row) {
-    settings.ttsVoice = row.tts_voice;
-  }
+  settings.ttsVoice = row.tts_voice;
   if (row.min_amount !== null) {
     const decimals = tokenAllowlist[0]?.decimals ?? 0;
     settings.minAmountRaw = displayToRawAmount(String(row.min_amount), decimals);
@@ -137,4 +135,116 @@ export function alertDurationMs(settings: OverlaySettings): number {
   if (raw < MIN_ALERT_DURATION_MS) return MIN_ALERT_DURATION_MS;
   if (raw > MAX_ALERT_DURATION_MS) return MAX_ALERT_DURATION_MS;
   return raw;
+}
+
+/** Maximum length of the message portion of an Alert Reading text. */
+export const TTS_READING_MESSAGE_MAX_LENGTH = 200;
+
+/** Input to {@link buildReadingText}. */
+export interface BuildReadingTextInput {
+  /** Raw donor name as stored on the donation. */
+  donorName: string;
+  /** Raw amount (i128 string) in the smallest divisible unit. */
+  amount: string;
+  /** Token symbol (already resolved by the Overlay). */
+  symbol: string;
+  /** Token decimals used to convert the raw amount to display units. */
+  decimals: number;
+  /** Donation message; null or empty means no message is read. */
+  message: string | null;
+  /** The selected Voice identifier, e.g. `en-US-EmmaNeural`. */
+  voice: string;
+}
+
+type ReadingTemplate = (
+  donorName: string,
+  amount: string,
+  symbol: string,
+  message: string | null,
+) => string;
+
+function englishTemplate(
+  donorName: string,
+  amount: string,
+  symbol: string,
+  message: string | null,
+): string {
+  const base = `${donorName} donated ${amount} ${symbol}`;
+  return message ? `${base}. ${message}` : `${base}.`;
+}
+
+const TTS_READING_TEMPLATES: Record<string, ReadingTemplate> = {
+  "en-US": englishTemplate,
+  "en-GB": englishTemplate,
+  "vi-VN": (donorName, amount, symbol, message) => {
+    const base = `${donorName} đã quyên góp ${amount} ${symbol}`;
+    return message ? `${base}. ${message}` : `${base}.`;
+  },
+  "fr-FR": (donorName, amount, symbol, message) => {
+    const base = `${donorName} a donné ${amount} ${symbol}`;
+    return message ? `${base}. ${message}` : `${base}.`;
+  },
+  "es-ES": (donorName, amount, symbol, message) => {
+    const base = `${donorName} donó ${amount} ${symbol}`;
+    return message ? `${base}. ${message}` : `${base}.`;
+  },
+  "de-DE": (donorName, amount, symbol, message) => {
+    const base = `${donorName} spendete ${amount} ${symbol}`;
+    return message ? `${base}. ${message}` : `${base}.`;
+  },
+  "it-IT": (donorName, amount, symbol, message) => {
+    const base = `${donorName} ha donato ${amount} ${symbol}`;
+    return message ? `${base}. ${message}` : `${base}.`;
+  },
+  "ja-JP": (donorName, amount, symbol, message) => {
+    const base = `${donorName}が ${amount} ${symbol} を寄付しました`;
+    return message ? `${base}。${message}` : `${base}。`;
+  },
+  "ko-KR": (donorName, amount, symbol, message) => {
+    const base = `${donorName} 님이 ${amount} ${symbol}을 기부했습니다`;
+    return message ? `${base}. ${message}` : `${base}.`;
+  },
+  "zh-CN": (donorName, amount, symbol, message) => {
+    const base = `${donorName} 捐赠了 ${amount} ${symbol}`;
+    return message ? `${base}。${message}` : `${base}。`;
+  },
+};
+
+function truncateReadingMessage(text: string, maxLength: number): string {
+  const trimmed = text.trim();
+  if (trimmed.length <= maxLength) return trimmed;
+  const slice = trimmed.slice(0, maxLength);
+  const lastSpace = slice.lastIndexOf(" ");
+  if (lastSpace <= 0) return slice;
+  return slice.slice(0, lastSpace);
+}
+
+/**
+ * Extract the BCP-47 style locale from an edge-tts style Voice identifier.
+ * Voice identifiers have the form `<locale>-<voice>` (e.g.
+ * `en-US-EmmaNeural`), so the locale is the first two hyphen-separated
+ * components. If the identifier is malformed, falls back to `en-US`.
+ */
+export function voiceLocale(voice: string): string {
+  const parts = voice.split("-");
+  if (parts.length >= 2) return `${parts[0]}-${parts[1]}`;
+  return "en-US";
+}
+
+/**
+ * Build the Alert Reading text for a Donation Alert in the Voice's locale.
+ * The amount is converted to display units using the token decimals, and the
+ * message portion is capped to roughly {@link TTS_READING_MESSAGE_MAX_LENGTH}
+ * characters before being sent to the Text-to-Speech Provider. The visible
+ * Donation Alert message is never modified by this helper.
+ */
+export function buildReadingText(input: BuildReadingTextInput): string {
+  const displayAmount = rawToDisplayAmount(input.amount, input.decimals);
+  const template =
+    TTS_READING_TEMPLATES[voiceLocale(input.voice)] ?? TTS_READING_TEMPLATES["en-US"];
+  const rawMessage = input.message?.trim() ?? "";
+  const message = rawMessage
+    ? truncateReadingMessage(rawMessage, TTS_READING_MESSAGE_MAX_LENGTH)
+    : null;
+  return template(input.donorName, displayAmount, input.symbol, message);
 }
