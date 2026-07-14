@@ -562,7 +562,9 @@ describe("ActiveGate - donation goal", () => {
     });
     expect(screen.getByTestId("donation-goal-current")).toHaveTextContent("350");
     expect(screen.getByTestId("donation-goal-target")).toHaveTextContent(/1000/);
-    expect(screen.getByTestId("donation-goal-bar")).toHaveStyle({ transform: "scaleX(0.35)" });
+    const progressBar = screen.getByTestId("donation-goal-bar");
+    expect(progressBar).toHaveClass("w-full");
+    expect(progressBar).toHaveStyle({ transform: "scaleX(0.35)" });
   });
 
   it("PUTs the edited donation goal and shows a saved status", async () => {
