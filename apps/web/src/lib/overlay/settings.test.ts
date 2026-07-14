@@ -79,6 +79,83 @@ describe("shouldShowAlert", () => {
   });
 });
 
+describe("resolveOverlaySettings", () => {
+  const tokenAllowlist = [
+    { contract_address: "XLM_CONTRACT", symbol: "XLM", decimals: 7 },
+  ];
+
+  it("returns an empty settings object when no row exists", async () => {
+    const { resolveOverlaySettings } = await import("@/lib/overlay/settings");
+    expect(resolveOverlaySettings(null, tokenAllowlist)).toEqual({});
+  });
+
+  it("copies alert_duration_ms, sound_enabled, and tts fields into the client shape", async () => {
+    const { resolveOverlaySettings } = await import("@/lib/overlay/settings");
+    const resolved = resolveOverlaySettings(
+      {
+        alert_duration_ms: 5000,
+        min_amount: null,
+        sound_enabled: true,
+        tts_enabled: true,
+        tts_voice: "en-US-EmmaNeural",
+      },
+      tokenAllowlist,
+    );
+    expect(resolved).toMatchObject({
+      alertDurationMs: 5000,
+      soundEnabled: true,
+      ttsEnabled: true,
+      ttsVoice: "en-US-EmmaNeural",
+    });
+  });
+
+  it("converts min_amount from display to raw units using the first token's decimals", async () => {
+    const { resolveOverlaySettings } = await import("@/lib/overlay/settings");
+    const resolved = resolveOverlaySettings(
+      {
+        alert_duration_ms: null,
+        min_amount: "9",
+        sound_enabled: null,
+        tts_enabled: null,
+        tts_voice: null,
+      },
+      tokenAllowlist,
+    );
+    expect(resolved.minAmountRaw).toBe("90000000");
+  });
+
+  it("uses 0 decimals and falls back to 0 when no token allowlist is available", async () => {
+    const { resolveOverlaySettings } = await import("@/lib/overlay/settings");
+    const resolved = resolveOverlaySettings(
+      {
+        alert_duration_ms: null,
+        min_amount: "5",
+        sound_enabled: null,
+        tts_enabled: null,
+        tts_voice: null,
+      },
+      [],
+    );
+    expect(resolved.minAmountRaw).toBe("5");
+  });
+
+  it("returns tts_voice as null when the row stores null", async () => {
+    const { resolveOverlaySettings } = await import("@/lib/overlay/settings");
+    const resolved = resolveOverlaySettings(
+      {
+        alert_duration_ms: null,
+        min_amount: null,
+        sound_enabled: null,
+        tts_enabled: true,
+        tts_voice: null,
+      },
+      [],
+    );
+    expect(resolved.ttsEnabled).toBe(true);
+    expect(resolved.ttsVoice).toBeNull();
+  });
+});
+
 describe("alertDurationMs", () => {
   it("returns the configured duration when set", async () => {
     const { alertDurationMs } = await import("@/lib/overlay/settings");

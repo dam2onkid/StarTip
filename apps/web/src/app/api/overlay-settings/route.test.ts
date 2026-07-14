@@ -14,9 +14,16 @@ const USER_ID = "00000000-0000-0000-0000-000000000001";
 const OTHER_ID = "00000000-0000-0000-0000-000000000002";
 const CREATOR_PROFILE_ID = "11111111-1111-1111-1111-111111111111";
 
+const WORKER_URL = "http://localhost:3101";
+const WORKER_SECRET = "dev-worker-secret";
+
 const requireAuthedCreatorMock = vi.hoisted(() => vi.fn());
 vi.mock("@/lib/auth/context", () => ({
   requireAuthedCreator: requireAuthedCreatorMock,
+}));
+
+vi.mock("@/lib/env", () => ({
+  env: { WORKER_URL, WORKER_SECRET },
 }));
 
 const serverFrom = vi.fn();
@@ -97,6 +104,8 @@ describe("GET /api/overlay-settings", () => {
           min_amount: "5",
           sound_enabled: false,
           theme: "default",
+          tts_enabled: false,
+          tts_voice: null,
         }),
       );
     const { GET } = await import("@/app/api/overlay-settings/route");
@@ -107,6 +116,8 @@ describe("GET /api/overlay-settings", () => {
       min_amount: "5",
       sound_enabled: false,
       theme: "default",
+      tts_enabled: false,
+      tts_voice: null,
     });
   });
 
@@ -128,6 +139,8 @@ describe("GET /api/overlay-settings", () => {
       min_amount: "0",
       sound_enabled: true,
       theme: "default",
+      tts_enabled: false,
+      tts_voice: null,
     });
   });
 
@@ -177,11 +190,32 @@ describe("GET /api/overlay-settings", () => {
   });
 });
 
+function validBody(overrides: Record<string, unknown> = {}) {
+  return {
+    alert_duration_ms: 4000,
+    min_amount: 5,
+    sound_enabled: false,
+    tts_enabled: false,
+    tts_voice: null,
+    ...overrides,
+  };
+}
+
+function mockVoicesFetch(voices: Array<{ id: string }>, ok = true) {
+  global.fetch = vi.fn(async () =>
+    new Response(JSON.stringify({ voices }), {
+      status: ok ? 200 : 500,
+      headers: { "content-type": "application/json" },
+    }),
+  ) as unknown as typeof fetch;
+}
+
 describe("PUT /api/overlay-settings", () => {
   beforeEach(() => {
     requireAuthedCreatorMock.mockReset();
     serverFrom.mockReset();
     serviceFrom.mockReset();
+    vi.unstubAllGlobals();
     requireAuthedCreatorMock.mockResolvedValue(
       authContext({ id: CREATOR_PROFILE_ID, user_id: USER_ID, handle: "ada" }, serverFrom),
     );
@@ -190,7 +224,7 @@ describe("PUT /api/overlay-settings", () => {
   it("returns 401 when there is no session", async () => {
     requireAuthedCreatorMock.mockResolvedValue(authError("unauthorized", 401));
     const { PUT } = await import("@/app/api/overlay-settings/route");
-    const res = await PUT(putReq({ alert_duration_ms: 4000, min_amount: 5, sound_enabled: true }));
+    const res = await PUT(putReq(validBody()));
     expect(res.status).toBe(401);
     expect(await res.json()).toEqual({ error: "unauthorized" });
   });
@@ -198,7 +232,7 @@ describe("PUT /api/overlay-settings", () => {
   it("returns 404 when the caller has no profile row", async () => {
     requireAuthedCreatorMock.mockResolvedValue(authError("profile_not_found", 404));
     const { PUT } = await import("@/app/api/overlay-settings/route");
-    const res = await PUT(putReq({ alert_duration_ms: 4000, min_amount: 5, sound_enabled: true }));
+    const res = await PUT(putReq(validBody()));
     expect(res.status).toBe(404);
     expect(await res.json()).toEqual({ error: "profile_not_found" });
   });
@@ -206,33 +240,66 @@ describe("PUT /api/overlay-settings", () => {
   it("returns 400 not_creator when the caller has no handle (not a Creator)", async () => {
     requireAuthedCreatorMock.mockResolvedValue(authError("not_creator", 400));
     const { PUT } = await import("@/app/api/overlay-settings/route");
-    const res = await PUT(putReq({ alert_duration_ms: 4000, min_amount: 5, sound_enabled: true }));
+    const res = await PUT(putReq(validBody()));
     expect(res.status).toBe(400);
     expect(await res.json()).toEqual({ error: "not_creator" });
   });
 
   it("returns 400 invalid_alert_duration when alert_duration_ms is out of range", async () => {
     const { PUT } = await import("@/app/api/overlay-settings/route");
-    const tooLow = await PUT(putReq({ alert_duration_ms: 500, min_amount: 0, sound_enabled: true }));
+    const tooLow = await PUT(putReq(validBody({ alert_duration_ms: 500, min_amount: 0 })));
     expect(tooLow.status).toBe(400);
     expect(await tooLow.json()).toEqual({ error: "invalid_alert_duration" });
-    const tooHigh = await PUT(putReq({ alert_duration_ms: 99999, min_amount: 0, sound_enabled: true }));
+    const tooHigh = await PUT(putReq(validBody({ alert_duration_ms: 99999, min_amount: 0 })));
     expect(tooHigh.status).toBe(400);
     expect(await tooHigh.json()).toEqual({ error: "invalid_alert_duration" });
   });
 
   it("returns 400 invalid_min_amount when min_amount is negative", async () => {
     const { PUT } = await import("@/app/api/overlay-settings/route");
-    const res = await PUT(putReq({ alert_duration_ms: 4000, min_amount: -1, sound_enabled: true }));
+    const res = await PUT(putReq(validBody({ min_amount: -1 })));
     expect(res.status).toBe(400);
     expect(await res.json()).toEqual({ error: "invalid_min_amount" });
   });
 
   it("returns 400 invalid_sound_enabled when sound_enabled is not a boolean", async () => {
     const { PUT } = await import("@/app/api/overlay-settings/route");
-    const res = await PUT(putReq({ alert_duration_ms: 4000, min_amount: 0, sound_enabled: "yes" }));
+    const res = await PUT(putReq(validBody({ sound_enabled: "yes" })));
     expect(res.status).toBe(400);
     expect(await res.json()).toEqual({ error: "invalid_sound_enabled" });
+  });
+
+  it("returns 400 invalid_tts_enabled when tts_enabled is not a boolean", async () => {
+    const { PUT } = await import("@/app/api/overlay-settings/route");
+    const res = await PUT(putReq(validBody({ tts_enabled: "yes" })));
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: "invalid_tts_enabled" });
+  });
+
+  it("returns 400 invalid_tts_voice when tts_voice is missing or invalid", async () => {
+    const { PUT } = await import("@/app/api/overlay-settings/route");
+    const missing = await PUT(putReq(validBody({ tts_voice: undefined })));
+    expect(missing.status).toBe(400);
+    expect(await missing.json()).toEqual({ error: "invalid_tts_voice" });
+    const wrongType = await PUT(putReq(validBody({ tts_voice: 123 })));
+    expect(wrongType.status).toBe(400);
+    expect(await wrongType.json()).toEqual({ error: "invalid_tts_voice" });
+  });
+
+  it("returns 400 invalid_tts_voice when the requested voice is not known to the Worker", async () => {
+    mockVoicesFetch([{ id: "en-US-EmmaNeural" }]);
+    const { PUT } = await import("@/app/api/overlay-settings/route");
+    const res = await PUT(putReq(validBody({ tts_enabled: true, tts_voice: "unknown-voice" })));
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: "invalid_tts_voice" });
+  });
+
+  it("returns 400 invalid_tts_voice when the Worker voice list is unavailable", async () => {
+    mockVoicesFetch([], false);
+    const { PUT } = await import("@/app/api/overlay-settings/route");
+    const res = await PUT(putReq(validBody({ tts_enabled: true, tts_voice: "en-US-EmmaNeural" })));
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: "invalid_tts_voice" });
   });
 
   it("returns 400 invalid_body when the body is not valid JSON", async () => {
@@ -252,12 +319,14 @@ describe("PUT /api/overlay-settings", () => {
     const recorder = { payload: null as unknown, error: null as unknown };
     serverFrom.mockImplementation(() => upsertChain(recorder));
     const { PUT } = await import("@/app/api/overlay-settings/route");
-    const res = await PUT(putReq({ alert_duration_ms: 4000, min_amount: 5, sound_enabled: false }));
+    const res = await PUT(putReq(validBody()));
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({
       alert_duration_ms: 4000,
       min_amount: 5,
       sound_enabled: false,
+      tts_enabled: false,
+      tts_voice: null,
     });
     // The upsert payload is scoped to the caller's profile id and carries the
     // validated fields.
@@ -266,7 +335,30 @@ describe("PUT /api/overlay-settings", () => {
       alert_duration_ms: 4000,
       min_amount: 5,
       sound_enabled: false,
+      tts_enabled: false,
+      tts_voice: null,
     });
+  });
+
+  it("turns Alert Reading on with no Voice selected and returns 200", async () => {
+    const recorder = { payload: null as unknown, error: null as unknown };
+    serverFrom.mockImplementation(() => upsertChain(recorder));
+    const { PUT } = await import("@/app/api/overlay-settings/route");
+    const res = await PUT(putReq(validBody({ tts_enabled: true, tts_voice: null })));
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ tts_enabled: true, tts_voice: null });
+    expect(recorder.payload).toMatchObject({ tts_enabled: true, tts_voice: null });
+  });
+
+  it("persists a valid tts_voice after verifying it against the Worker", async () => {
+    mockVoicesFetch([{ id: "en-US-EmmaNeural" }]);
+    const recorder = { payload: null as unknown, error: null as unknown };
+    serverFrom.mockImplementation(() => upsertChain(recorder));
+    const { PUT } = await import("@/app/api/overlay-settings/route");
+    const res = await PUT(putReq(validBody({ tts_enabled: true, tts_voice: "en-US-EmmaNeural" })));
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ tts_enabled: true, tts_voice: "en-US-EmmaNeural" });
+    expect(recorder.payload).toMatchObject({ tts_enabled: true, tts_voice: "en-US-EmmaNeural" });
   });
 
   it("returns 500 db_error when the upsert errors (e.g. RLS denial surfaces as an error)", async () => {
@@ -276,7 +368,7 @@ describe("PUT /api/overlay-settings", () => {
     const recorder = { payload: null as unknown, error: { message: "rls denied", code: "42501" } };
     serverFrom.mockImplementation(() => upsertChain(recorder));
     const { PUT } = await import("@/app/api/overlay-settings/route");
-    const res = await PUT(putReq({ alert_duration_ms: 4000, min_amount: 0, sound_enabled: true }));
+    const res = await PUT(putReq(validBody()));
     expect(res.status).toBe(500);
     expect(await res.json()).toEqual({ error: "db_error" });
   });

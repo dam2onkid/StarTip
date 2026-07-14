@@ -1,7 +1,10 @@
 import { notFound } from "next/navigation";
 import { createServiceClient } from "@startip/shared/supabase/service";
-import { OverlayAlerts, type OverlayToken } from "./overlay-alerts";
-import type { OverlaySettings } from "@/lib/overlay/settings";
+import { OverlayAlerts } from "./overlay-alerts";
+import {
+  resolveOverlaySettings,
+  type OverlayToken,
+} from "@/lib/overlay/settings";
 
 /**
  * `/overlay/[overlay_id]` - public OBS browser source. Resolves the opaque
@@ -64,7 +67,7 @@ export default async function OverlayPage({
 
   const { data: settingsRow } = await service
     .from("overlay_settings")
-    .select("alert_duration_ms,min_amount,sound_enabled")
+    .select("alert_duration_ms,min_amount,sound_enabled,tts_enabled,tts_voice")
     .eq("creator_profile_id", p.id)
     .maybeSingle();
 
@@ -81,47 +84,4 @@ export default async function OverlayPage({
   );
 }
 
-/**
- * Resolve the raw `overlay_settings` row (or null) into the client-facing
- * `OverlaySettings` shape. `min_amount` is converted from display units to
- * raw units (multiplied by 10^decimals) using the first token in the
- * allowlist (the MVP is single-token). When no row exists, the defaults
- * (10000ms, no threshold, sound on) apply.
- */
-function resolveOverlaySettings(
-  row: { alert_duration_ms: number | null; min_amount: string | null; sound_enabled: boolean | null } | null,
-  tokenAllowlist: OverlayToken[],
-): OverlaySettings {
-  const settings: OverlaySettings = {};
-  if (row) {
-    if (row.alert_duration_ms !== null) {
-      settings.alertDurationMs = row.alert_duration_ms;
-    }
-    if (row.sound_enabled !== null) {
-      settings.soundEnabled = row.sound_enabled;
-    }
-    if (row.min_amount !== null) {
-      const decimals = tokenAllowlist[0]?.decimals ?? 0;
-      settings.minAmountRaw = displayToRaw(row.min_amount, decimals);
-    }
-  }
-  return settings;
-}
 
-/**
- * Convert a display-amount numeric string to raw units by shifting the
- * decimal point by `decimals` places. Handles integer and fractional display
- * strings exactly (no floating-point loss). Truncates extra fractional digits
- * beyond the token's decimals.
- */
-function displayToRaw(display: string, decimals: number): string {
-  const cleaned = display.trim();
-  if (cleaned === "") return "0";
-  const negative = cleaned.startsWith("-");
-  if (negative) return "0"; // min_amount is validated >= 0; defensive.
-  const [intPart, fracPart = ""] = cleaned.split(".");
-  const intDigits = intPart.replace(/^0+/, "") || "0";
-  const fracDigits = (fracPart + "0".repeat(Math.max(0, decimals))).slice(0, decimals);
-  const raw = (intDigits + fracDigits).replace(/^0+/, "") || "0";
-  return raw;
-}

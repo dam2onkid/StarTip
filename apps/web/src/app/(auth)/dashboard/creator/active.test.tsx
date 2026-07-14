@@ -187,15 +187,22 @@ function mockFetch(responses: Array<(url: string, init?: RequestInit) => Respons
   global.fetch = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
     const u = url.toString();
     const method = init?.method ?? "GET";
-    if (u.includes("/api/overlay-settings") && method === "GET" && calls.length === 0) {
+    if (u.includes("/api/tts/voices") && method === "GET") {
+      return jsonRes(200, { voices: [] });
+    }
+    if (u.includes("/goal") && method === "GET") {
+      return jsonRes(200, null);
+    }
+    if (u.includes("/api/overlay-settings") && method === "GET") {
+      const next = calls.shift();
+      if (next) return next(u, init);
       return jsonRes(200, {
         alert_duration_ms: 10000,
         min_amount: "0",
         sound_enabled: true,
+        tts_enabled: false,
+        tts_voice: null,
       });
-    }
-    if (u.includes("/goal") && method === "GET") {
-      return jsonRes(200, null);
     }
     const next = calls.shift();
     if (!next) throw new Error(`unexpected fetch ${u}`);
@@ -217,12 +224,22 @@ beforeEach(() => {
   readTreasuryAddress.mockReset().mockResolvedValue(null);
   payoutAddressWarning.mockReset().mockReturnValue(null);
   removeChannel.mockReset();
-  global.fetch = vi.fn(async (url: string | URL | Request) => {
+  global.fetch = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
     const u = url.toString();
-    if (u.includes("/api/overlay-settings")) {
-      return jsonRes(200, { alert_duration_ms: 10000, min_amount: "0", sound_enabled: true });
+    const method = init?.method ?? "GET";
+    if (u.includes("/api/tts/voices") && method === "GET") {
+      return jsonRes(200, { voices: [] });
     }
-    if (u.includes("/goal")) {
+    if (u.includes("/api/overlay-settings") && method === "GET") {
+      return jsonRes(200, {
+        alert_duration_ms: 10000,
+        min_amount: "0",
+        sound_enabled: true,
+        tts_enabled: false,
+        tts_voice: null,
+      });
+    }
+    if (u.includes("/goal") && method === "GET") {
       return jsonRes(200, null);
     }
     throw new Error(`unexpected fetch ${u}`);
@@ -408,6 +425,72 @@ describe("ActiveGate - overlay settings", () => {
       alert_duration_ms: 3000,
       min_amount: 2,
       sound_enabled: false,
+      tts_enabled: false,
+      tts_voice: null,
+    });
+  });
+
+  it("PUTs Alert Reading enabled with a selected Voice", async () => {
+    const puts: { body: unknown }[] = [];
+    global.fetch = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      const u = url.toString();
+      const method = init?.method ?? "GET";
+      if (u.includes("/api/tts/voices") && method === "GET") {
+        return jsonRes(200, {
+          voices: [
+            { id: "en-US-EmmaNeural", name: "Emma", locale: "en-US", gender: "Female" },
+          ],
+        });
+      }
+      if (u.includes("/api/overlay-settings") && method === "GET") {
+        return jsonRes(200, {
+          alert_duration_ms: 6000,
+          min_amount: "0",
+          sound_enabled: true,
+          tts_enabled: false,
+          tts_voice: null,
+        });
+      }
+      if (u.includes("/api/overlay-settings") && method === "PUT") {
+        puts.push({ body: JSON.parse(init?.body as string) });
+        return jsonRes(200, {
+          alert_duration_ms: 6000,
+          min_amount: "0",
+          sound_enabled: true,
+          tts_enabled: true,
+          tts_voice: "en-US-EmmaNeural",
+        });
+      }
+      throw new Error(`unexpected fetch ${u}`);
+    }) as unknown as typeof fetch;
+
+    render(<ActiveGateWrapper initial={activeProfile()} data={activeData()} />);
+    await openCreatorTab(/overlay/i);
+
+    const ttsToggle = await screen.findByTestId("overlay-tts-toggle");
+    await act(async () => {
+      fireEvent.click(ttsToggle);
+    });
+
+    const voiceSelect = await screen.findByTestId("overlay-voice-select");
+    await act(async () => {
+      fireEvent.change(voiceSelect, { target: { value: "en-US-EmmaNeural" } });
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("overlay-settings-save"));
+    });
+    await waitFor(() => {
+      expect(screen.getByText(/Overlay settings saved/i)).toBeInTheDocument();
+    });
+
+    expect(puts).toHaveLength(1);
+    expect(puts[0].body).toEqual({
+      alert_duration_ms: 6000,
+      min_amount: 0,
+      sound_enabled: true,
+      tts_enabled: true,
+      tts_voice: "en-US-EmmaNeural",
     });
   });
 });
@@ -426,8 +509,17 @@ describe("ActiveGate - donation goal", () => {
     global.fetch = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
       const u = url.toString();
       const method = init?.method ?? "GET";
+      if (u.includes("/api/tts/voices") && method === "GET") {
+        return jsonRes(200, { voices: [] });
+      }
       if (u.includes("/api/overlay-settings") && method === "GET") {
-        return jsonRes(200, { alert_duration_ms: 6000, min_amount: "0", sound_enabled: true });
+        return jsonRes(200, {
+          alert_duration_ms: 6000,
+          min_amount: "0",
+          sound_enabled: true,
+          tts_enabled: false,
+          tts_voice: null,
+        });
       }
       if (u.includes("/goal") && method === "GET") {
         return jsonRes(200, { target_amount: "1000000000", token: "CDUMMY-USDC-CONTRACT" });
@@ -462,8 +554,17 @@ describe("ActiveGate - donation goal", () => {
     global.fetch = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
       const u = url.toString();
       const method = init?.method ?? "GET";
+      if (u.includes("/api/tts/voices") && method === "GET") {
+        return jsonRes(200, { voices: [] });
+      }
       if (u.includes("/api/overlay-settings") && method === "GET") {
-        return jsonRes(200, { alert_duration_ms: 6000, min_amount: "0", sound_enabled: true });
+        return jsonRes(200, {
+          alert_duration_ms: 6000,
+          min_amount: "0",
+          sound_enabled: true,
+          tts_enabled: false,
+          tts_voice: null,
+        });
       }
       if (u.includes("/goal") && method === "GET") {
         return jsonRes(200, null);
@@ -500,8 +601,17 @@ describe("ActiveGate - donation goal", () => {
     global.fetch = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
       const u = url.toString();
       const method = init?.method ?? "GET";
+      if (u.includes("/api/tts/voices") && method === "GET") {
+        return jsonRes(200, { voices: [] });
+      }
       if (u.includes("/api/overlay-settings") && method === "GET") {
-        return jsonRes(200, { alert_duration_ms: 6000, min_amount: "0", sound_enabled: true });
+        return jsonRes(200, {
+          alert_duration_ms: 6000,
+          min_amount: "0",
+          sound_enabled: true,
+          tts_enabled: false,
+          tts_voice: null,
+        });
       }
       if (u.includes("/goal") && method === "GET") {
         return jsonRes(200, { target_amount: "1000000000", token: "CDUMMY-USDC-CONTRACT" });

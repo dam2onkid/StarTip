@@ -7,6 +7,7 @@ import {
   shouldShowAlert,
   alertDurationMs,
   type OverlaySettings,
+  type OverlayToken,
 } from "@/lib/overlay/settings";
 import { rawToDisplayAmount } from "@/lib/stellar/amount";
 
@@ -62,13 +63,6 @@ export interface OverlayDonation {
   token: string;
   message: string | null;
   created_at: string;
-}
-
-export interface OverlayToken {
-  contract_address: string;
-  symbol: string;
-  /** Token decimals (used by the server to convert min_amount to raw units). */
-  decimals?: number;
 }
 
 export interface OverlayRealtimeStub {

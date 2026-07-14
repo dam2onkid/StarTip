@@ -86,40 +86,73 @@ export function OverlayUrlCard({
   );
 }
 
+interface TtsVoice {
+  id: string;
+  name: string;
+  locale: string;
+  gender: string;
+}
+
 /**
- * Overlay Settings card: configure alert duration, min amount, and sound.
+ * Overlay Settings card: configure alert duration, min amount, sound, and
+ * Alert Reading (Text-to-Speech) voice.
  */
 export function OverlaySettingsCard({ overlayId }: { overlayId: string | null | undefined }) {
   const [durationMs, setDurationMs] = useState<number>(DEFAULT_ALERT_DURATION_MS);
   const [minAmount, setMinAmount] = useState<string>("0");
   const [soundEnabled, setSoundEnabled] = useState<boolean>(true);
+  const [ttsEnabled, setTtsEnabled] = useState<boolean>(false);
+  const [ttsVoice, setTtsVoice] = useState<string>("");
+  const [voices, setVoices] = useState<TtsVoice[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState<Status>({ kind: "idle" });
 
-  // Load the current settings on mount (and when the overlay ID changes).
+  // Load the current settings and the available TTS voices on mount (and when
+  // the overlay ID changes). Both are fetched in parallel and the form stays
+  // disabled until they settle so the user cannot save stale defaults.
   useEffect(() => {
     if (!overlayId) return;
     let alive = true;
-    fetch(`/api/overlay-settings?overlay_id=${encodeURIComponent(overlayId)}`)
+
+    const settingsPromise = fetch(
+      `/api/overlay-settings?overlay_id=${encodeURIComponent(overlayId)}`,
+    )
       .then(async (res) => {
         if (!res.ok) return;
         const body = (await res.json()) as {
           alert_duration_ms?: number;
           min_amount?: string | number;
           sound_enabled?: boolean;
+          tts_enabled?: boolean;
+          tts_voice?: string | null;
         };
         if (!alive) return;
         setDurationMs(body.alert_duration_ms ?? DEFAULT_ALERT_DURATION_MS);
         setMinAmount(String(body.min_amount ?? "0"));
-        setSoundEnabled(body.sound_enabled !== false);
+        setSoundEnabled(body.sound_enabled === true);
+        setTtsEnabled(body.tts_enabled === true);
+        setTtsVoice(body.tts_voice ?? "");
       })
       .catch(() => {
         // Network error: keep defaults; the user can still save.
-      })
-      .finally(() => {
-        if (alive) setLoading(false);
       });
+
+    const voicesPromise = fetch("/api/tts/voices")
+      .then(async (res) => {
+        if (!res.ok) return;
+        const body = (await res.json()) as { voices?: TtsVoice[] };
+        if (!alive) return;
+        setVoices(Array.isArray(body.voices) ? body.voices : []);
+      })
+      .catch(() => {
+        // Voice list is optional: the picker falls back to empty.
+      });
+
+    Promise.all([settingsPromise, voicesPromise]).finally(() => {
+      if (alive) setLoading(false);
+    });
+
     return () => {
       alive = false;
     };
@@ -138,13 +171,17 @@ export function OverlaySettingsCard({ overlayId }: { overlayId: string | null | 
           alert_duration_ms: durationMs,
           min_amount: Number(minAmount),
           sound_enabled: soundEnabled,
+          tts_enabled: ttsEnabled,
+          tts_voice: ttsVoice || null,
         }),
       });
       if (res.status === 200) {
         const body = (await res.json()) as {
           min_amount: string | number;
+          tts_voice: string | null;
         };
         setMinAmount(String(body.min_amount));
+        setTtsVoice(body.tts_voice ?? "");
         setStatus({ kind: "info", message: "Overlay settings saved." });
       } else {
         const body = (await res.json()) as { error: string };
@@ -165,7 +202,7 @@ export function OverlaySettingsCard({ overlayId }: { overlayId: string | null | 
       <CardHeader>
         <CardTitleWithInfo
           title="Overlay settings"
-          info="Control how donation alerts behave on your stream overlay: how long each alert stays on screen, the minimum donation amount that triggers an alert, and whether a sound plays on new donations."
+          info="Control how donation alerts behave on your stream overlay: how long each alert stays on screen, the minimum donation amount that triggers an alert, sound, and Alert Reading."
         />
       </CardHeader>
       <CardContent className="flex flex-col gap-4" data-testid="overlay-settings-card">
@@ -233,6 +270,52 @@ export function OverlaySettingsCard({ overlayId }: { overlayId: string | null | 
           >
             Play a sound on new donations
           </label>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <input
+            id="overlay-tts-toggle"
+            type="checkbox"
+            className="h-4 w-4 rounded border-foreground/20 accent-primary"
+            checked={ttsEnabled}
+            disabled={loading || saving}
+            onChange={(e) => setTtsEnabled(e.target.checked)}
+            data-testid="overlay-tts-toggle"
+          />
+          <label
+            className="text-xs text-muted-foreground"
+            htmlFor="overlay-tts-toggle"
+          >
+            Read donation alerts aloud
+          </label>
+        </div>
+
+        <div className="flex flex-col gap-1">
+          <label
+            className="text-xs text-muted-foreground"
+            htmlFor="overlay-voice-select"
+          >
+            Voice
+          </label>
+          <select
+            id="overlay-voice-select"
+            className="max-w-[12rem] rounded-md border border-foreground/10 bg-background px-3 py-2 text-sm"
+            value={ttsVoice}
+            disabled={loading || saving}
+            onChange={(e) => setTtsVoice(e.target.value)}
+            data-testid="overlay-voice-select"
+          >
+            <option value="">No voice selected</option>
+            {voices.map((voice) => (
+              <option key={voice.id} value={voice.id}>
+                {voice.name} ({voice.locale})
+              </option>
+            ))}
+          </select>
+          <p className="text-[0.65rem] text-muted-foreground/70">
+            The voice used when Alert Reading is on. The list is always the
+            Worker&apos;s currently supported voices.
+          </p>
         </div>
 
         <Button

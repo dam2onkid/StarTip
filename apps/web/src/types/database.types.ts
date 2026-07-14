@@ -184,6 +184,53 @@ export type Database = {
         }
         Relationships: []
       }
+      overlay_settings: {
+        Row: {
+          alert_duration_ms: number
+          created_at: string
+          creator_profile_id: string
+          id: string
+          min_amount: number
+          sound_enabled: boolean
+          theme: string
+          tts_enabled: boolean
+          tts_voice: string | null
+          updated_at: string
+        }
+        Insert: {
+          alert_duration_ms?: number
+          created_at?: string
+          creator_profile_id: string
+          id?: string
+          min_amount?: number
+          sound_enabled?: boolean
+          theme?: string
+          tts_enabled?: boolean
+          tts_voice?: string | null
+          updated_at?: string
+        }
+        Update: {
+          alert_duration_ms?: number
+          created_at?: string
+          creator_profile_id?: string
+          id?: string
+          min_amount?: number
+          sound_enabled?: boolean
+          theme?: string
+          tts_enabled?: boolean
+          tts_voice?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "overlay_settings_creator_profile_id_fkey"
+            columns: ["creator_profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       public_donations: {
