@@ -15,6 +15,7 @@ import {
   readTreasuryAddress,
   payoutAddressWarning,
 } from "@/lib/onboarding/register";
+import { disconnectWallet } from "@/lib/wallet/kit";
 import { contractId } from "@/lib/stellar/client";
 import { friendlyOnchainError } from "@/lib/stellar/contract-errors";
 import { PayoutAddressWarning } from "../shared";
@@ -35,8 +36,10 @@ export function OnchainPendingGate(args: {
   onSubmitted: () => void;
   /** Invoked when the on-chain reconcile read confirms the creator is registered. */
   onReconciled: (next: Partial<CreatorProfile>) => void;
+  /** Invoked when the user wants to switch to a different wallet before registering. */
+  onChangeWallet: () => void;
 }) {
-  const { current, status, setStatus, onSubmitted, onReconciled } = args;
+  const { current, status, setStatus, onSubmitted, onReconciled, onChangeWallet } = args;
   const [payout, setPayout] = useState("");
   const [treasury, setTreasury] = useState<string | null | undefined>(undefined);
   const [submitted, setSubmitted] = useState(false);
@@ -168,6 +171,17 @@ export function OnchainPendingGate(args: {
     }
   }
 
+  async function changeWallet() {
+    if (isRegisterLocked) return;
+    setStatus({ kind: "busy" });
+    try {
+      await disconnectWallet();
+    } catch {
+      // Ignore disconnect failures; the user can still reconnect from the wallet gate.
+    }
+    onChangeWallet();
+  }
+
   return (
     <Card>
       <CardHeader>
@@ -178,9 +192,22 @@ export function OnchainPendingGate(args: {
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
-        <p className="text-xs text-muted-foreground">
-          Wallet: <span className="font-mono text-foreground">{current.owner_address}</span>
-        </p>
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-xs text-muted-foreground">
+            Wallet: <span className="font-mono text-foreground">{current.owner_address}</span>
+          </p>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={changeWallet}
+            loading={status.kind === "busy"}
+            disabled={isRegisterLocked}
+            className="h-auto px-1 py-0 text-xs"
+          >
+            Change wallet
+          </Button>
+        </div>
         <div className="flex flex-col gap-1">
           <label className="text-xs text-muted-foreground" htmlFor="payout-input">
             Payout Address

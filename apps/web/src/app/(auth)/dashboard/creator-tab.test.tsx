@@ -16,6 +16,7 @@ const STUB_ADDRESS = "GDF6CFYOXQTZVSLLK2RTDAUZ6N2E72IL4K2L34HXZK32KBR4NLVPLUVA";
 const connectWallet = vi.fn();
 const getWalletAddress = vi.fn();
 const signWalletMessage = vi.fn();
+const disconnectWallet = vi.fn();
 const registerCreatorOnChain = vi.fn();
 const readTreasuryAddress = vi.fn(async () => null);
 const payoutAddressWarning = vi.fn((): "contract" | "treasury" | null => null);
@@ -24,6 +25,7 @@ vi.mock("@/lib/wallet/kit", () => ({
   connectWallet,
   getWalletAddress,
   signWalletMessage,
+  disconnectWallet,
   classifySignMessageError: vi.fn((): "unsupported" | "unknown" => "unknown"),
 }));
 
@@ -244,6 +246,22 @@ describe("CreatorTab - gate rendering", () => {
     );
     expect(screen.getByTestId("creator-active")).toBeInTheDocument();
     expect(screen.getByText(/Creator Status/i)).toBeInTheDocument();
+  });
+
+  it("returns to the wallet link gate when change wallet is clicked", async () => {
+    const { CreatorTab } = await import("@/app/(auth)/dashboard/creator-tab");
+    disconnectWallet.mockResolvedValue(undefined);
+    mockFetch([() => jsonRes(200, { onchain_registered: false })]);
+    render(
+      <CreatorTab profile={profile({ handle: "ada", owner_address: STUB_ADDRESS })} />,
+    );
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /change wallet/i }));
+    });
+    await waitFor(() => {
+      expect(screen.getByText(/Link your Stellar wallet/i)).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /connect wallet/i })).toBeInTheDocument();
+    });
   });
 });
 

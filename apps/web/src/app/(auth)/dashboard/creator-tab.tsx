@@ -63,6 +63,10 @@ export function CreatorTab({ profile, activeData, tokens = [] }: CreatorTabProps
               setCurrent((prev) => ({ ...prev, onchain_registered: true, ...next }));
               setStatus({ kind: "success", message: "You are live on-chain. Creator is active." });
             }}
+            onChangeWallet={() => {
+              setCurrent((prev) => ({ ...prev, owner_address: null }));
+              setStatus({ kind: "idle" });
+            }}
           />
         )}
         {state === "active" && (
