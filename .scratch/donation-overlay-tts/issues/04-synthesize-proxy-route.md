@@ -1,6 +1,6 @@
 # 04 - Synthesize proxy route with per-Overlay-ID scoping
 
-Status: ready-for-agent
+Status: done
 Role: backend
 
 ## Parent

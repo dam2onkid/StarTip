@@ -22,6 +22,15 @@ export const env = createEnv({
      * `WORKER_SECRET`.
      */
     WORKER_SECRET: z.string().min(1),
+    /**
+     * Max number of Text-to-Speech synthesis requests allowed per `overlay_id`
+     * within `TTS_RATE_LIMIT_WINDOW_MS`.
+     */
+    TTS_RATE_LIMIT_MAX_REQUESTS: z.coerce.number().int().min(1).default(5),
+    /**
+     * Sliding window in milliseconds for the per-`overlay_id` TTS rate limit.
+     */
+    TTS_RATE_LIMIT_WINDOW_MS: z.coerce.number().int().min(1000).default(60000),
   },
   client: {
     NEXT_PUBLIC_STELLAR_NETWORK: z
@@ -38,6 +47,8 @@ export const env = createEnv({
     INDEXER_START_LEDGER: process.env.INDEXER_START_LEDGER,
     WORKER_URL: process.env.WORKER_URL,
     WORKER_SECRET: process.env.WORKER_SECRET,
+    TTS_RATE_LIMIT_MAX_REQUESTS: process.env.TTS_RATE_LIMIT_MAX_REQUESTS,
+    TTS_RATE_LIMIT_WINDOW_MS: process.env.TTS_RATE_LIMIT_WINDOW_MS,
     NEXT_PUBLIC_STELLAR_NETWORK: process.env.NEXT_PUBLIC_STELLAR_NETWORK,
     NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL,
     NEXT_PUBLIC_SUPABASE_ANON_KEY: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
