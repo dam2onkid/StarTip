@@ -1,4 +1,3 @@
-import { BackButton } from "@/components/creator/back-button";
 import {
   Skeleton,
   SkeletonCircle,
@@ -28,11 +27,6 @@ export default function CreatorLoading() {
               "radial-gradient(120% 90% at 18% 12%, color-mix(in oklch, var(--foreground) 14%, transparent) 0%, transparent 55%), linear-gradient(180deg, #14171b 0%, #0e1013 100%)",
           }}
         />
-      </div>
-
-      {/* Back control. */}
-      <div className="mx-auto w-full max-w-7xl px-6 pt-6">
-        <BackButton />
       </div>
 
       {/* Profile head. */}
