@@ -5,6 +5,6 @@
     "watchPatterns": ["apps/web/**", "packages/shared/**"]
   },
   "deploy": {
-    "startCommand": "node apps/web/.next/standalone/apps/web/server.js"
+    "startCommand": "HOSTNAME=0.0.0.0 node apps/web/.next/standalone/apps/web/server.js"
   }
 }

@@ -6,7 +6,7 @@
     "dev": "next dev",
     "build": "next build",
     "postbuild": "cp -r public .next/standalone/apps/web/ 2>/dev/null || true && cp -r .next/static .next/standalone/apps/web/.next/ 2>/dev/null || true",
-    "start": "next start",
+    "start": "HOSTNAME=0.0.0.0 node .next/standalone/apps/web/server.js",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",

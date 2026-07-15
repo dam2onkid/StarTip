@@ -20,6 +20,9 @@ export const env = z
     VERIFY_POLL_MAX_MS: z.coerce.number().int().default(30_000),
     VERIFY_POLL_INTERVAL_MS: z.coerce.number().int().default(1_000),
   })
-  .parse(process.env);
+  // Railway injects `PORT` at runtime and routes its edge proxy to that port;
+  // it takes priority over `WORKER_PORT` (which only matters for local dev,
+  // where Railway's `PORT` is absent).
+  .parse({ ...process.env, WORKER_PORT: process.env.PORT ?? process.env.WORKER_PORT });
 
 export type Env = typeof env;
