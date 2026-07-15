@@ -56,3 +56,8 @@ docs/adr/*
 !.scratch/*/PR*.md
 .scratch/*/issues/*
 !.scratch/*/issues/*.md
+
+# Local deployment guide with real env values
+deploy.md
+
+
