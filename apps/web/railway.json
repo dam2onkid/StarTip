@@ -1,0 +1,10 @@
+{
+  "build": {
+    "builder": "RAILPACK",
+    "buildCommand": "pnpm --filter web build",
+    "watchPatterns": ["apps/web/**", "packages/shared/**"]
+  },
+  "deploy": {
+    "startCommand": "node apps/web/.next/standalone/server.js"
+  }
+}

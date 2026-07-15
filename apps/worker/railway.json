@@ -1,0 +1,10 @@
+{
+  "build": {
+    "builder": "RAILPACK",
+    "buildCommand": "pnpm --filter @startip/worker build",
+    "watchPatterns": ["apps/worker/**", "packages/shared/**"]
+  },
+  "deploy": {
+    "startCommand": "node apps/worker/dist/main.js"
+  }
+}
