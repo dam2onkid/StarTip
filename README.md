@@ -48,6 +48,8 @@ The contract is configured from the environment:
 
 The current deployment uses a 1% platform fee (`100 bps`) with a 5% max fee cap (`500 bps`).
 
+For a detailed explanation of the contract mechanics, see the [donation-router README](./contracts/donation-router/README.md).
+
 ## Local setup
 
 ### Prerequisites
@@ -171,7 +173,7 @@ Internal package shared by `web` and `worker`:
 
 ### `contracts/donation-router`
 
-Soroban Rust contract:
+Soroban Rust contract ([detailed README](./contracts/donation-router/README.md)):
 
 - Creator registration and payout address updates
 - Token allowlist management
