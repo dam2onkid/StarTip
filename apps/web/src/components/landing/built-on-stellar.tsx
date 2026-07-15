@@ -7,14 +7,8 @@ import { ScrambleText } from "@/components/landing/scramble-text";
 import { usePrefersReducedMotion } from "@/hooks/use-prefers-reduced-motion";
 
 /**
- * "Built on Stellar" section. Three MVP-true value props plus a roadmap note
- * that frames cross-border cash-out as a Stellar ecosystem roadmap capability,
- * not an MVP feature.
- *
- * Premium layer: the heading and the value-prop grid drift on scroll at
- * different speeds (parallax), and each prop reveals with a staggered
- * fade-and-translate as the grid enters the viewport. Only `transform` and
- * `opacity` are animated. Reduced-motion users get a static render.
+ * "Built on Stellar" section, rendered as a system spec sheet. Three value
+ * props sit in terminal-style cards that share a single-accent lime motif.
  */
 const container: Variants = {
   hidden: {},
@@ -89,15 +83,18 @@ export function BuiltOnStellar() {
             >
               ✦
             </span>
+            <span className="relative z-10 font-mono text-xs uppercase tracking-[0.18em] text-primary/80">
+              &gt; {valueProp.heading.replace(".", "").toLowerCase()}
+            </span>
             <h3
-              className="font-display text-3xl font-semibold tracking-tight text-foreground"
+              className="relative z-10 font-display text-3xl font-semibold tracking-tight text-foreground"
               aria-label={valueProp.heading}
             >
               {reduced ? valueProp.heading : (
                 <ScrambleText text={valueProp.heading} duration={0.8} />
               )}
             </h3>
-            <p className="max-w-xs text-base leading-relaxed text-muted-foreground">
+            <p className="relative z-10 max-w-xs text-base leading-relaxed text-muted-foreground">
               {valueProp.body}
             </p>
           </motion.div>
@@ -109,7 +106,7 @@ export function BuiltOnStellar() {
         whileInView={reduced ? undefined : "show"}
         viewport={{ once: true, amount: 0.4 }}
         variants={reduced ? undefined : prop}
-        className="mt-12 max-w-2xl text-sm leading-relaxed text-muted-foreground"
+        className="mt-12 max-w-2xl border-l border-primary/20 pl-4 text-sm leading-relaxed text-muted-foreground"
       >
         {roadmapNote}
       </motion.p>

@@ -5,22 +5,20 @@ import { createServerClient } from "@/lib/supabase/server";
 import { resolveNavAuth, type NavAuth } from "@/lib/nav/auth";
 
 export const metadata: Metadata = {
-  title: "Fast, global tipping for livestream creators, settled on Stellar",
+  title: "StarTip — Global tips for livestream creators",
   description:
-    "Fans scan a QR and send a Stellar asset. The transaction settles in seconds, anywhere in the world, for a fraction of a cent. Every donation is bound to an on-chain proof the platform cannot forge.",
+    "Accept tips from anywhere in seconds. StarTip gives creators a public donation page, an OBS overlay, and on-chain proof for every tip.",
   openGraph: {
-    title:
-      "StarTip — Fast, global tipping for livestream creators, settled on Stellar",
+    title: "StarTip — Global tips for livestream creators",
     description:
-      "Fans scan a QR and send a Stellar asset. The transaction settles in seconds, anywhere in the world, for a fraction of a cent. Every donation is bound to an on-chain proof the platform cannot forge.",
+      "Accept tips from anywhere in seconds. StarTip gives creators a public donation page, an OBS overlay, and on-chain proof for every tip.",
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
-    title:
-      "StarTip — Fast, global tipping for livestream creators, settled on Stellar",
+    title: "StarTip — Global tips for livestream creators",
     description:
-      "Fans scan a QR and send a Stellar asset. The transaction settles in seconds, anywhere in the world, for a fraction of a cent. Every donation is bound to an on-chain proof the platform cannot forge.",
+      "Accept tips from anywhere in seconds. StarTip gives creators a public donation page, an OBS overlay, and on-chain proof for every tip.",
   },
 };
 

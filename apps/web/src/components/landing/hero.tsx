@@ -9,6 +9,7 @@ import { ScrambleText } from "@/components/landing/scramble-text";
 import { usePrefersReducedMotion } from "@/hooks/use-prefers-reduced-motion";
 import type { NavAuth } from "@/lib/nav/auth";
 import FaultyTerminal from "@/components/landing/faulty-terminal";
+import { heroContent } from "@/content/landing";
 
 /**
  * Hero architecture (premium-frontend-ui skill §2.2). Full-bleed `100dvh`
@@ -20,9 +21,7 @@ import FaultyTerminal from "@/components/landing/faulty-terminal";
  * statically. Parallax is likewise disabled for reduced-motion users.
  */
 
-const HEADLINE = `Global tips for livestream creators.`;
-const SUBHEADLINE =
-  "Fans scan a QR and send a Stellar asset. The transaction settles in seconds, anywhere in the world, for a fraction of a cent. Every donation is bound to an on-chain proof the platform cannot forge. Build on Stellar.";
+const { headline: HEADLINE, subheadline: SUBHEADLINE } = heroContent;
 
 const container: Variants = {
   hidden: {},
@@ -56,10 +55,12 @@ export function Hero({ auth }: { auth: NavAuth }) {
     offset: ["start start", "end start"],
   });
 
-  // Auth-aware CTA target: authed users go straight to discovery, unauthed
-  // users land on the login surface.
-  const ctaHref =
-    auth.state === "authenticated" ? "/creator/explore" : "/login";
+  // Auth-aware primary CTA: authed users open the dashboard, unauthed users
+  // start the sign-up / sign-in flow.
+  const primaryCta =
+    auth.state === "authenticated"
+      ? heroContent.authenticatedCta
+      : heroContent.unauthenticatedCta;
 
   // Parallax depth: content drifts up/fades on scroll while the terminal
   // stays pinned as a full-bleed backdrop.
@@ -110,7 +111,7 @@ export function Hero({ auth }: { auth: NavAuth }) {
             className="font-mono text-xs uppercase tracking-[0.2em] text-muted-foreground"
           >
             <span className="text-primary" aria-hidden>&gt;</span>
-            <span className="ml-2">Tipping rail · Stellar</span>
+            <span className="ml-2">{heroContent.eyebrow}</span>
           </motion.span>
           <motion.h1
             variants={reduced ? undefined : word}
@@ -172,24 +173,16 @@ export function Hero({ auth }: { auth: NavAuth }) {
               size="lg"
               className="h-12 px-7 text-base shadow-[0_0_24px_-6px_rgba(180,255,57,0.35)]"
             >
-              <Link href={ctaHref} data-cursor="hover">
-                Get started
+              <Link href={primaryCta.href} data-cursor="hover">
+                {primaryCta.label}
               </Link>
             </Button>
           </Magnetic>
-          <Link
-            href="#how-it-works"
-            data-cursor="hover"
-            className="group inline-flex items-center gap-2 text-sm text-muted-foreground transition-colors hover:text-foreground"
-          >
-            See how it works
-            <span
-              aria-hidden
-              className="inline-block transition-transform duration-300 group-hover:translate-x-1"
-            >
-              →
-            </span>
-          </Link>
+          <Button asChild variant="ghost" size="lg" className="h-12 px-6 text-base">
+            <Link href={heroContent.secondaryCta.href} data-cursor="hover">
+              {heroContent.secondaryCta.label}
+            </Link>
+          </Button>
         </motion.div>
       </motion.div>
 

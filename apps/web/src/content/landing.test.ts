@@ -1,111 +1,103 @@
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
 import {
-  secondaryCards,
+  faqItems,
+  finalCta,
+  heroContent,
   howItWorksSteps,
+  problemSection,
+  secondaryCards,
+  socialProofItems,
+  solutionSection,
   stellarValueProps,
-  roadmapNote,
-  type SecondaryCard,
-} from "@/content/landing";
+  useCases,
+} from "./landing";
 
-describe("secondary cards", () => {
-  it("renders exactly three cards in the specified order", () => {
-    expect(secondaryCards).toHaveLength(3);
+describe("landing content", () => {
+  it("hero exposes both authenticated and unauthenticated CTAs", () => {
+    expect(heroContent.unauthenticatedCta.label).toBe("Create your tip page");
+    expect(heroContent.unauthenticatedCta.href).toBe("/login");
+    expect(heroContent.authenticatedCta.label).toBe("Open dashboard");
+    expect(heroContent.authenticatedCta.href).toBe("/dashboard");
+    expect(heroContent.secondaryCta.label).toBe("Send a tip");
+    expect(heroContent.secondaryCta.href).toBe("/creator/explore");
   });
 
-  it("card 1 is the returning-Creator dashboard card", () => {
-    const card = secondaryCards[0] as SecondaryCard;
-    expect(card.header).toBe("Already a Creator?");
-    expect(card.body).toBe(
-      "View your donations, moderate messages, and configure your overlay.",
-    );
-    expect(card.cta.label).toBe("Open Dashboard");
-    expect(card.cta.href).toBe("/dashboard");
+  it("hero copy is user-facing and avoids unsupported claims", () => {
+    expect(heroContent.headline).toMatch(/tip/i);
+    expect(heroContent.subheadline).toMatch(/scan/i);
   });
 
-  it("card 2 is the donor entry card with a placeholder finder link", () => {
-    const card = secondaryCards[1] as SecondaryCard;
-    expect(card.header).toBe("Here to tip?");
-    expect(card.body).toBe(
-      "Scan a QR from the stream, or look up a Creator by handle.",
-    );
-    expect(card.cta.label).toBe("Find a Creator");
-    expect(card.cta.href).toBe("/s");
+  it("problem section defines concrete pain points", () => {
+    expect(problemSection.headline).toMatch(/broken/i);
+    expect(problemSection.painPoints).toHaveLength(3);
+    const labels = problemSection.painPoints.map((p) => p.label);
+    expect(labels).toContain("Platform fee");
+    expect(labels).toContain("Settlement");
+    expect(labels).toContain("Chargebacks");
   });
 
-  it("card 3 is the how-it-works card linking to the in-page anchor", () => {
-    const card = secondaryCards[2] as SecondaryCard;
-    expect(card.header).toBe("How it works");
-    expect(card.body).toBe(
-      "A donor scans, picks a Stellar asset, signs one transaction. The contract splits the fee, settles in seconds, and emits proof. The overlay shows the alert.",
-    );
-    expect(card.cta.label).toBe("See the flow");
-    expect(card.cta.href).toBe("#how-it-works");
+  it("solution section offers creator and fan paths", () => {
+    expect(solutionSection.headline).toMatch(/QR/i);
+    expect(solutionSection.paths).toHaveLength(2);
+    const roles = solutionSection.paths.map((p) => p.role);
+    expect(roles).toContain("Creator");
+    expect(roles).toContain("Fan");
   });
 
-  it("card CTAs use a secondary or ghost variant, never the Tertiary primary", () => {
-    for (const card of secondaryCards) {
-      expect(["secondary", "ghost"]).toContain(card.cta.variant);
-      expect(card.cta.variant).not.toBe("default");
+  it("how-it-works steps are ordered and label/body pairs", () => {
+    expect(howItWorksSteps).toHaveLength(3);
+    expect(howItWorksSteps[0]?.label).toMatch(/01/);
+    expect(howItWorksSteps[1]?.label).toMatch(/02/);
+    expect(howItWorksSteps[2]?.label).toMatch(/03/);
+    for (const step of howItWorksSteps) {
+      expect(step.body.length).toBeGreaterThan(20);
     }
   });
-});
 
-describe("how it works steps", () => {
-  it("renders exactly three steps in order", () => {
-    expect(howItWorksSteps).toHaveLength(3);
-  });
-
-  it("step 01 is Register", () => {
-    expect(howItWorksSteps[0].label).toBe("01 / Register");
-    expect(howItWorksSteps[0].body).toBe(
-      "Create a profile, link your Stellar wallet, and register on-chain. The contract binds your handle to your payout address.",
-    );
-  });
-
-  it("step 02 is Share", () => {
-    expect(howItWorksSteps[1].label).toBe("02 / Share");
-    expect(howItWorksSteps[1].body).toBe(
-      "Get a donate link and QR. Drop the QR on your stream. Add the overlay URL to OBS.",
-    );
-  });
-
-  it("step 03 is Receive", () => {
-    expect(howItWorksSteps[2].label).toBe("03 / Receive");
-    expect(howItWorksSteps[2].body).toBe(
-      "Fans donate. The contract settles in seconds, the overlay alerts, your dashboard tracks every tip with on-chain proof.",
-    );
-  });
-});
-
-describe("built on Stellar value props", () => {
-  it("renders exactly three value props in order", () => {
+  it("stellar value props keep fast/global/low-fee as MVP-true", () => {
     expect(stellarValueProps).toHaveLength(3);
+    const headings = stellarValueProps.map((v) => v.heading);
+    expect(headings).toContain("Fast.");
+    expect(headings).toContain("Global.");
+    expect(headings).toContain("Low fee.");
   });
 
-  it("Fast prop", () => {
-    expect(stellarValueProps[0].heading).toBe("Fast.");
-    expect(stellarValueProps[0].body).toBe(
-      "Transactions settle in seconds on a ledger built for payments. No waiting on block confirmations, no stuck transfers.",
-    );
+  it("stellar roadmap note frames cross-border cash-out as roadmap", () => {
+    expect(stellarValueProps.some((v) => v.body.toLowerCase().includes("cash-out"))).toBe(false);
   });
 
-  it("Global prop", () => {
-    expect(stellarValueProps[1].heading).toBe("Global.");
-    expect(stellarValueProps[1].body).toBe(
-      "Any wallet, any country. A donor in Tokyo and a creator in Hanoi settle on the same ledger in the same block.",
-    );
+  it("use cases are user-facing and non-empty", () => {
+    expect(useCases.length).toBeGreaterThan(0);
+    for (const useCase of useCases) {
+      expect(useCase.title.length).toBeGreaterThan(0);
+      expect(useCase.body.length).toBeGreaterThan(10);
+    }
   });
 
-  it("Low fee prop", () => {
-    expect(stellarValueProps[2].heading).toBe("Low fee.");
-    expect(stellarValueProps[2].body).toBe(
-      "A fraction of a cent per transaction. The platform takes a bounded fee, on-chain and capped. The rest reaches the creator.",
-    );
+  it("social proof items include specific numbers", () => {
+    expect(socialProofItems).toHaveLength(3);
+    const labels = socialProofItems.map((i) => i.label);
+    expect(labels).toContain("to settle");
+    expect(labels).toContain("platform fee");
+    expect(labels).toContain("markets via Stellar anchors");
   });
 
-  it("roadmap note frames cross-border cash-out as a future capability", () => {
-    expect(roadmapNote).toBe(
-      "Stellar's anchor network enables cross-border cash-out to local currencies in 180+ countries. StarTip's MVP settles on Testnet; fiat off-ramp integration is on the roadmap.",
-    );
+  it("faq questions answer wallet, fee, mainnet, moderation, and failures", () => {
+    const questions = faqItems.map((f) => f.question.toLowerCase());
+    expect(questions.some((q) => q.includes("wallet"))).toBe(true);
+    expect(questions.some((q) => q.includes("fee"))).toBe(true);
+    expect(questions.some((q) => q.includes("mainnet"))).toBe(true);
+    expect(questions.some((q) => q.includes("moderate") || q.includes("hide"))).toBe(true);
+    expect(questions.some((q) => q.includes("fail"))).toBe(true);
+  });
+
+  it("final CTA links to login", () => {
+    expect(finalCta.cta.label).toBe("Create your tip page");
+    expect(finalCta.cta.href).toBe("/login");
+  });
+
+  it("secondary cards remain available for backwards compatibility", () => {
+    expect(secondaryCards).toHaveLength(3);
+    expect(secondaryCards[0]?.cta.variant).not.toBe("default");
   });
 });

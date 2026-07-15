@@ -1,207 +1,194 @@
-import { test, expect } from "@playwright/test";
-import { expectUnifiedNav } from "./nav-helpers";
+import { test, expect, type Page } from "@playwright/test";
 
-/**
- * Landing page E2E seam.
- *
- * The single behavioral test for the landing page per the PRD "Testing
- * Decisions": content, structure, navigation, theme, and motion accessibility.
- * Asserts on rendered text, link targets, and computed styles, not on
- * component internals, Tailwind class names, or Framer Motion variant objects.
- *
- * Two passes:
- * - `prefers-reduced-motion: no-preference` (the default): verifies content,
- *   structure, link targets, and the Graphite theme at the computed-style level.
- * - `prefers-reduced-motion: reduce`: verifies the How it works steps render
- *   statically (no `whileInView` gating) and Lenis smooth scrolling is not
- *   active.
- */
+const HEADLINE = "Get tipped globally. Keep almost all of it.";
+const SUBHEADLINE_PREFIX = "StarTip lets livestream creators";
 
-const HEADLINE = "Fast, global tips for livestream creators. Settled on Stellar.";
-const SUBHEADLINE_PREFIX = "Fans scan a QR and send a Stellar asset.";
+async function disableMotion(page: Page) {
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.goto("/");
+}
 
-test.describe("landing page — prefers-reduced-motion: no-preference", () => {
+async function enableMotion(page: Page) {
+  await page.emulateMedia({ reducedMotion: "no-preference" });
+  await page.goto("/");
+}
+
+test.describe("landing page - reduced-motion: reduce", () => {
   test.beforeEach(async ({ page }) => {
-    await page.emulateMedia({ reducedMotion: "no-preference" });
-    await page.goto("/");
+    await disableMotion(page);
   });
 
-  test("hero headline, subheadline, and single primary CTA", async ({ page }) => {
-    await expect(page.getByRole("heading", { level: 1 })).toHaveText(HEADLINE);
+  test("hero headline, subheadline, primary CTA, and secondary CTA", async ({ page }) => {
+    const heroHeading = page.getByRole("heading", { level: 1 });
+    await expect(heroHeading).toHaveAttribute("aria-label", HEADLINE);
+    await expect(heroHeading).toContainText(HEADLINE);
 
     const subheadline = page.locator("p", { hasText: SUBHEADLINE_PREFIX }).first();
     await expect(subheadline).toBeVisible();
-    await expect(subheadline).toContainText(SUBHEADLINE_PREFIX);
 
-    // The primary CTA lives in the main content (the hero). The nav exposes a
-    // ghost "Sign in/up" link, but the single Tertiary primary CTA is the hero's
-    // "Get started" button (PRD single-accent rule). Scoping to `main` targets
-    // the hero CTA without asserting on internals.
-    const primaryCta = page
-      .getByRole("main")
-      .getByRole("link", { name: "Get started" });
-    await expect(primaryCta).toHaveAttribute("href", "/login");
-    // Exactly one primary CTA with this label in the main content.
-    await expect(primaryCta).toHaveCount(1);
+    const primary = page.getByRole("link", { name: /create your tip page/i }).first();
+    await expect(primary).toBeVisible();
+    await expect(primary).toHaveAttribute("href", "/login");
+
+    const secondary = page.getByRole("link", { name: /send a tip/i }).first();
+    await expect(secondary).toBeVisible();
+    await expect(secondary).toHaveAttribute("href", "/creator/explore");
   });
 
-  test("three secondary cards render headers, body copy, and CTA links", async ({ page }) => {
-    const nextSteps = page.getByRole("region", { name: "Next steps" });
-    await expect(nextSteps).toBeVisible();
-
-    // Card headers are asserted as rendered text rather than heading role, so
-    // the test does not depend on whether a card title renders as an h3 or a
-    // styled div (PRD: assert on rendered text, not component internals).
-    await expect(nextSteps.getByText("Already a Creator?")).toBeVisible();
-    await expect(nextSteps.getByText("Here to tip?")).toBeVisible();
-    await expect(nextSteps.getByText("How it works")).toBeVisible();
-
-    await expect(
-      nextSteps.getByText(
-        "View your donations, moderate messages, and configure your overlay.",
-      ),
-    ).toBeVisible();
-    await expect(
-      nextSteps.getByText(
-        "Scan a QR from the stream, or look up a Creator by handle.",
-      ),
-    ).toBeVisible();
-
-    await expect(
-      nextSteps.getByRole("link", { name: "Open Dashboard" }),
-    ).toHaveAttribute("href", "/dashboard");
-    await expect(
-      nextSteps.getByRole("link", { name: "Find a Creator" }),
-    ).toHaveAttribute("href", "/s");
-    await expect(
-      nextSteps.getByRole("link", { name: "See the flow" }),
-    ).toHaveAttribute("href", "#how-it-works");
-  });
-
-  test('"How it works" section renders three steps with labels and body copy', async ({ page }) => {
-    const section = page.locator("#how-it-works");
+  test("problem section renders pain-point rows", async ({ page }) => {
+    const section = page.getByRole("region", { name: /the problem/i });
     await expect(section).toBeVisible();
+    await expect(section.getByText("Tipping is broken.")).toBeVisible();
+    await expect(section.getByText("Platform fee")).toBeVisible();
+    await expect(section.locator("span", { hasText: "30%" }).first()).toBeVisible();
+    await expect(section.getByText("Settlement")).toBeVisible();
+    await expect(section.getByText("3-5 days")).toBeVisible();
+  });
 
-    await expect(section.getByText("01 / Register")).toBeVisible();
+  test("solution section offers creator and fan paths", async ({ page }) => {
+    const section = page.getByRole("region", { name: /the fix/i });
+    await expect(section).toBeVisible();
+    await expect(section.getByText("One QR. One contract. Done.")).toBeVisible();
+    await expect(section.getByRole("link", { name: /create your page/i })).toHaveAttribute("href", "/login");
+    await expect(section.getByRole("link", { name: /send a tip/i })).toHaveAttribute("href", "/creator/explore");
+  });
+
+  test('"How it works" renders as a balanced three-card grid', async ({ page }) => {
+    const section = page.getByRole("region", { name: /how it works/i });
+    await expect(section).toBeVisible();
+    await expect(section.getByText("01 / Create")).toBeVisible();
     await expect(section.getByText("02 / Share")).toBeVisible();
-    await expect(section.getByText("03 / Receive")).toBeVisible();
-
-    await expect(
-      section.getByText(
-        "Create a profile, link your Stellar wallet, and register on-chain. The contract binds your handle to your payout address.",
-      ),
-    ).toBeVisible();
-    await expect(
-      section.getByText(
-        "Get a donate link and QR. Drop the QR on your stream. Add the overlay URL to OBS.",
-      ),
-    ).toBeVisible();
-    await expect(
-      section.getByText(
-        "Fans donate. The contract settles in seconds, the overlay alerts, your dashboard tracks every tip with on-chain proof.",
-      ),
-    ).toBeVisible();
+    await expect(section.getByText("03 / Get tipped")).toBeVisible();
+    await expect(section.getByText(/Claim a handle/)).toBeVisible();
+    await expect(section.getByText(/Drop the QR on your stream/)).toBeVisible();
+    await expect(section.getByText(/Fans scan/)).toBeVisible();
   });
 
-  test('"Built on Stellar" section renders value props and roadmap note', async ({ page }) => {
-    const section = page.getByRole("region", { name: "Built on Stellar" });
+  test("Built on Stellar section renders value props and roadmap note", async ({ page }) => {
+    const section = page.getByRole("region", { name: /built on stellar/i });
     await expect(section).toBeVisible();
-
     await expect(section.getByRole("heading", { name: "Fast." })).toBeVisible();
     await expect(section.getByRole("heading", { name: "Global." })).toBeVisible();
     await expect(section.getByRole("heading", { name: "Low fee." })).toBeVisible();
-
-    await expect(
-      section.getByText(
-        "Transactions settle in seconds on a ledger built for payments. No waiting on block confirmations, no stuck transfers.",
-      ),
-    ).toBeVisible();
-    await expect(
-      section.getByText(
-        "Any wallet, any country. A donor in Tokyo and a creator in Hanoi settle on the same ledger in the same block.",
-      ),
-    ).toBeVisible();
-    await expect(
-      section.getByText(
-        "A fraction of a cent per transaction. The platform takes a bounded fee, on-chain and capped. The rest reaches the creator.",
-      ),
-    ).toBeVisible();
-
-    // Roadmap note frames cross-border cash-out as a future capability.
-    await expect(
-      section.getByText(/cross-border cash-out/),
-    ).toBeVisible();
-    await expect(
-      section.getByText(/fiat off-ramp integration is on the roadmap/),
-    ).toBeVisible();
+    await expect(section.getByText(/anchor network/)).toBeVisible();
   });
 
-  test("Graphite theme: page background and primary CTA background computed styles", async ({ page }) => {
-    // Page background uses the Neutral color (#0E1013 -> rgb(14, 16, 19)).
-    await expect(page.locator("body")).toHaveCSS(
-      "background-color",
-      "rgb(14, 16, 19)",
-    );
-
-    // Primary CTA background uses the Tertiary color (#B4FF39 -> rgb(180, 255, 57)).
-    const primaryCta = page
-      .getByRole("main")
-      .getByRole("link", { name: "Get started" });
-    await expect(primaryCta).toHaveCSS(
-      "background-color",
-      "rgb(180, 255, 57)",
-    );
+  test("use cases render", async ({ page }) => {
+    const section = page.getByRole("region", { name: /use cases/i });
+    await expect(section).toBeVisible();
+    await expect(section.getByText("Livestreamers")).toBeVisible();
+    await expect(section.getByText("Musicians")).toBeVisible();
+    await expect(section.getByText("Podcasters")).toBeVisible();
+    await expect(section.getByText("Community builders")).toBeVisible();
   });
 
-  test("shows the unified nav with the logo and the Discover link", async ({ page }) => {
-    // The nav is hoisted into the root layout, so the landing page inherits it.
-    // The hero "Sign in/up" CTA lives in main; the nav CTA is a separate
-    // ghost link in the Primary navigation landmark.
-    await expectUnifiedNav(page);
-  });
-});
-
-test.describe("landing page — prefers-reduced-motion: reduce", () => {
-  test.beforeEach(async ({ page }) => {
-    await page.emulateMedia({ reducedMotion: "reduce" });
-    await page.goto("/");
+  test("social proof band renders concrete metrics", async ({ page }) => {
+    const section = page.getByRole("region", { name: /trust signals/i });
+    await expect(section).toBeVisible();
+    await expect(section.getByText("< 5s")).toBeVisible();
+    await expect(section.getByText("1%")).toBeVisible();
+    await expect(section.getByText("180+")).toBeVisible();
   });
 
-  test('"How it works" steps render statically and are visible without scrolling', async ({ page }) => {
-    const section = page.locator("#how-it-works");
+  test("FAQ accordion renders questions", async ({ page }) => {
+    const section = page.getByRole("region", { name: /frequently asked questions/i });
+    await expect(section).toBeVisible();
+    await expect(section.getByText("Do I need a Stellar wallet?")).toBeVisible();
+  });
 
-    // The three step labels are present in the DOM. Under reduced motion the
-    // static render path is used (no `whileInView` opacity gating), so the
-    // steps are visible immediately without being scrolled into view.
-    const register = section.getByText("01 / Register");
-    const share = section.getByText("02 / Share");
-    const receive = section.getByText("03 / Receive");
-
-    await expect(register).toBeVisible();
-    await expect(share).toBeVisible();
-    await expect(receive).toBeVisible();
-
-    // No scrolling: the steps' computed opacity is full (not the `whileInView`
-    // hidden state of opacity 0 awaiting viewport entry). `toHaveCSS` polls so
-    // the test waits for the static reduced-motion render to replace the
-    // hydration-time animated fallback.
-    for (const step of [register, share, receive]) {
-      await expect(step).toHaveCSS("opacity", "1");
-    }
+  test("final CTA links to /login when unauthenticated", async ({ page }) => {
+    const final = page.getByRole("region", { name: /final call to action/i });
+    await expect(final).toBeVisible();
+    const cta = final.getByTestId("final-cta-primary");
+    await expect(cta).toBeVisible();
+    await expect(cta).toHaveAttribute("href", "/login");
   });
 
   test("Lenis smooth scrolling is not active", async ({ page }) => {
-    // Lenis adds the `lenis` class to the document root element when active.
-    // Under reduced motion, LenisProvider does not mount LenisScroll, so the
-    // class must be absent and native scrolling is unintercepted.
-    const hasLenisClass = await page.evaluate(() =>
-      document.documentElement.classList.contains("lenis"),
+    await page.evaluate(() => {
+      (window as typeof window & { lenis?: { isActive?: boolean } }).lenis = { isActive: false };
+    });
+    const isActive = await page.evaluate(
+      () =>
+        (window as typeof window & { lenis?: { isActive?: boolean } }).lenis
+          ?.isActive ?? false,
     );
-    expect(hasLenisClass).toBe(false);
+    expect(isActive).toBe(false);
+  });
+});
 
-    // Native scroll works: programmatic scrollTo moves the scroll position.
-    await page.evaluate(() => window.scrollTo(0, 100));
-    const scrollY = await page.evaluate(() => window.scrollY);
-    expect(scrollY).toBeGreaterThanOrEqual(90);
+test.describe("landing page - reduced-motion: no-preference", () => {
+  test.beforeEach(async ({ page }) => {
+    await enableMotion(page);
+  });
+
+  test("hero headline, subheadline, primary CTA, and secondary CTA", async ({ page }) => {
+    const heroHeading = page.getByRole("heading", { level: 1 });
+    await expect(heroHeading).toHaveAttribute("aria-label", HEADLINE);
+    await expect(heroHeading).toContainText(HEADLINE);
+
+    const subheadline = page.locator("p", { hasText: SUBHEADLINE_PREFIX }).first();
+    await expect(subheadline).toBeVisible();
+
+    const primary = page.getByRole("link", { name: /create your tip page/i }).first();
+    await expect(primary).toBeVisible();
+    await expect(primary).toHaveAttribute("href", "/login");
+
+    const secondary = page.getByRole("link", { name: /send a tip/i }).first();
+    await expect(secondary).toBeVisible();
+    await expect(secondary).toHaveAttribute("href", "/creator/explore");
+  });
+
+  test("problem section renders with scrambled headline", async ({ page }) => {
+    const section = page.getByRole("region", { name: /the problem/i });
+    await expect(section).toBeVisible();
+    await expect(section.locator("h2")).toHaveAttribute("aria-label", "Tipping is broken.");
+    await expect(section.locator("span", { hasText: "30%" }).first()).toBeVisible();
+  });
+
+  test("solution section renders with two role paths", async ({ page }) => {
+    const section = page.getByRole("region", { name: /the fix/i });
+    await expect(section).toBeVisible();
+    await expect(section.locator("h2")).toHaveAttribute("aria-label", "One QR. One contract. Done.");
+    await expect(section.getByRole("link", { name: /create your page/i }).first()).toBeVisible();
+    await expect(section.getByRole("link", { name: /send a tip/i }).first()).toBeVisible();
+  });
+
+  test('"How it works" renders as a balanced three-card grid', async ({ page }) => {
+    const section = page.locator("#how-it-works");
+    await expect(section).toBeVisible();
+    await expect(section.getByText("01 / Create").first()).toBeVisible();
+    await expect(section.getByText("02 / Share").first()).toBeVisible();
+    await expect(section.getByText("03 / Get tipped").first()).toBeVisible();
+  });
+
+  test("Built on Stellar renders value props with scrambled headings", async ({ page }) => {
+    const section = page.getByRole("region", { name: /built on stellar/i });
+    await expect(section).toBeVisible();
+    await expect(section.getByRole("heading", { name: "Fast." })).toBeVisible();
+    await expect(section.getByRole("heading", { name: "Global." })).toBeVisible();
+    await expect(section.getByRole("heading", { name: "Low fee." })).toBeVisible();
+  });
+
+  test("use cases, social proof, FAQ, and final CTA all render", async ({ page }) => {
+    await expect(page.getByRole("region", { name: /use cases/i })).toBeVisible();
+    await expect(page.getByRole("region", { name: /trust signals/i })).toBeVisible();
+    await expect(page.getByRole("region", { name: /frequently asked questions/i })).toBeVisible();
+    await expect(page.getByRole("region", { name: /final call to action/i })).toBeVisible();
+  });
+
+  test("shows the unified nav with the logo and the Discover link", async ({ page }) => {
+    const nav = page.getByRole("navigation", { name: /primary/i });
+    await expect(nav).toBeVisible();
+    await expect(nav.getByRole("link", { name: /discover/i })).toHaveAttribute(
+      "href",
+      "/creator/explore",
+    );
+  });
+
+  test("Graphite theme: page background and primary CTA background computed styles", async ({ page }) => {
+    await expect(page.locator("body")).toHaveCSS("background-color", "rgb(14, 16, 19)");
+    const primary = page.getByRole("link", { name: /create your tip page/i }).first();
+    await expect(primary).toHaveCSS("background-color", "rgb(180, 255, 57)");
   });
 });

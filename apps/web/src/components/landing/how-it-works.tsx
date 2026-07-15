@@ -8,20 +8,15 @@ import { ScrambleText } from "@/components/landing/scramble-text";
 import { usePrefersReducedMotion } from "@/hooks/use-prefers-reduced-motion";
 
 /**
- * "How it works" section. A client component because it gates Framer Motion
- * reveals on the user's `prefers-reduced-motion` preference.
+ * "How it works" section, rendered as a vertical execution log. Steps are
+ * connected by a timeline rail to reinforce the narrative progression.
  *
  * The animated list is dynamically imported with `ssr: false` so Framer Motion
  * does not enter the server bundle or the initial client bundle for the static
  * hero and cards sections. The static list is used both as the dynamic import's
  * loading fallback and as the render path when the user has set
  * `prefers-reduced-motion: reduce`, so the steps are always visible without
- * scrolling in the reduced-motion case (PRD user story 34, issue 04).
- *
- * Step labels render in JetBrains Mono (`font-mono`), step body copy in Inter
- * (body default). Only `transform` and `opacity` are animated; see
- * `how-it-works-animated.tsx`. The section heading drifts on scroll (parallax)
- * for non-reduced-motion users.
+ * scrolling in the reduced-motion case.
  */
 const HowItWorksAnimated = dynamic(
   () =>
@@ -31,13 +26,27 @@ const HowItWorksAnimated = dynamic(
 
 function HowItWorksStatic() {
   return (
-    <ol className="mt-14 grid gap-8 sm:grid-cols-3">
+    <ol className="mt-14 grid gap-5 sm:grid-cols-3">
       {howItWorksSteps.map((step) => (
-        <li key={step.label} className="flex flex-col gap-3">
-          <p className="font-mono text-sm tracking-wide text-muted-foreground">
+        <li
+          key={step.label}
+          className="group relative flex flex-col gap-4 overflow-hidden rounded-2xl border border-primary/10 bg-card/40 p-6 backdrop-blur-sm transition-[border-color,box-shadow] duration-300 hover:border-primary/30 hover:shadow-[0_0_32px_-12px_rgba(180,255,57,0.12)]"
+        >
+          <span
+            aria-hidden
+            className="absolute inset-x-6 top-0 h-px bg-gradient-to-r from-transparent via-primary/40 to-transparent"
+          />
+          <span
+            aria-hidden
+            className="pointer-events-none absolute -bottom-6 -right-4 font-display text-[6rem] font-semibold leading-none text-foreground/[0.03] transition-colors duration-500 group-hover:text-primary/[0.08]"
+          >
+            ✦
+          </span>
+          <p className="relative z-10 flex items-center gap-3 font-mono text-sm tracking-wide text-primary/80">
+            <span className="text-primary" aria-hidden>&gt;</span>
             {step.label}
           </p>
-          <p className="text-base leading-relaxed text-foreground">
+          <p className="relative z-10 text-base leading-relaxed text-foreground">
             {step.body}
           </p>
         </li>
@@ -57,6 +66,7 @@ export function HowItWorks() {
 
   return (
     <section
+      aria-label="How it works"
       id="how-it-works"
       ref={ref}
       className="relative z-10 mx-auto w-full max-w-6xl scroll-mt-24 border-t border-foreground/10 px-6 py-28 sm:py-36"
@@ -71,7 +81,9 @@ export function HowItWorks() {
           className="font-display text-display-section text-balance text-foreground"
           aria-label="How it works"
         >
-          {reduced ? "How it works" : (
+          {reduced ? (
+            "How it works"
+          ) : (
             <ScrambleText
               text="How it works"
               duration={1.0}

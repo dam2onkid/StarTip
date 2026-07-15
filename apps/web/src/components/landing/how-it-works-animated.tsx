@@ -5,26 +5,23 @@ import { howItWorksSteps } from "@/content/landing";
 import { ScrambleText } from "@/components/landing/scramble-text";
 
 /**
- * Animated "How it works" list. Dynamically imported by `HowItWorks` only when
- * the user has not set `prefers-reduced-motion: reduce`, so Framer Motion stays
- * out of the server bundle and the initial client bundle for the static hero
- * and cards sections.
- *
- * Only `transform` (`y`) and `opacity` are animated, per the
- * `premium-frontend-ui` skill §5 hardware acceleration guardrail. Steps reveal
- * with a 120ms stagger as the section enters the viewport. Each step shows a
- * large faded ordinal behind the label for editorial weight.
+ * Animated "How it works" grid. Steps reveal as balanced cards that fade and
+ * rise in sequence, replacing the previous left-heavy vertical rail.
  */
 const containerVariants: Variants = {
   hidden: {},
   show: {
-    transition: { staggerChildren: 0.12 },
+    transition: { staggerChildren: 0.12, delayChildren: 0.1 },
   },
 };
 
-const stepVariants: Variants = {
-  hidden: { opacity: 0, y: 24 },
-  show: { opacity: 1, y: 0, transition: { duration: 0.55, ease: [0.22, 1, 0.36, 1] } },
+const cardVariants: Variants = {
+  hidden: { opacity: 0, y: 28 },
+  show: {
+    opacity: 1,
+    y: 0,
+    transition: { duration: 0.6, ease: [0.22, 1, 0.36, 1] },
+  },
 };
 
 export function HowItWorksAnimated() {
@@ -34,30 +31,31 @@ export function HowItWorksAnimated() {
       initial="hidden"
       whileInView="show"
       viewport={{ once: true, amount: 0.2 }}
-      className="mt-14 grid gap-4 sm:grid-cols-3"
+      className="mt-14 grid gap-5 sm:grid-cols-3"
     >
-      {howItWorksSteps.map((step, i) => (
+      {howItWorksSteps.map((step) => (
         <motion.li
           key={step.label}
-          variants={stepVariants}
-          className="group relative flex flex-col gap-4 overflow-hidden rounded-2xl border border-primary/10 bg-card/40 p-8 backdrop-blur-sm transition-[border-color,background-color,box-shadow] duration-300 hover:border-primary/30 hover:bg-card/70 hover:shadow-[0_0_24px_-12px_rgba(180,255,57,0.15)]"
+          variants={cardVariants}
+          className="group relative flex flex-col gap-4 overflow-hidden rounded-2xl border border-primary/10 bg-card/40 p-6 backdrop-blur-sm transition-[border-color,box-shadow] duration-300 hover:border-primary/30 hover:shadow-[0_0_32px_-12px_rgba(180,255,57,0.12)]"
         >
           <span
             aria-hidden
-            className="pointer-events-none absolute right-4 top-3 font-display text-7xl font-semibold leading-none text-foreground/[0.05] transition-colors duration-300 group-hover:text-primary/10"
-          >
-            {String(i + 1).padStart(2, "0")}
-          </span>
-          <p className="relative z-10 font-mono text-sm tracking-wide text-primary/80">
-            <ScrambleText text={step.label} duration={0.8} />
-          </p>
-          <p className="relative z-10 max-w-xs text-base leading-relaxed text-foreground">
-            {step.body}
-          </p>
+            className="absolute inset-x-6 top-0 h-px bg-gradient-to-r from-transparent via-primary/40 to-transparent"
+          />
           <span
             aria-hidden
-            className="relative z-10 mt-2 h-px w-10 origin-left bg-primary/50 transition-transform duration-500 group-hover:scale-x-[2.5]"
-          />
+            className="pointer-events-none absolute -bottom-6 -right-4 font-display text-[6rem] font-semibold leading-none text-foreground/[0.03] transition-colors duration-500 group-hover:text-primary/[0.08]"
+          >
+            ✦
+          </span>
+          <p className="relative z-10 flex items-center gap-3 font-mono text-sm tracking-wide text-primary/80">
+            <span className="text-primary" aria-hidden>&gt;</span>
+            <ScrambleText text={step.label} duration={0.7} />
+          </p>
+          <p className="relative z-10 text-base leading-relaxed text-foreground">
+            {step.body}
+          </p>
         </motion.li>
       ))}
     </motion.ol>
