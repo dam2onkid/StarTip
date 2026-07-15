@@ -4,6 +4,8 @@
 
 StarTip is a QR-based live tipping app built on the Stellar network. Fans donate Stellar assets to creators through a Soroban smart contract (`DonationRouter`) that splits the platform fee and sends the rest directly to the creator's payout address. Supabase powers the off-chain experience: profiles, donation history, creator dashboards, moderation, and the real-time overlay for streaming tools such as OBS.
 
+**Demo:** [https://startip.up.railway.app](https://startip.up.railway.app)
+
 ## Overview
 
 - **Creators** claim a unique handle, link a Stellar wallet, and set a payout address. Once registered on-chain, they get a public donation page (`/donate/[handle]`) and a private overlay URL (`/overlay/[overlay_id]`).
