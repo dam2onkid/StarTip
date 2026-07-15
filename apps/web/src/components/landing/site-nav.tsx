@@ -208,11 +208,12 @@ export function SiteNav({ auth = { state: "unauthenticated" } }: { auth?: NavAut
         <div className="flex items-center gap-2">
           {authed ? (
             <>
-              {/* Notification bell, desktop right cluster. Static placeholder
-                  with an empty-state dropdown (real events are out of scope). */}
-              <div className="hidden md:block">
+              {/* TODO: Notification bell temporarily hidden while notifications
+                  are not wired up. Restore this once real-time notifications
+                  are implemented. */}
+              {/* <div className="hidden md:block">
                 <NavNotificationsBell />
-              </div>
+              </div> */}
               {/* Avatar menu, desktop right cluster. Replaces the CTA when
                   authed; shows display_name + email header, Dashboard link,
                   and a Logout item that reuses the shared useLogout handler. */}

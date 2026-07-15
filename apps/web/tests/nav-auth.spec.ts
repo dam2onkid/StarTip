@@ -70,10 +70,13 @@ test.describe("Nav auth-aware right cluster", () => {
       await establishSession(page);
     });
 
-    test("replaces the CTA with a notification bell and an avatar menu trigger", async ({ page }) => {
+    test("replaces the CTA with an avatar menu trigger", async ({ page }) => {
       const nav = page.getByRole("navigation", { name: "Primary" });
-      // Authed right cluster: bell + avatar menu trigger, no CTA.
-      await expect(nav.getByRole("button", { name: /notifications/i })).toBeVisible();
+      // Authed right cluster: avatar menu trigger only while the notification
+      // bell is temporarily hidden, no CTA.
+      await expect(
+        nav.getByRole("button", { name: /notifications/i }),
+      ).toHaveCount(0);
       await expect(
         nav.getByRole("button", { name: /account menu for/i }),
       ).toBeVisible();
@@ -82,7 +85,9 @@ test.describe("Nav auth-aware right cluster", () => {
       ).toHaveCount(0);
     });
 
-    test("the notification bell opens an empty-state dropdown", async ({ page }) => {
+    // TODO: notifications bell is temporarily hidden; restore this test when
+    // it is re-enabled in site-nav.tsx.
+    test.skip("the notification bell opens an empty-state dropdown", async ({ page }) => {
       const nav = page.getByRole("navigation", { name: "Primary" });
       await nav.getByRole("button", { name: /notifications/i }).click();
       await expect(page.getByText(/no notifications yet/i)).toBeVisible();

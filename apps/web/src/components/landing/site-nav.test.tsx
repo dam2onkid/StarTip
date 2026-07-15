@@ -182,20 +182,22 @@ describe("<SiteNav /> authed right cluster", () => {
     avatarUrl: null,
   } as const;
 
-  it("replaces the Sign in/up CTA with a notification bell and an avatar menu trigger", () => {
+  it("replaces the Sign in/up CTA with an avatar menu trigger", () => {
     renderNav(<SiteNav auth={authed} />);
     expect(
       screen.queryByRole("link", { name: "Sign in/up" }),
     ).toBeNull();
     expect(
-      screen.getByRole("button", { name: /notifications/i }),
-    ).toBeInTheDocument();
+      screen.queryByRole("button", { name: /notifications/i }),
+    ).not.toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: /account menu for fan/i }),
     ).toBeInTheDocument();
   });
 
-  it("notification bell opens an empty-state dropdown", async () => {
+  // TODO: notifications bell is temporarily hidden; restore this test when
+  // the bell is re-enabled in site-nav.tsx.
+  it.skip("notification bell opens an empty-state dropdown", async () => {
     renderNav(<SiteNav auth={authed} />);
     const bell = screen.getByRole("button", { name: /notifications/i });
     await act(async () => {
