@@ -115,22 +115,19 @@ export function Hero({ auth }: { auth: NavAuth }) {
           </motion.span>
           <motion.h1
             variants={reduced ? undefined : word}
-            className="font-mono font-semibold text-display-hero text-balance text-foreground"
+            className="font-display text-display-hero text-balance text-foreground"
             aria-label={HEADLINE}
           >
-            <span className="text-primary" aria-hidden>&gt;</span>
-            <span className="ml-2">
-              {reduced ? (
-                HEADLINE
-              ) : (
-                <ScrambleText
-                  text={HEADLINE}
-                  duration={1.2}
-                  delay={0.6}
-                  disabled={reduced}
-                />
-              )}
-            </span>
+            {reduced ? (
+              HEADLINE
+            ) : (
+              <ScrambleText
+                text={HEADLINE}
+                duration={1.2}
+                delay={0.6}
+                disabled={reduced}
+              />
+            )}
             {!reduced && (
               <motion.span
                 className="ml-1 font-mono text-primary"
