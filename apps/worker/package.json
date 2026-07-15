@@ -6,6 +6,7 @@
     "dev": "node --env-file=.env --import tsx --watch src/main.ts",
     "build": "tsup src/main.ts --format esm --out-dir dist",
     "start": "node --env-file=.env dist/main.js",
+    "start:prod": "node dist/main.js",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit"
