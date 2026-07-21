@@ -27,12 +27,6 @@ Multi-context repo:
 ├── packages/shared/
 │   ├── CONTEXT.md
 │   └── docs/adr/
-├── packages/stellar-passkey-ui/
-│   ├── CONTEXT.md
-│   └── docs/adr/
-├── packages/stellar-trustline-onboarder/
-│   ├── CONTEXT.md
-│   └── docs/adr/
 └── contracts/
     ├── CONTEXT.md
     └── docs/adr/

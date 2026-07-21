@@ -11,8 +11,6 @@ This keeps the agent focused on the package or app it is working in.
 | `web` | Web app | `apps/web/` | `apps/web/AGENT.md` |
 | `wrk` | Worker | `apps/worker/` | `apps/worker/AGENT.md` |
 | `shr` | Shared packages | `packages/shared/` | `packages/shared/AGENT.md` |
-| `pass` | Stellar passkey UI | `packages/stellar-passkey-ui/` | `packages/stellar-passkey-ui/AGENT.md` |
-| `trst` | Stellar trustline onboarder | `packages/stellar-trustline-onboarder/` | `packages/stellar-trustline-onboarder/AGENT.md` |
 | `cnt` | Contracts | `contracts/` | `contracts/AGENT.md` |
 
 ## Naming features in `.scratch/`

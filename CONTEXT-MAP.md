@@ -8,8 +8,6 @@ This repo has multiple bounded contexts. Each context has its own `CONTEXT.md` f
 | Web app | `./apps/web/CONTEXT.md` | `./apps/web/docs/adr/` |
 | Worker | `./apps/worker/CONTEXT.md` | `./apps/worker/docs/adr/` |
 | Shared packages | `./packages/shared/CONTEXT.md` | `./packages/shared/docs/adr/` |
-| Stellar passkey UI | `./packages/stellar-passkey-ui/CONTEXT.md` | `./packages/stellar-passkey-ui/docs/adr/` |
-| Stellar trustline onboarder | `./packages/stellar-trustline-onboarder/CONTEXT.md` | `./packages/stellar-trustline-onboarder/docs/adr/` |
 | Contracts | `./contracts/CONTEXT.md` | `./contracts/docs/adr/` |
 
 Start with the system `CONTEXT.md`, then read the `CONTEXT.md` for the context you are about to work in.
