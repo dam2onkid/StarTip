@@ -66,7 +66,7 @@ The release story is:
 - The passkey C-account model and sponsored transaction boundary are defined.
 - Wallet binding, prepared authorization, replay protection, rate limiting, and
   sponsored Worker routes are part of the current development foundation.
-- DonationRouter events identify the C-account donor rather than the Sponsor.
+- DonationRouter events report the settlement details needed by the indexer.
 - The remaining work is proving and polishing the complete testnet flow.
 
 #### Required outcomes
@@ -133,7 +133,10 @@ Planned scope:
 
 - Replace or formally review the third-party testnet wallet contract before meaningful value is held.
 - Evaluate OpenZeppelin Smart Account Kit and Relayer for the production account and sponsorship path.
+- Add a payment guard: per-tip and periodic limits, approved assets and
+  recipients, and authorization scoped to DonationRouter.
 - Add passkey recovery, credential replacement, and multi-device design.
+- Define a risk-based signer model for high-value payments and recovery.
 - Add Sponsor policy monitoring, budgets, alerts, and circuit breakers.
 - Publish `stellar.toml`, contract metadata, interface documentation, and verified source.
 - Add contract TTL, upgrade, multisig admin, and emergency procedures.
@@ -156,6 +159,8 @@ Planned scope:
 - One verified stablecoin asset.
 - Creator web onboarding and payout management.
 - Passkey donor onboarding with production sponsorship policies.
+- Short-lived session authorization for repeated donations within explicit
+  Creator, asset, amount, and time limits.
 - Reliable QR, donation, dashboard, and OBS experience.
 - Public status, support, privacy, terms, and incident communication.
 - Product analytics for activation, repeat donations, and creator retention.
@@ -174,6 +179,7 @@ Candidate scope:
 - Creator referral and campaign links.
 - Better share cards, QR customization, and overlay themes.
 - Donor receipts and donation history.
+- Donor-controlled recurring support with an immediate cancellation path.
 - Creator analytics for repeat donors and stream performance.
 - Localized APAC copy and stablecoin value display.
 - Verified regional on-ramp or off-ramp pilot if a compliant partner exists.
@@ -202,6 +208,8 @@ Candidate scope:
 - SEP-compatible anchor integrations for fiat entry and exit.
 - Platform-level settlement and revenue-split APIs.
 - Agentic and machine-to-machine micropayments for content and services.
+- Scoped agent payment permissions, only after smart-wallet policy, recovery,
+  and monitoring are proven in production.
 - Public ecosystem metrics and reusable open-source payment components.
 
 ## Permanent backlog guardrails

@@ -121,6 +121,17 @@ First prove that StarTip users can complete sponsored C-account payments. Then
 extract reusable payment intents, webhooks, widgets, and SDKs. Do not start by
 building a generic SDK without a working product and pilot users.
 
+### 9. The smart wallet is a payment guard, not a feature bundle
+
+The C-account should grow from a passkey-controlled wallet into a constrained
+payment identity. A passkey answers who approves a payment. Smart-wallet
+policies answer what can be paid, to whom, for how much, and for how long.
+
+This allows StarTip to make small donations feel instant while preserving clear
+limits for the donor. The product should add policy, recovery, and delegated
+payment capabilities only when they make the Creator support loop safer or more
+useful. It should not become a general-purpose wallet product.
+
 ## What StarTip is not
 
 StarTip is not:

@@ -78,7 +78,7 @@ Responsibilities:
 - Accept only assets in the Token Allowlist.
 - Validate creator availability and donation amount.
 - Split the Platform Fee and creator net amount atomically.
-- Emit `DonationReceived` with the C-account or G-account donor.
+- Emit `DonationReceived` with the settlement details required by the indexer.
 - Support admin pause, creator pause, fee, treasury, and allowlist controls.
 
 Not responsibilities:
@@ -92,6 +92,11 @@ Not responsibilities:
 
 The current contract uses generic Soroban `Address` values, so `C...` and `G...`
 addresses can participate without separate donation functions.
+
+The current `DonationReceived` event does not include the donor address. If a
+future product view needs to show or analyze the donor C-account, add that field
+deliberately to the event and indexer after making a privacy decision. It must
+not be inferred from the Sponsor address.
 
 ## 2. Passkey-backed C-account
 
@@ -146,6 +151,30 @@ mainnet choice. Before mainnet:
 
 Do not mix Passkey Kit and Smart Account Kit proof formats. Their authorization
 ABIs are not interchangeable.
+
+### Smart-wallet evolution
+
+StarTip should evolve the C-account as a payment guard, in this order:
+
+1. **Policy guard:** enforce per-tip and periodic spending limits, approved
+   SAC assets, approved Creator recipients, and an authorization scope limited
+   to DonationRouter.
+2. **Session authorization:** allow a short-lived delegated signer for repeated
+   donations during a stream. Its authority must be bounded by Creator, asset,
+   amount, expiry, and revocation.
+3. **Recovery and signer management:** support passkey addition, replacement,
+   revocation, and a recovery path with a delay and explicit notification.
+4. **Risk-based multisig:** require stronger approval for large donations or
+   sensitive account changes while keeping a single passkey approval for normal
+   tips.
+5. **Recurring and delegated payments:** permit an off-chain scheduler or
+   agent only through a narrowly scoped, cancellable authorization. It must
+   never receive general control of a donor account.
+
+The policy belongs in the smart wallet's `__check_auth` authorization logic.
+The Sponsor remains a fee payer and relayer, not a signer with permission to
+move donor assets. Use a reviewed, production-ready smart-account framework
+before enabling any feature that can retain meaningful value.
 
 ## 3. Sponsor and Relayer
 
