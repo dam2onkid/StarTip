@@ -47,7 +47,7 @@ Scope:
 - Stable creator, donor, payout, overlay, and token domain terminology.
 - Preparatory architecture for passkey accounts and sponsored transactions.
 
-### v0.3.0 - Passkey C-account hackathon release
+### v0.3.0 - Smart Account Kit hackathon release
 
 Status: in progress
 
@@ -65,13 +65,16 @@ The release story is:
 - The web MVP, DonationRouter, indexer, dashboard, and OBS overlay already work.
 - The passkey C-account model and sponsored transaction boundary are defined.
 - Wallet binding, prepared authorization, replay protection, rate limiting, and
-  sponsored Worker routes are part of the current development foundation.
+  sponsored Worker routes provide the current foundation, but their wallet ABI
+  must be migrated to Smart Account Kit context-rule authorization.
 - DonationRouter events report the settlement details needed by the indexer.
 - The remaining work is proving and polishing the complete testnet flow.
 
 #### Required outcomes
 
 - A real passkey controls a real testnet C-account.
+- The C-account is deployed and authorized through the pinned Smart Account Kit
+  and OpenZeppelin Protocol 27 contract set.
 - A dedicated Sponsor pays transaction fees without exposing its key.
 - The C-account holds and donates one allowed SAC asset.
 - DonationRouter splits the fee and creator payout atomically.
@@ -96,8 +99,8 @@ technical references.
 
 - [Day 1](./v0.3.0.md#day-1): fund the Sponsor, issue one test asset, deploy its
   SAC, and configure DonationRouter.
-- [Day 2](./v0.3.0.md#day-2): create a real passkey, deploy the pinned C-account,
-  and seed its SAC balance.
+- [Day 2](./v0.3.0.md#day-2): create a real passkey, deploy the pinned Smart
+  Account Kit C-account, configure its initial context rule, and seed its SAC balance.
 - [Day 3](./v0.3.0.md#day-3): finish auth-entry signing and submit one real
   sponsored DonationRouter donation on testnet.
 - [Day 4](./v0.3.0.md#day-4): close the user-visible QR-to-overlay loop and
@@ -131,8 +134,10 @@ Goal: turn the hackathon prototype into a safe pilot for a small creator cohort.
 
 Planned scope:
 
-- Replace or formally review the third-party testnet wallet contract before meaningful value is held.
-- Evaluate OpenZeppelin Smart Account Kit and Relayer for the production account and sponsorship path.
+- Harden and formally review the pinned Smart Account Kit and OpenZeppelin
+  contract deployment before meaningful value is held.
+- Productionize the Smart Account Kit relayer, verifier, context-rule and
+  policy configuration.
 - Add a payment guard: per-tip and periodic limits, approved assets and
   recipients, and authorization scoped to DonationRouter.
 - Add passkey recovery, credential replacement, and multi-device design.

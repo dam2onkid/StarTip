@@ -1,6 +1,6 @@
 # Stellar Integration Strategy
 
-Last updated: 2026-07-21
+Last updated: 2026-07-22
 
 ## Purpose
 
@@ -105,18 +105,24 @@ authorizes contract calls through `__check_auth`. Stellar supports the P-256
 curve used by WebAuthn passkeys, allowing biometric approval without exposing a
 seed phrase. See the [Stellar smart-wallet guide](https://developers.stellar.org/docs/build/guides/contract-accounts/smart-wallets).
 
+Detailed protocol, security, tooling, and integration research is available in
+[C-wallet and sponsored transaction research](./c-wallet-reseach.md).
+
 ### v0.3.0 implementation pin
 
 The hackathon prototype is pinned to:
 
-- Implementation: `kalepail/passkey-kit` testnet smart wallet.
-- Source commit: `50981ccd5d2de654cf0e50633919cc9ba2df4e58`.
-- Testnet v1 WASM hash:
-  `fdefad64b96837147e1c333e51f537b696eab925e9f147e63d597c04e3c903f0`.
+- SDK: `smart-account-kit@0.4.2`.
+- Contract source: OpenZeppelin `stellar-contracts` commit
+  `1e513890ecf79833c9d6e7ef38a9358001c0b111`.
+- Protocol 27 smart-account WASM hash:
+  `1b5f4534a76322da2ad7c745f6900857a6802b0ca79850c35a03561df997785a`.
+- Testnet WebAuthn verifier:
+  `CC7EKIHQP3TN4CARQDND6CEOY2UXLWWC2X5GHTD5NLAT7BG5GPZIOM3F`.
 - Mobile bridge: `react-native-passkeys@0.4.1`.
-- Signature model: `Signatures(Map<SignerKey, Signature>)` with
-  `SignerKey::Secp256r1` and `Signature::Secp256r1`.
-- Worker encoding source: `apps/worker/src/passkey-wallet-abi.ts` on `feat/expo`.
+- Authorization model: Smart Account Kit context rules and auth digest with a
+  WebAuthn external signer.
+- Deployment provenance: [Smart Account Kit Protocol 27 manifest](https://github.com/kalepail/smart-account-kit/blob/main/docs/deployments-protocol-27-2026-07-09.md).
 
 The public key is signer input, not a Stellar address. The deployed contract
 instance produces the `C...` address.
@@ -134,23 +140,23 @@ The Worker must verify:
 - Authorization entry, nonce, ledger validity, function, contract, token,
   amount, and recipient match server-prepared state.
 
-The wallet contract verifies the on-chain signature. Worker verification is
-still required because the pinned testnet implementation does not enforce every
-WebAuthn policy StarTip needs.
+The WebAuthn verifier and smart-account contract verify on-chain authorization.
+Worker verification is still required to enforce StarTip-specific intent,
+origin, amount, recipient, fee, replay and sponsorship policies.
 
 ### Production decision
 
-The pinned Passkey Kit build is a hackathon testnet dependency, not an automatic
-mainnet choice. Before mainnet:
+StarTip uses Smart Account Kit as its smart-wallet framework. Passkey Kit is no
+longer a parallel implementation target. Before mainnet:
 
 - Review the exact source and deployed executable.
 - Obtain an independent security review.
-- Evaluate OpenZeppelin Smart Account Kit for policy limits and recovery.
+- Expand context rules and policies for payment limits and recovery.
 - Define signer addition, replacement, revocation, and multi-device behavior.
 - Define account upgrade and emergency recovery procedures.
 
-Do not mix Passkey Kit and Smart Account Kit proof formats. Their authorization
-ABIs are not interchangeable.
+Remove the previous Passkey Kit flat-signature encoder from the active path.
+Passkey Kit and Smart Account Kit proof formats are not interchangeable.
 
 ### Smart-wallet evolution
 
