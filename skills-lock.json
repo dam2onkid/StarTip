@@ -55,6 +55,12 @@
       "skillPath": "skills/standards/SKILL.md",
       "computedHash": "27c015ca27171329f50637558cb6689bfb2b07a24ad1021ad6ebb5df87b4920e"
     },
+    "stellar-scout": {
+      "source": "Stellar-Light/stellar-scout",
+      "sourceType": "github",
+      "skillPath": "SKILL.md",
+      "computedHash": "5ca217dd545f3ed20ac588c6bf32d1e6e6b3b730c522c06c3ff5b35c1e877528"
+    },
     "supabase": {
       "source": "supabase/agent-skills",
       "sourceType": "github",
