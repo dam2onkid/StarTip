@@ -231,6 +231,100 @@ export type Database = {
           },
         ]
       }
+      live_event_settings: {
+        Row: {
+          created_at: string
+          creator_profile_id: string
+          id: string
+          jump_scare_price: number
+          live_events_enabled: boolean
+          screen_cover_price: number
+          screen_flash_price: number
+          tunnel_vision_price: number
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          creator_profile_id: string
+          id?: string
+          jump_scare_price?: number
+          live_events_enabled?: boolean
+          screen_cover_price?: number
+          screen_flash_price?: number
+          tunnel_vision_price?: number
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          creator_profile_id?: string
+          id?: string
+          jump_scare_price?: number
+          live_events_enabled?: boolean
+          screen_cover_price?: number
+          screen_flash_price?: number
+          tunnel_vision_price?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "live_event_settings_creator_profile_id_fkey"
+            columns: ["creator_profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      effect_intents: {
+        Row: {
+          created_at: string
+          creator_profile_id: string
+          donation_prep_id: string
+          effect_id: string
+          expires_at: string
+          id: string
+          pack_id: string
+          pack_version: string
+          raw_amount: number
+          status: string
+          token: string
+        }
+        Insert: {
+          created_at?: string
+          creator_profile_id: string
+          donation_prep_id: string
+          effect_id: string
+          expires_at: string
+          id?: string
+          pack_id: string
+          pack_version: string
+          raw_amount: number
+          status?: string
+          token: string
+        }
+        Update: {
+          created_at?: string
+          creator_profile_id?: string
+          donation_prep_id?: string
+          effect_id?: string
+          expires_at?: string
+          id?: string
+          pack_id?: string
+          pack_version?: string
+          raw_amount?: number
+          status?: string
+          token?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "effect_intents_creator_profile_id_fkey"
+            columns: ["creator_profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       public_donations: {

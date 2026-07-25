@@ -60,6 +60,7 @@ export type CreatorSettingsTab =
   | "profile"
   | "payout"
   | "overlay"
+  | "live-events"
   | "moderation";
 
 /**

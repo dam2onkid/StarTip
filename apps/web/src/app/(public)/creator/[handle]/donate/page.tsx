@@ -4,6 +4,7 @@ import { ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { createServiceClient } from "@startip/shared/supabase/service";
 import { createServerClient } from "@/lib/supabase/server";
+import { getLiveEventsPublicConfig } from "@/lib/live-events/public-config";
 import { DonateForm } from "./donate-form";
 
 interface DonateCreatorIdentity {
@@ -32,13 +33,14 @@ export default async function DonatePage({
   const service = createServiceClient();
   const supabase = await createServerClient();
 
-  const [creatorResult, authResult] = await Promise.all([
+  const [creatorResult, authResult, liveEventsResult] = await Promise.all([
     service
       .from("profiles")
       .select("handle,display_name,avatar_url,onchain_registered,paused")
       .eq("handle", normalized)
       .maybeSingle(),
     supabase.auth.getUser(),
+    getLiveEventsPublicConfig({ service }, handle),
   ]);
 
   const p = creatorResult.data as {
@@ -64,6 +66,10 @@ export default async function DonatePage({
     donorDisplayName = donorProfile?.display_name;
   }
 
+  const liveEventsConfig: LiveEventsConfig = liveEventsResult.status === 200
+    ? (liveEventsResult.body as LiveEventsConfig)
+    : { live_events_enabled: false, effects: {} };
+
   return (
     <DonatePageShell
       creator={{
@@ -72,16 +78,24 @@ export default async function DonatePage({
         avatarUrl: p.avatar_url,
       }}
       donorDisplayName={donorDisplayName}
+      liveEventsConfig={liveEventsConfig}
     />
   );
+}
+
+export interface LiveEventsConfig {
+  live_events_enabled: boolean;
+  effects: Record<string, { name: string; price: number }>;
 }
 
 export function DonatePageShell({
   creator,
   donorDisplayName,
+  liveEventsConfig = { live_events_enabled: false, effects: {} },
 }: {
   creator: DonateCreatorIdentity;
   donorDisplayName?: string;
+  liveEventsConfig?: LiveEventsConfig;
 }) {
   const creatorHref = `/creator/${encodeURIComponent(creator.handle)}`;
 
@@ -103,6 +117,7 @@ export function DonatePageShell({
         displayName={creator.displayName}
         avatarUrl={creator.avatarUrl}
         donorDisplayName={donorDisplayName}
+        liveEventsConfig={liveEventsConfig}
       />
     </section>
   );

@@ -10,6 +10,7 @@ import { StatsCard, LeaderboardCard, CreatorStatusCard } from "./overview";
 import { PublicLinksCard, QrCodeCard } from "./profile-links";
 import { PayoutSummaryCard, PayoutUpdateCard, PauseCard } from "./payout";
 import { OverlayUrlCard, OverlaySettingsCard, DonationGoalCard } from "./overlay";
+import { LiveEventsSettingsCard } from "./live-events";
 import { ModerationCard } from "./moderation";
 
 /** Gate 4: active. The full Creator active-features panel. */
@@ -89,6 +90,15 @@ export function ActiveGate({
             />
             <OverlaySettingsCard overlayId={current.overlay_id} key={current.overlay_id} />
             <DonationGoalCard handle={current.handle} goal={activeData?.goal ?? null} tokens={tokens} />
+          </CreatorSettingsSection>
+        </TabsContent>
+        <TabsContent value="live-events" className="m-0">
+          <CreatorSettingsSection
+            eyebrow="Live Events"
+            title="Donation Effects"
+            description="Opt in and set the minimum donation for each Default Pack effect."
+          >
+            <LiveEventsSettingsCard handle={current.handle} />
           </CreatorSettingsSection>
         </TabsContent>
         <TabsContent value="moderation" className="m-0">

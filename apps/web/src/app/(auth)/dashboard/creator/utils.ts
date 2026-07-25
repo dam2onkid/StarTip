@@ -54,6 +54,15 @@ export function overlaySettingsErrorMessage(code: string): string {
   return humanError(code);
 }
 
+export function liveEventsErrorMessage(code: string): string {
+  if (code === "unauthorized") return "Sign in again to save Live Events settings.";
+  if (code === "not_creator") return "Claim a handle first.";
+  if (code === "forbidden") return "You can only edit your own Live Events settings.";
+  if (code === "price_below_floor") return "Prices cannot be below the 0.10 test USDC platform floor.";
+  if (code === "invalid_price") return "Each price must be a valid number.";
+  return humanError(code);
+}
+
 export function goalErrorMessage(code: string): string {
   if (code === "unauthorized") return "Sign in again to save your goal.";
   if (code === "not_creator") return "Claim a handle first.";

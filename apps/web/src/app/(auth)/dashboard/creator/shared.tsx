@@ -225,6 +225,7 @@ export function CreatorSettingsSidebar({
     { id: "profile", label: "Profile & Links", detail: "Public page and QR" },
     { id: "payout", label: "Payout", detail: "Address and availability" },
     { id: "overlay", label: "Overlay", detail: "Stream alerts and goal" },
+    { id: "live-events", label: "Live Events", detail: "Effects and pricing" },
     { id: "moderation", label: "Moderation", detail: "Donation visibility" },
   ];
   return (

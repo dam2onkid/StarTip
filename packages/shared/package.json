@@ -5,6 +5,7 @@
   "exports": {
     "./donations/*": "./src/donations/*.ts",
     "./indexer/*": "./src/indexer/*.ts",
+    "./live-events/*": "./src/live-events/*.ts",
     "./overlay/*": "./src/overlay/*.ts",
     "./stellar/*": "./src/stellar/*.ts",
     "./supabase/*": "./src/supabase/*.ts"

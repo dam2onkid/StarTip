@@ -160,13 +160,17 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-async function renderAndConnect(handle = "ada", donorDisplayName?: string) {
+async function renderAndConnect(
+  handle = "ada",
+  donorDisplayName?: string,
+  liveEventsConfig?: { live_events_enabled: boolean; effects: Record<string, { name: string; price: number }> },
+) {
   const { DonateWalletProvider } = await import("@/components/landing/donate-wallet-context");
   const { DonateForm } = await import("./donate-form");
   connectWallet.mockResolvedValue({ address: STUB_ADDRESS });
   render(
     <DonateWalletProvider>
-      <DonateForm handle={handle} donorDisplayName={donorDisplayName} />
+      <DonateForm handle={handle} donorDisplayName={donorDisplayName} liveEventsConfig={liveEventsConfig} />
     </DonateWalletProvider>,
   );
   await act(async () => {
@@ -501,6 +505,29 @@ describe("DonateForm", () => {
         ),
       });
     });
+  });
+
+  it("hides the live effects panel when Live Events are disabled", async () => {
+    await renderAndConnect("ada");
+    expect(screen.queryByTestId("live-effects-panel")).not.toBeInTheDocument();
+    expect(screen.queryByText(/Live Effects/i)).not.toBeInTheDocument();
+  });
+
+  it("shows the live effects panel with current minimum prices when Live Events are enabled", async () => {
+    await renderAndConnect("ada", undefined, {
+      live_events_enabled: true,
+      effects: {
+        "screen-flash": { name: "Screen Flash", price: 1 },
+        "jump-scare": { name: "Jump Scare", price: 2 },
+        "tunnel-vision": { name: "Tunnel Vision", price: 3 },
+        "screen-cover": { name: "Screen Cover", price: 5 },
+      },
+    });
+    await waitFor(() =>
+      expect(screen.getByTestId("live-effects-panel")).toBeInTheDocument(),
+    );
+    expect(screen.getByText(/Screen Flash/i)).toBeInTheDocument();
+    expect(screen.getByText(/Min 3 test USDC/i)).toBeInTheDocument();
   });
 
   it("hides the donor name input and uses the logged-in display name when provided", async () => {

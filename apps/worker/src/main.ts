@@ -6,6 +6,7 @@ import { readTokenMetadata } from "@startip/shared/stellar/token";
 import { env } from "./env";
 import { createVerifyApp } from "./server";
 import { createTtsApp, EdgeTtsProvider } from "./tts";
+import { createLiveEventsApp } from "./live-events/effect-intents";
 import { startIndexerLoop } from "./indexer";
 
 /**
@@ -37,6 +38,10 @@ const ttsApp = createTtsApp(
 const app = new Hono();
 app.route("/", verifyApp);
 app.route("/", ttsApp);
+
+// Live Events endpoint deps.
+const liveEventsApp = createLiveEventsApp({ service }, env.WORKER_SECRET);
+app.route("/", liveEventsApp);
 
 // Indexer loop deps.
 const stopIndexer = startIndexerLoop(

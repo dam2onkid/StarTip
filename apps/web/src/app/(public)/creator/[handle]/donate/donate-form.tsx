@@ -34,6 +34,10 @@ interface DonateFormProps {
   displayName?: string;
   avatarUrl?: string | null;
   donorDisplayName?: string;
+  liveEventsConfig?: {
+    live_events_enabled: boolean;
+    effects: Record<string, { name: string; price: number }>;
+  };
 }
 
 function creatorInitial(displayName: string): string {
@@ -164,6 +168,7 @@ export function DonateForm({
   displayName = handle,
   avatarUrl = null,
   donorDisplayName,
+  liveEventsConfig,
 }: DonateFormProps) {
   const {
     address: walletAddress,
@@ -402,6 +407,33 @@ export function DonateForm({
                 </div>
               </div>
             </Field>
+
+            {liveEventsConfig?.live_events_enabled && (
+              <Field>
+                <FieldLabel className="font-mono text-xs uppercase tracking-[0.12em] text-muted-foreground">
+                  Live Effects
+                </FieldLabel>
+                <div
+                  className="grid grid-cols-1 gap-2 sm:grid-cols-2"
+                  data-testid="live-effects-panel"
+                >
+                  {Object.entries(liveEventsConfig.effects).map(([id, effect]) => (
+                    <div
+                      key={id}
+                      className="rounded-md border border-foreground/10 bg-foreground/[0.03] p-3"
+                    >
+                      <p className="text-sm font-medium">{effect.name}</p>
+                      <p className="text-xs text-muted-foreground">
+                        Min {effect.price} test USDC
+                      </p>
+                    </div>
+                  ))}
+                </div>
+                <FieldDescription>
+                  Effect selection is coming soon. These are the current minimums.
+                </FieldDescription>
+              </Field>
+            )}
 
             <div
               className={cn(
