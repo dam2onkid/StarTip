@@ -12,6 +12,7 @@ This keeps the agent focused on the package or app it is working in.
 | `wrk` | Worker | `apps/worker/` | `apps/worker/AGENT.md` |
 | `shr` | Shared packages | `packages/shared/` | `packages/shared/AGENT.md` |
 | `cnt` | Contracts | `contracts/` | `contracts/AGENT.md` |
+| `lcl` | Live Event Client | `apps/live-client/` | `apps/live-client/AGENT.md` |
 
 ## Naming features in `.scratch/`
 

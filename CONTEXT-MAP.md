@@ -9,5 +9,6 @@ This repo has multiple bounded contexts. Each context has its own `CONTEXT.md` f
 | Worker | `./apps/worker/CONTEXT.md` | `./apps/worker/docs/adr/` |
 | Shared packages | `./packages/shared/CONTEXT.md` | `./packages/shared/docs/adr/` |
 | Contracts | `./contracts/CONTEXT.md` | `./contracts/docs/adr/` |
+| Live Event Client | `./apps/live-client/CONTEXT.md` | `./apps/live-client/docs/adr/` |
 
 Start with the system `CONTEXT.md`, then read the `CONTEXT.md` for the context you are about to work in.
