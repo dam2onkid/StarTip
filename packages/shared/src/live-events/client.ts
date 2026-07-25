@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-import { LiveEventQueue, type Clock, type QueueItem } from "./queue";
+import { LiveEventQueue, defaultClock, parseTimestamp, type Clock, type QueueItem } from "./queue";
 import type { LifecycleStatus } from "./status";
 
 export type ClientConnectionStatus =
@@ -84,7 +84,6 @@ export interface LiveEventChannelFactory {
 export interface LiveEventClientOptions {
   overlayId: string;
   channelFactory: LiveEventChannelFactory;
-  apiBaseUrl?: string;
   clock?: Clock;
   random?: RandomSource;
   boundarySkewMs?: number;
@@ -93,10 +92,6 @@ export interface LiveEventClientOptions {
   jitterMaxMs?: number;
   onAck?: (overlayId: string, eventId: string, status: LifecycleStatus) => void;
   onState?: (state: LiveEventClientState) => void;
-}
-
-function defaultClock(): Clock {
-  return { now: () => Date.now() };
 }
 
 function defaultRandom(): RandomSource {
@@ -137,10 +132,6 @@ export function createSupabaseChannelFactory(
   };
 }
 
-function parseTimestamp(iso: string): number {
-  return new Date(iso).getTime();
-}
-
 /**
  * Client-side Live Event connection manager.
  *
@@ -170,6 +161,7 @@ export class LiveEventClient {
 
   private unsubscribeChannel: (() => void) | null = null;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private tickTimer: ReturnType<typeof setInterval> | null = null;
   private reconnectAttempt = 1;
   private boundary = 0;
   private stopped = false;
@@ -206,12 +198,14 @@ export class LiveEventClient {
     }
     this.stopped = false;
     this.cancelReconnect();
+    this.startTicking();
     this.connect();
   }
 
   stop(): void {
     this.stopped = true;
     this.cancelReconnect();
+    this.stopTicking();
     this.disconnect();
     this.setStatus("disconnected");
   }
@@ -226,7 +220,7 @@ export class LiveEventClient {
 
   emergencyStop(): void {
     const now = this.clock.now();
-    this.queue.clear((item) => item.payload.effect !== null);
+    this.queue.clear((item) => item.payload.effect !== null, "expired");
 
     const active = this.queue.getState().active?.item;
     if (active && active.payload.effect !== null) {
@@ -346,6 +340,20 @@ export class LiveEventClient {
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
+    }
+  }
+
+  private startTicking(): void {
+    if (this.tickTimer) return;
+    this.tickTimer = setInterval(() => {
+      this.queue.tick();
+    }, 1000);
+  }
+
+  private stopTicking(): void {
+    if (this.tickTimer) {
+      clearInterval(this.tickTimer);
+      this.tickTimer = null;
     }
   }
 

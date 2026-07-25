@@ -149,7 +149,7 @@ body,
 
 .status-running {
   color: var(--color-tertiary);
-  background-color: rgba(180, 255, 57, 0.08);
+  background-color: color-mix(in srgb, var(--color-tertiary) 8%, transparent);
 }
 
 .status-dot {
@@ -158,6 +158,12 @@ body,
   border-radius: 50%;
   background-color: var(--color-tertiary);
   animation: pulse 1.5s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .status-dot {
+    animation: none;
+  }
 }
 
 @keyframes pulse {
@@ -172,12 +178,12 @@ body,
 
 .status-idle {
   color: var(--color-secondary);
-  background-color: rgba(156, 163, 175, 0.08);
+  background-color: color-mix(in srgb, var(--color-secondary) 8%, transparent);
 }
 
 .status-error {
-  color: #ff6b6b;
-  background-color: rgba(255, 107, 107, 0.08);
+  color: var(--color-secondary);
+  background-color: color-mix(in srgb, var(--color-secondary) 8%, transparent);
 }
 
 .overlay {
@@ -379,33 +385,32 @@ body,
   background-color: var(--color-secondary);
 }
 
-.connection-status-disconnected .connection-status-dot {
+.connection-status-disconnected .connection-status-dot,
+.connection-status-connecting .connection-status-dot,
+.connection-status-connection-lost .connection-status-dot {
   background-color: var(--color-secondary);
 }
 .connection-status-connecting .connection-status-dot {
-  background-color: #fbbf24;
   animation: pulse 1.5s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .connection-status-connecting .connection-status-dot {
+    animation: none;
+  }
 }
 .connection-status-ready .connection-status-dot,
 .connection-status-overlay-running .connection-status-dot {
   background-color: var(--color-tertiary);
 }
-.connection-status-connection-lost .connection-status-dot {
-  background-color: #ff6b6b;
-}
 
-.connection-status-disconnected {
+.connection-status-disconnected,
+.connection-status-connecting,
+.connection-status-connection-lost {
   color: var(--color-secondary);
-}
-.connection-status-connecting {
-  color: #fbbf24;
 }
 .connection-status-ready,
 .connection-status-overlay-running {
   color: var(--color-tertiary);
-}
-.connection-status-connection-lost {
-  color: #ff6b6b;
 }
 
 .connection-meta {
@@ -435,11 +440,11 @@ body,
 }
 
 .connection-meta-value-error {
-  color: #ff6b6b;
+  color: var(--color-tertiary);
 }
 
 .button-danger {
-  background-color: #ff6b6b;
+  background-color: var(--color-tertiary);
   color: var(--color-on-primary);
 }
 

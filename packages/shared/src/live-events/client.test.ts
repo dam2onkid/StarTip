@@ -233,7 +233,7 @@ describe("LiveEventClient", () => {
     expect(acks).toContainEqual({
       overlayId: "overlay-1",
       eventId: "effect-2",
-      status: "stopped",
+      status: "expired",
     });
     expect(acks).not.toContainEqual({
       overlayId: "overlay-1",

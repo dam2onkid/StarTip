@@ -29,6 +29,7 @@ const alertSoundUrl = (import.meta.env.VITE_ALERT_SOUND_URL as string | undefine
 const DEFAULT_ALERT_DURATION_MS = 10_000;
 const MIN_ALERT_DURATION_MS = 1_000;
 const MAX_ALERT_DURATION_MS = 60_000;
+const TEST_ALERT_DONATION_ID = "__test__";
 
 interface OverlaySettingsRow {
   alert_duration_ms: number;
@@ -78,15 +79,7 @@ function playAlertSound(enabled: boolean) {
   });
 }
 
-function effectAudioUrl(pack: ValidatedPack, assetId: string): string | null {
-  const bytes = defaultPackAssets[assetId];
-  const asset = pack.manifest.assets[assetId];
-  if (!bytes || !asset) return null;
-  const blob = new Blob([bytes], { type: asset.contentType });
-  return URL.createObjectURL(blob);
-}
-
-function effectMediaUrl(pack: ValidatedPack, assetId: string): string | null {
+function packAssetUrl(pack: ValidatedPack, assetId: string): string | null {
   const bytes = defaultPackAssets[assetId];
   const asset = pack.manifest.assets[assetId];
   if (!bytes || !asset) return null;
@@ -115,6 +108,7 @@ export function GameOverlay() {
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const alertStartedAtRef = useRef<number | null>(null);
   const settingsRef = useRef<OverlaySettingsRow | null>(null);
+  const packRef = useRef<ValidatedPack | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const testAudioRef = useRef<HTMLAudioElement | null>(null);
 
@@ -140,6 +134,7 @@ export function GameOverlay() {
       .then((res) => {
         if (!cancelled && res.ok) {
           setPack(res);
+          packRef.current = res;
         }
       })
       .catch(() => {
@@ -179,7 +174,6 @@ export function GameOverlay() {
       channelFactory: createSupabaseChannelFactory(
         createClient(supabaseUrl, supabaseAnonKey),
       ),
-      apiBaseUrl,
       clock: { now: () => Date.now() },
       random: { random: () => Math.random() },
       onAck: (itemOverlayId, eventId, status) =>
@@ -241,7 +235,7 @@ export function GameOverlay() {
             local: true,
             payload: {
               donation: {
-                id: "__test__",
+                id: TEST_ALERT_DONATION_ID,
                 tx_hash: "",
                 donor_name: "Test Donor",
                 donor_address: "",
@@ -258,8 +252,9 @@ export function GameOverlay() {
 
       listeners.push(
         await listen<{ effectId: string }>("test-audio", (event) => {
+          const pack = packRef.current;
           if (event.payload.effectId !== "jump-scare" || !pack) return;
-          const url = effectAudioUrl(pack, "jump-scare-audio");
+          const url = packAssetUrl(pack, "jump-scare-audio");
           if (!url) return;
 
           testAudioRef.current?.pause();
@@ -310,7 +305,7 @@ export function GameOverlay() {
         unlisten();
       }
     };
-  }, [overlayId, supabaseUrl, supabaseAnonKey, pack]);
+  }, [overlayId, supabaseUrl, supabaseAnonKey]);
 
   useEffect(() => {
     if (!plan || plan.type !== "effect" || !pack) return;
@@ -318,7 +313,7 @@ export function GameOverlay() {
     const urlsToRevoke: string[] = [];
 
     if (plan.media) {
-      const url = effectMediaUrl(pack, plan.media.assetId);
+      const url = packAssetUrl(pack, plan.media.assetId);
       if (url) {
         setMediaUrl(url);
         urlsToRevoke.push(url);
@@ -328,7 +323,7 @@ export function GameOverlay() {
     }
 
     if (plan.audio) {
-      const url = effectAudioUrl(pack, plan.audio.assetId);
+      const url = packAssetUrl(pack, plan.audio.assetId);
       if (url) {
         const audio = new Audio(url);
         audio.volume = plan.audio.volume;
@@ -405,7 +400,7 @@ export function GameOverlay() {
     }
 
     const minAmountRaw = displayToRawAmount(String(settings?.min_amount ?? "0"), tokenDecimals);
-    const isTestAlert = donation.id === "__test__";
+    const isTestAlert = donation.id === TEST_ALERT_DONATION_ID;
     if (!isTestAlert && !isAtLeastRaw(donation.amount, minAmountRaw)) {
       clientRef.current?.completeActive(Date.now());
       return;

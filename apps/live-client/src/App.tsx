@@ -26,6 +26,14 @@ type ConnectionStatusLabel =
   | "Overlay Running"
   | "Connection Lost";
 
+const STATUS_CLASS: Record<ConnectionStatusLabel, string> = {
+  Disconnected: "disconnected",
+  Connecting: "connecting",
+  Ready: "ready",
+  "Overlay Running": "overlay-running",
+  "Connection Lost": "connection-lost",
+};
+
 function displayStatus(
   connectionStatus: ClientConnectionStatus,
   isRunning: boolean,
@@ -53,10 +61,12 @@ function ControlWindow() {
   const [isBusy, setIsBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const [connectionStatus, setConnectionStatus] = useState<ClientConnectionStatus>("disconnected");
-  const [activeEvent, setActiveEvent] = useState<LiveEventClientState["activeEvent"]>(null);
-  const [queueLength, setQueueLength] = useState(0);
-  const [lastError, setLastError] = useState<string | null>(null);
+  const [liveState, setLiveState] = useState<LiveEventClientState>({
+    status: "disconnected",
+    activeEvent: null,
+    queueLength: 0,
+    lastError: null,
+  });
   const [emergencyShortcutRegistered, setEmergencyShortcutRegistered] = useState(false);
 
   useEffect(() => {
@@ -88,10 +98,7 @@ function ControlWindow() {
 
       unlisteners.push(
         await listen<LiveEventClientState>("live-state", (event) => {
-          setConnectionStatus(event.payload.status);
-          setActiveEvent(event.payload.activeEvent);
-          setQueueLength(event.payload.queueLength);
-          setLastError(event.payload.lastError);
+          setLiveState(event.payload);
         }),
       );
 
@@ -174,7 +181,6 @@ function ControlWindow() {
   }
 
   function handleReconnectNow() {
-    setConnectionStatus("connecting");
     void emit("reconnect-now");
   }
 
@@ -190,14 +196,14 @@ function ControlWindow() {
     void emit("test-audio", { effectId: "jump-scare" });
   }
 
-  const statusLabel = displayStatus(connectionStatus, isRunning);
+  const statusLabel = displayStatus(liveState.status, isRunning);
 
   function activeEventSummary() {
-    if (!activeEvent) return "None";
-    if (activeEvent.payload.effect) {
-      return `Effect: ${activeEvent.payload.effect.effect_id}`;
+    if (!liveState.activeEvent) return "None";
+    if (liveState.activeEvent.payload.effect) {
+      return `Effect: ${liveState.activeEvent.payload.effect.effect_id}`;
     }
-    return `Donation alert from ${activeEvent.payload.donation.donor_name}`;
+    return `Donation alert from ${liveState.activeEvent.payload.donation.donor_name}`;
   }
 
   return (
@@ -236,7 +242,7 @@ function ControlWindow() {
         </label>
 
         <div className="connection-card">
-          <div className={`connection-status connection-status-${statusLabel.toLowerCase().replace(/\s+/g, "-")}`}>
+          <div className={`connection-status connection-status-${STATUS_CLASS[statusLabel]}`}>
             <span className="connection-status-dot" />
             <span className="connection-status-label">{statusLabel}</span>
           </div>
@@ -248,12 +254,12 @@ function ControlWindow() {
             </div>
             <div className="connection-meta-row">
               <span className="connection-meta-key">Queue length</span>
-              <span className="connection-meta-value">{queueLength}</span>
+              <span className="connection-meta-value">{liveState.queueLength}</span>
             </div>
-            {connectionStatus === "connection-lost" && lastError ? (
+            {liveState.status === "connection-lost" && liveState.lastError ? (
               <div className="connection-meta-row">
                 <span className="connection-meta-key">Last error</span>
-                <span className="connection-meta-value connection-meta-value-error">{lastError}</span>
+                <span className="connection-meta-value connection-meta-value-error">{liveState.lastError}</span>
               </div>
             ) : null}
           </div>
@@ -277,7 +283,7 @@ function ControlWindow() {
           <button
             className="button button-secondary"
             onClick={handleReconnectNow}
-            disabled={connectionStatus !== "connection-lost"}
+            disabled={liveState.status !== "connection-lost"}
           >
             Reconnect Now
           </button>

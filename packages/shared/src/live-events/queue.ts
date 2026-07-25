@@ -40,11 +40,11 @@ interface ItemState<T extends QueueItem> {
   startedAt: number | null;
 }
 
-function parseTimestamp(iso: string): number {
+export function parseTimestamp(iso: string): number {
   return new Date(iso).getTime();
 }
 
-function defaultClock(): Clock {
+export function defaultClock(): Clock {
   return { now: () => Date.now() };
 }
 
@@ -132,18 +132,18 @@ export class LiveEventQueue<T extends QueueItem> {
   }
 
   /**
-   * Remove queued items matching the predicate and transition them to
-   * `stopped`. The active item is not affected. Returns the number of items
-   * removed.
+   * Remove queued items matching the predicate and transition them to the
+   * given terminal status. The active item is not affected. Returns the number
+   * of items removed.
    */
-  clear(predicate: (item: T) => boolean): number {
+  clear(predicate: (item: T) => boolean, status: LifecycleStatus = "stopped"): number {
     let removed = 0;
     for (const id of [...this.queueOrder]) {
       const state = this.items.get(id);
       if (!state || state.status !== "queued") continue;
       if (predicate(state.item)) {
         this.removeFromQueue(id);
-        this.transition(state, "stopped");
+        this.transition(state, status);
         removed += 1;
       }
     }
