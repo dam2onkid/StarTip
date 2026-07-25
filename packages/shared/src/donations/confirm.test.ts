@@ -241,6 +241,13 @@ describe("verifyDonation", () => {
       data: { next_live_event_sequence: 1 },
       error: null,
     }));
+    // Defaults for the effect donation path; overridden by effect-specific tests.
+    supabaseMock.setResponder("effect_intents:select", () => ({ data: null, error: null }));
+    supabaseMock.setResponder("effect_intents:update", () => ({ data: null, error: null }));
+    supabaseMock.setResponder("live_event_settings:select", () => ({
+      data: { live_events_enabled: true },
+      error: null,
+    }));
   });
 
   function deps() {
@@ -522,5 +529,118 @@ describe("verifyDonation", () => {
     expect(res.status).toBe(200);
     const update = findCall(supabaseMock.calls, "donations", "update");
     expect((update!.payload as Record<string, unknown>).moderation_status).toBeUndefined();
+  });
+
+  describe("with a donation_prep_id (Effect Donations)", () => {
+    function enableEffectIntent(overrides: Record<string, unknown> = {}) {
+      const defaults = {
+        id: "intent-1",
+        creator_profile_id: "p1",
+        token: "USDC",
+        raw_amount: "1000000",
+        pack_id: "startip.default",
+        pack_version: "1.0.0",
+        effect_id: "jump-scare",
+        donation_prep_id: "prep-1",
+        status: "pending",
+        expires_at: "2099-01-01T00:00:00.000Z",
+        donation_id: null,
+      };
+      supabaseMock.setResponder("effect_intents:select", () => ({
+        data: { ...defaults, ...overrides },
+        error: null,
+      }));
+    }
+
+    it("creates an effect Live Event when the locked intent matches", async () => {
+      supabaseMock.setResponder("donations:select", () => ({ data: null, error: null }));
+      supabaseMock.setResponder("profiles:select", () => ({ data: { id: "p1", overlay_id: "ov1" }, error: null }));
+      supabaseMock.setResponder("donations:insert", () => ({ data: { id: "d1" }, error: null }));
+      enableEffectIntent();
+      getTransaction.mockResolvedValue(makeSuccessTxResponse(makeDonationReceivedEvent("USDC"), DONOR));
+
+      const { verifyDonation } = await import("./confirm");
+      const res = await verifyDonation(deps(), { tx_hash: TX_HASH, donation_prep_id: "prep-1" });
+
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({ status: "confirmed" });
+
+      const liveEventInsert = findCall(supabaseMock.calls, "live_events", "insert");
+      expect(liveEventInsert).toBeDefined();
+      const payload = (liveEventInsert!.payload as Record<string, unknown>).payload as {
+        effect: { pack_id: string; pack_version: string; effect_id: string };
+        donation: { message: unknown };
+      };
+      expect(payload.effect).toEqual({
+        pack_id: "startip.default",
+        pack_version: "1.0.0",
+        effect_id: "jump-scare",
+      });
+      expect(payload.donation.message).toBeNull();
+
+      const intentUpdate = findCall(supabaseMock.calls, "effect_intents", "update");
+      expect(intentUpdate).toBeDefined();
+      expect((intentUpdate!.payload as Record<string, unknown>).status).toBe("consumed");
+      expect((intentUpdate!.payload as Record<string, unknown>).donation_id).toBe("d1");
+    });
+
+    it("suppresses the effect and falls back to an ordinary alert when Live Events are disabled", async () => {
+      supabaseMock.setResponder("donations:select", () => ({ data: null, error: null }));
+      supabaseMock.setResponder("profiles:select", () => ({ data: { id: "p1", overlay_id: "ov1" }, error: null }));
+      supabaseMock.setResponder("donations:insert", () => ({ data: { id: "d1" }, error: null }));
+      enableEffectIntent();
+      supabaseMock.setResponder("live_event_settings:select", () => ({
+        data: { live_events_enabled: false },
+        error: null,
+      }));
+      getTransaction.mockResolvedValue(makeSuccessTxResponse(makeDonationReceivedEvent("USDC"), DONOR));
+
+      const { verifyDonation } = await import("./confirm");
+      const res = await verifyDonation(deps(), { tx_hash: TX_HASH, donation_prep_id: "prep-1" });
+
+      expect(res.status).toBe(200);
+      const payload = (findCall(supabaseMock.calls, "live_events", "insert")!.payload as Record<string, unknown>)
+        .payload as { effect: unknown };
+      expect(payload.effect).toBeNull();
+
+      const intentUpdate = findCall(supabaseMock.calls, "effect_intents", "update");
+      expect((intentUpdate!.payload as Record<string, unknown>).status).toBe("suppressed");
+      expect((intentUpdate!.payload as Record<string, unknown>).suppression_reason).toBe("creator_disabled");
+    });
+
+    it("suppresses the effect when the settled token does not match the intent", async () => {
+      supabaseMock.setResponder("donations:select", () => ({ data: null, error: null }));
+      supabaseMock.setResponder("profiles:select", () => ({ data: { id: "p1", overlay_id: "ov1" }, error: null }));
+      supabaseMock.setResponder("donations:insert", () => ({ data: { id: "d1" }, error: null }));
+      enableEffectIntent({ token: "OTHER" });
+      getTransaction.mockResolvedValue(makeSuccessTxResponse(makeDonationReceivedEvent("USDC"), DONOR));
+
+      const { verifyDonation } = await import("./confirm");
+      const res = await verifyDonation(deps(), { tx_hash: TX_HASH, donation_prep_id: "prep-1" });
+
+      expect(res.status).toBe(200);
+      const intentUpdate = findCall(supabaseMock.calls, "effect_intents", "update");
+      expect((intentUpdate!.payload as Record<string, unknown>).suppression_reason).toBe("verification_mismatch");
+    });
+
+    it("is idempotent on retry for the same donation", async () => {
+      supabaseMock.setResponder("donations:select", () => ({
+        data: { id: "d1", status: "confirmed", message: null, donor_name: "Anonymous", creator_profile_id: "p1" },
+        error: null,
+      }));
+      supabaseMock.setResponder("live_events:select", () => ({
+        data: { id: "le-1", sequence: 1, created_at: "2026-07-25T12:00:00.000Z", expires_at: "2026-07-25T12:00:30.000Z" },
+        error: null,
+      }));
+      enableEffectIntent({ status: "consumed" });
+      getTransaction.mockResolvedValue(makeSuccessTxResponse(makeDonationReceivedEvent("USDC"), DONOR));
+
+      const { verifyDonation } = await import("./confirm");
+      const res = await verifyDonation(deps(), { tx_hash: TX_HASH, donation_prep_id: "prep-1" });
+
+      expect(res.status).toBe(200);
+      expect(findCall(supabaseMock.calls, "live_events", "insert")).toBeUndefined();
+      expect(findCall(supabaseMock.calls, "effect_intents", "update")).toBeUndefined();
+    });
   });
 });

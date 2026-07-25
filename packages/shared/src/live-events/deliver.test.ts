@@ -273,4 +273,87 @@ describe("createOrdinaryLiveEvent", () => {
     if (!result.ok) return;
     expect(result.event.sequence).toBe(99);
   });
+
+  describe("createEffectLiveEvent", () => {
+  function validEffectInput() {
+    return {
+      ...validInput(),
+      effectIntentId: "33333333-3333-3333-3333-333333333333",
+      packId: "startip.default",
+      packVersion: "1.0.0",
+      effectId: "jump-scare",
+    };
+  }
+
+  it("creates a Live Event with pinned pack, version, and effect identifiers", async () => {
+    mock.setResponder("live_events:select", () => ({ data: null, error: null }));
+    mock.setResponder("rpc:next_live_event_sequence", () => ({ data: { next_live_event_sequence: 42 }, error: null }));
+    mock.setResponder("live_events:insert", () => ({
+      data: {
+        id: "le-effect",
+        sequence: 42,
+        created_at: "2026-07-25T12:00:00.000Z",
+        expires_at: "2026-07-25T12:00:30.000Z",
+      },
+      error: null,
+    }));
+
+    const { createEffectLiveEvent } = await import("./deliver");
+    const result = await createEffectLiveEvent(
+      mock.supabase as unknown as SupabaseClient,
+      validEffectInput(),
+    );
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.event.sequence).toBe(42);
+
+    const insertCall = mock.calls.find((c) => c.table === "live_events" && c.method === "insert");
+    expect(insertCall).toBeDefined();
+    expect(insertCall?.payload).toMatchObject({
+      creator_profile_id: "11111111-1111-1111-1111-111111111111",
+      overlay_id: "abc123overlayid",
+      donation_id: "22222222-2222-2222-2222-222222222222",
+      effect_intent_id: "33333333-3333-3333-3333-333333333333",
+      sequence: 42,
+      status: "queued",
+    });
+
+    const payload = (insertCall?.payload as Record<string, unknown>).payload as {
+      effect: { pack_id: string; pack_version: string; effect_id: string };
+      donation: { message: unknown };
+    };
+    expect(payload.effect).toEqual({
+      pack_id: "startip.default",
+      pack_version: "1.0.0",
+      effect_id: "jump-scare",
+    });
+    expect(payload.donation.message).toBeNull();
+  });
+
+  it("is idempotent on the same donation", async () => {
+    mock.setResponder("live_events:select", () => ({
+      data: {
+        id: "le-existing",
+        sequence: 7,
+        created_at: "2026-07-25T11:59:00.000Z",
+        expires_at: "2026-07-25T12:00:00.000Z",
+      },
+      error: null,
+    }));
+
+    const { createEffectLiveEvent } = await import("./deliver");
+    const result = await createEffectLiveEvent(
+      mock.supabase as unknown as SupabaseClient,
+      validEffectInput(),
+    );
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.event.sequence).toBe(7);
+
+    const insertCalls = mock.calls.filter((c) => c.table === "live_events" && c.method === "insert");
+    expect(insertCalls).toHaveLength(0);
+  });
+  });
 });

@@ -3,6 +3,11 @@ import { invoke } from "@tauri-apps/api/core";
 import { createClient } from "@supabase/supabase-js";
 import { planRender, type RenderPlan } from "@startip/shared/overlay/renderer";
 import {
+  defaultPackAssets,
+  defaultPackManifest,
+} from "@startip/shared/overlay/default-pack";
+import { validatePack, type ValidatedPack } from "@startip/shared/overlay/effect-packs";
+import {
   displayToRawAmount,
   isAtLeastRaw,
   rawToDisplayAmount,
@@ -17,6 +22,12 @@ const alertSoundUrl = (import.meta.env.VITE_ALERT_SOUND_URL as string | undefine
 const DEFAULT_ALERT_DURATION_MS = 10_000;
 const MIN_ALERT_DURATION_MS = 1_000;
 const MAX_ALERT_DURATION_MS = 60_000;
+
+interface LiveEventEffect {
+  pack_id: string;
+  pack_version: string;
+  effect_id: string;
+}
 
 interface LiveEventRow {
   id: string;
@@ -36,7 +47,7 @@ interface LiveEventRow {
     };
     creator: { profile_id: string; overlay_id: string };
     token_display: { contract_address: string; symbol: string; decimals: number };
-    effect: null;
+    effect: LiveEventEffect | null;
   };
   status: string;
   expires_at: string;
@@ -57,8 +68,13 @@ function clampAlertDuration(ms: number) {
 
 function playBeep() {
   try {
-    const Ctx = (window as typeof window & { AudioContext?: typeof AudioContext; webkitAudioContext?: typeof AudioContext }).AudioContext
-      ?? window.AudioContext;
+    const Ctx =
+      (
+        window as typeof window & {
+          AudioContext?: typeof AudioContext;
+          webkitAudioContext?: typeof AudioContext;
+        }
+      ).AudioContext ?? window.AudioContext;
     if (!Ctx) return;
     const ctx = new Ctx();
     const osc = ctx.createOscillator();
@@ -88,13 +104,57 @@ function playAlertSound(enabled: boolean) {
   });
 }
 
+function effectAudioUrl(pack: ValidatedPack, assetId: string): string | null {
+  const bytes = defaultPackAssets[assetId];
+  const asset = pack.manifest.assets[assetId];
+  if (!bytes || !asset) return null;
+  const blob = new Blob([bytes], { type: asset.contentType });
+  return URL.createObjectURL(blob);
+}
+
+function effectMediaUrl(pack: ValidatedPack, assetId: string): string | null {
+  const bytes = defaultPackAssets[assetId];
+  const asset = pack.manifest.assets[assetId];
+  if (!bytes || !asset) return null;
+  const blob = new Blob([bytes], { type: asset.contentType });
+  return URL.createObjectURL(blob);
+}
+
 export function GameOverlay() {
   const [overlayId, setOverlayId] = useState<string | null>(null);
   const [plan, setPlan] = useState<RenderPlan | null>(null);
+  const [pack, setPack] = useState<ValidatedPack | null>(null);
+  const [mediaUrl, setMediaUrl] = useState<string | null>(null);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const alertStartedAtRef = useRef<number | null>(null);
   const currentEventIdRef = useRef<string | null>(null);
+  const pendingEventRef = useRef<LiveEventRow | null>(null);
   const settingsRef = useRef<OverlaySettingsRow | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    validatePack(defaultPackManifest, { assets: defaultPackAssets })
+      .then((res) => {
+        if (!cancelled && res.ok) {
+          setPack(res);
+        }
+      })
+      .catch(() => {
+        // The bundled pack must validate; if it does not, effect events fail safe.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (pack && pendingEventRef.current) {
+      const event = pendingEventRef.current;
+      pendingEventRef.current = null;
+      void handleLiveEvent(event);
+    }
+  }, [pack]);
 
   useEffect(() => {
     let cancelled = false;
@@ -115,8 +175,6 @@ export function GameOverlay() {
 
     const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
-    // Load the Creator's overlay settings once so each Live Event renders
-    // immediately without waiting for a settings round-trip.
     void supabase
       .from("overlay_settings")
       .select("alert_duration_ms,min_amount,sound_enabled,tts_enabled,tts_voice")
@@ -152,23 +210,99 @@ export function GameOverlay() {
       if (timeoutRef.current) {
         clearTimeout(timeoutRef.current);
       }
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current = null;
+      }
     };
   }, [overlayId]);
 
+  useEffect(() => {
+    if (!plan || plan.type !== "effect" || !pack) return;
+
+    const urlsToRevoke: string[] = [];
+
+    if (plan.media) {
+      const url = effectMediaUrl(pack, plan.media.assetId);
+      if (url) {
+        setMediaUrl(url);
+        urlsToRevoke.push(url);
+      }
+    } else {
+      setMediaUrl(null);
+    }
+
+    if (plan.audio) {
+      const url = effectAudioUrl(pack, plan.audio.assetId);
+      if (url) {
+        const audio = new Audio(url);
+        audio.volume = plan.audio.volume;
+        audio.play().catch(() => {
+          // Effect audio is best-effort.
+        });
+        audio.onended = () => URL.revokeObjectURL(url);
+        audio.onerror = () => URL.revokeObjectURL(url);
+        audioRef.current = audio;
+        urlsToRevoke.push(url);
+      }
+    }
+
+    return () => {
+      for (const url of urlsToRevoke) {
+        URL.revokeObjectURL(url);
+      }
+    };
+  }, [plan, pack]);
+
   async function handleLiveEvent(event: LiveEventRow) {
+    const { donation, token_display, effect } = event.payload;
+
+    if (effect && !pack) {
+      pendingEventRef.current = event;
+      return;
+    }
+
     sendAck(event.id, "started");
     currentEventIdRef.current = event.id;
 
-    const { donation, token_display } = event.payload;
-
     const tokenDecimals = token_display.decimals;
     const tokenSymbol = token_display.symbol;
+    const amountDisplay = rawToDisplayAmount(donation.amount, tokenDecimals);
 
     const settings = settingsRef.current;
-    const alertDurationMs = clampAlertDuration(settings?.alert_duration_ms ?? DEFAULT_ALERT_DURATION_MS);
+    const alertDurationMs = clampAlertDuration(
+      settings?.alert_duration_ms ?? DEFAULT_ALERT_DURATION_MS,
+    );
     const soundEnabled = settings?.sound_enabled ?? true;
     const ttsEnabled = settings?.tts_enabled ?? false;
     const ttsVoice = settings?.tts_voice ?? null;
+
+    if (effect && pack) {
+      const result = planRender(
+        {
+          donorName: donation.donor_name,
+          amountDisplay,
+          tokenSymbol,
+          message: null,
+          effect: { effectId: effect.effect_id },
+        },
+        { pack, alertDurationMs },
+      );
+
+      if (!result.ok) {
+        sendAck(event.id, "failed");
+        return;
+      }
+
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+      }
+
+      setPlan(result.plan);
+      alertStartedAtRef.current = Date.now();
+      scheduleDismiss(result.plan.durationMs);
+      return;
+    }
 
     const minAmountRaw = displayToRawAmount(String(settings?.min_amount ?? "0"), tokenDecimals);
     if (!isAtLeastRaw(donation.amount, minAmountRaw)) {
@@ -176,7 +310,6 @@ export function GameOverlay() {
       return;
     }
 
-    const amountDisplay = rawToDisplayAmount(donation.amount, tokenDecimals);
     const result = planRender(
       {
         donorName: donation.donor_name,
@@ -214,6 +347,11 @@ export function GameOverlay() {
     }
     timeoutRef.current = setTimeout(() => {
       setPlan(null);
+      setMediaUrl(null);
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current = null;
+      }
       if (currentEventIdRef.current) {
         sendAck(currentEventIdRef.current, "completed");
       }
@@ -266,21 +404,95 @@ export function GameOverlay() {
     });
   }
 
-  if (plan?.type !== "donation-alert") {
-    return <div className="overlay" aria-live="polite" />;
+  if (plan?.type === "donation-alert") {
+    return (
+      <div className="overlay">
+        <div className="overlay-alert" aria-live="polite">
+          <div className="overlay-alert-header">
+            <span className="overlay-alert-donor">{plan.donorName}</span>
+            <span className="overlay-alert-amount">
+              {plan.amountDisplay} {plan.tokenSymbol}
+            </span>
+          </div>
+          {plan.message ? <p className="overlay-alert-message">{plan.message}</p> : null}
+        </div>
+      </div>
+    );
   }
 
-  return (
-    <div className="overlay">
-      <div className="overlay-alert" aria-live="polite">
-        <div className="overlay-alert-header">
-          <span className="overlay-alert-donor">{plan.donorName}</span>
-          <span className="overlay-alert-amount">
-            {plan.amountDisplay} {plan.tokenSymbol}
+  if (plan?.type === "effect") {
+    return (
+      <div className="overlay" aria-live="polite">
+        <EffectView plan={plan} mediaUrl={mediaUrl ?? null} />
+        <div className="overlay-attribution">
+          <span className="overlay-attribution-donor">{plan.attribution.donorName}</span>
+          <span className="overlay-attribution-amount">
+            {plan.attribution.amountDisplay} {plan.attribution.tokenSymbol}
           </span>
+          <span className="overlay-attribution-effect">{plan.attribution.effectName}</span>
         </div>
-        {plan.message ? <p className="overlay-alert-message">{plan.message}</p> : null}
       </div>
-    </div>
-  );
+    );
+  }
+
+  return <div className="overlay" aria-live="polite" />;
+}
+
+function EffectView({ plan, mediaUrl }: { plan: RenderPlan & { type: "effect" }; mediaUrl: string | null }) {
+  if (plan.effectType === "jump-scare") {
+    return (
+      <div className="effect-jump-scare">
+        {mediaUrl ? (
+          <img
+            src={mediaUrl}
+            alt=""
+            className="effect-jump-scare-media"
+            style={{ maxWidth: `${plan.media?.maxDisplayPct ?? 80}%`, maxHeight: `${plan.media?.maxDisplayPct ?? 80}%` }}
+          />
+        ) : null}
+      </div>
+    );
+  }
+
+  if (plan.effectType === "screen-flash") {
+    const geometry = plan.geometry as { type: "screen-flash"; color: string };
+    return (
+      <div
+        className="effect-screen-flash"
+        style={{ background: geometry.color }}
+      />
+    );
+  }
+
+  if (plan.effectType === "screen-cover") {
+    const geometry = plan.geometry as { type: "screen-cover"; obscuredPct: number };
+    const obscured = geometry.obscuredPct;
+    const offset = (100 - obscured) / 2;
+    return (
+      <div
+        className="effect-screen-cover"
+        style={{
+          top: `${offset}%`,
+          left: `${offset}%`,
+          width: `${obscured}vw`,
+          height: `${obscured}vh`,
+        }}
+      />
+    );
+  }
+
+  if (plan.effectType === "tunnel-vision") {
+    const geometry = plan.geometry as { type: "tunnel-vision"; visibleDiameterPct: number };
+    const radius = geometry.visibleDiameterPct / 2;
+    return (
+      <div
+        className="effect-tunnel-vision"
+        style={{
+          background: `radial-gradient(circle at center, transparent ${radius}%, rgba(0, 0, 0, 0.92) ${radius + 0.5}%)`,
+        }}
+      />
+    );
+  }
+
+  return null;
 }

@@ -318,6 +318,49 @@ describe("POST /verify", () => {
     expect(await res.json()).toEqual({ status: "confirmed" });
   });
 
+  it("returns 200 confirmed for an effect donation with a matching Effect Intent", async () => {
+    supabaseMock.setResponder("donations:select", () => ({ data: null, error: null }));
+    supabaseMock.setResponder("profiles:select", () => ({ data: { id: "p1", overlay_id: "ov1" }, error: null }));
+    supabaseMock.setResponder("donations:insert", () => ({ data: { id: "d1" }, error: null }));
+    supabaseMock.setResponder("tokens:select", () => ({ data: { symbol: "USDC", decimals: 6 }, error: null }));
+    supabaseMock.setResponder("live_events:select", () => ({ data: null, error: null }));
+    supabaseMock.setResponder("rpc:next_live_event_sequence", () => ({ data: { next_live_event_sequence: 1 }, error: null }));
+    supabaseMock.setResponder("live_events:insert", () => ({
+      data: { id: "le-effect", sequence: 1, created_at: "2026-07-25T12:00:00.000Z", expires_at: "2026-07-25T12:00:30.000Z" },
+      error: null,
+    }));
+    supabaseMock.setResponder("effect_intents:select", () => ({
+      data: {
+        id: "intent-1",
+        creator_profile_id: "p1",
+        token: "USDC",
+        raw_amount: "1000000",
+        pack_id: "startip.default",
+        pack_version: "1.0.0",
+        effect_id: "jump-scare",
+        donation_prep_id: "prep-1",
+        status: "pending",
+        expires_at: "2099-01-01T00:00:00.000Z",
+        donation_id: null,
+      },
+      error: null,
+    }));
+    supabaseMock.setResponder("effect_intents:update", () => ({ data: null, error: null }));
+    supabaseMock.setResponder("live_event_settings:select", () => ({
+      data: { live_events_enabled: true },
+      error: null,
+    }));
+    getTransaction.mockResolvedValue(
+      makeSuccessTxResponse(makeDonationReceivedEvent("USDC"), DONOR),
+    );
+    const res = await postVerify({
+      tx_hash: TX_HASH,
+      donation_prep_id: "prep-1",
+    });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ status: "confirmed" });
+  });
+
   it("returns 400 invalid_body when user_id is present but not a non-empty string", async () => {
     const res = await postVerify({ tx_hash: TX_HASH, user_id: "" });
     expect(res.status).toBe(400);

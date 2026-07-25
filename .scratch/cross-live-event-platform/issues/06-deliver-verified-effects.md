@@ -1,4 +1,4 @@
-Status: ready-for-agent
+Status: done
 
 # Deliver verified Donation Effects end to end
 

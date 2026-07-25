@@ -2,7 +2,7 @@ import * as StellarSdk from "@stellar/stellar-sdk";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { classifyMessage } from "./moderation";
 import { toByteaHex } from "../bytea";
-import { createOrdinaryLiveEvent } from "../live-events/deliver";
+import { createOrdinaryLiveEvent, createEffectLiveEvent } from "../live-events/deliver";
 
 /**
  * `POST /verify` core logic, extracted so it can be tested as a pure function
@@ -212,7 +212,7 @@ export async function verifyDonation(
     // ensure a Live Event exists for ordinary Donations.
     if (existingRow.status === "confirmed") {
       donationId = existingRow.id;
-      return deliverOrdinaryLiveEventIfNeeded(service, input, {
+      return deliverLiveEventIfNeeded(service, input, {
         donationId,
         creatorProfileId,
         txHash,
@@ -266,7 +266,7 @@ export async function verifyDonation(
     const finalMessage =
       (update.message as string | null | undefined) ?? existingRow.message ?? null;
 
-    return deliverOrdinaryLiveEventIfNeeded(service, input, {
+    return deliverLiveEventIfNeeded(service, input, {
       donationId,
       creatorProfileId,
       txHash,
@@ -316,7 +316,7 @@ export async function verifyDonation(
   if (!inserted) return { status: 500, body: { error: "db_error" } };
 
   donationId = (inserted as { id: string }).id;
-  return deliverOrdinaryLiveEventIfNeeded(service, input, {
+  return deliverLiveEventIfNeeded(service, input, {
     donationId,
     creatorProfileId,
     txHash,
@@ -379,18 +379,40 @@ async function prepareDelivery(
   };
 }
 
+interface EffectIntentRow {
+  id: string;
+  creator_profile_id: string;
+  token: string;
+  raw_amount: string;
+  pack_id: string;
+  pack_version: string;
+  effect_id: string;
+  donation_prep_id: string;
+  status: string;
+  expires_at: string;
+  donation_id: string | null;
+}
+
+interface LiveEventSettingsRow {
+  live_events_enabled: boolean;
+}
+
+async function suppressEffectIntent(
+  service: SupabaseClient,
+  intentId: string,
+  reason: string,
+): Promise<void> {
+  await service
+    .from("effect_intents")
+    .update({ status: "suppressed", suppression_reason: reason })
+    .eq("id", intentId);
+}
+
 async function deliverOrdinaryLiveEventIfNeeded(
   service: SupabaseClient,
   input: VerifyInput,
   ctx: DeliverContext,
 ): Promise<VerifyResult> {
-  // Effect Donations are delivered by a separate path that matches the locked
-  // Effect Intent. Skip ordinary Live Event creation when a preparation id is
-  // present so ordinary and effect events do not collide.
-  if (input.donation_prep_id) {
-    return { status: 200, body: { status: "confirmed" } };
-  }
-
   const delivery = await prepareDelivery(service, {
     creatorProfileId: ctx.creatorProfileId,
     token: ctx.token,
@@ -418,4 +440,135 @@ async function deliverOrdinaryLiveEventIfNeeded(
     return { status: 500, body: { error: result.error } };
   }
   return { status: 200, body: { status: "confirmed" } };
+}
+
+async function deliverEffectLiveEventIfNeeded(
+  service: SupabaseClient,
+  input: VerifyInput,
+  ctx: DeliverContext,
+): Promise<VerifyResult> {
+  const donationPrepId = input.donation_prep_id!;
+
+  const delivery = await prepareDelivery(service, {
+    creatorProfileId: ctx.creatorProfileId,
+    token: ctx.token,
+  });
+  if (delivery.error !== null) return { status: 500, body: { error: delivery.error } };
+
+  const expiresAt = new Date(Date.now() + LIVE_EVENT_EXPIRY_MS).toISOString();
+
+  const { data: existingEvent, error: existingEventErr } = await service
+    .from("live_events")
+    .select("id,status")
+    .eq("donation_id", ctx.donationId)
+    .maybeSingle();
+  if (existingEventErr) return { status: 500, body: { error: "db_error" } };
+  if (existingEvent) {
+    return { status: 200, body: { status: "confirmed" } };
+  }
+
+  const { data: intent, error: intentErr } = await service
+    .from("effect_intents")
+    .select(
+      "id,creator_profile_id,token,raw_amount,pack_id,pack_version,effect_id,donation_prep_id,status,expires_at,donation_id",
+    )
+    .eq("donation_prep_id", donationPrepId)
+    .maybeSingle();
+  if (intentErr) return { status: 500, body: { error: "db_error" } };
+
+  const ordinaryInput = {
+    creatorProfileId: ctx.creatorProfileId,
+    overlayId: delivery.overlayId,
+    donationId: ctx.donationId,
+    txHash: ctx.txHash,
+    donorName: ctx.donorName ?? "Anonymous",
+    donorAddress: ctx.donorAddress,
+    amount: ctx.amount,
+    token: ctx.token,
+    message: ctx.message,
+    tokenSymbol: delivery.tokenSymbol,
+    tokenDecimals: delivery.tokenDecimals,
+    expiresAt,
+  };
+
+  if (!intent) {
+    const result = await createOrdinaryLiveEvent(service, ordinaryInput);
+    if (!result.ok) return { status: 500, body: { error: result.error } };
+    return { status: 200, body: { status: "confirmed" } };
+  }
+
+  const intentRow = intent as EffectIntentRow;
+
+  if (intentRow.status === "suppressed") {
+    const result = await createOrdinaryLiveEvent(service, ordinaryInput);
+    if (!result.ok) return { status: 500, body: { error: result.error } };
+    return { status: 200, body: { status: "confirmed" } };
+  }
+
+  if (intentRow.status === "consumed") {
+    return { status: 200, body: { status: "confirmed" } };
+  }
+
+  if (new Date() > new Date(intentRow.expires_at)) {
+    await suppressEffectIntent(service, intentRow.id, "expired");
+    const result = await createOrdinaryLiveEvent(service, ordinaryInput);
+    if (!result.ok) return { status: 500, body: { error: result.error } };
+    return { status: 200, body: { status: "confirmed" } };
+  }
+
+  const matches =
+    intentRow.creator_profile_id === ctx.creatorProfileId &&
+    intentRow.token === ctx.token &&
+    intentRow.raw_amount === ctx.amount;
+  if (!matches) {
+    await suppressEffectIntent(service, intentRow.id, "verification_mismatch");
+    const result = await createOrdinaryLiveEvent(service, ordinaryInput);
+    if (!result.ok) return { status: 500, body: { error: result.error } };
+    return { status: 200, body: { status: "confirmed" } };
+  }
+
+  const { data: settings, error: settingsErr } = await service
+    .from("live_event_settings")
+    .select("live_events_enabled")
+    .eq("creator_profile_id", ctx.creatorProfileId)
+    .maybeSingle();
+  if (settingsErr) return { status: 500, body: { error: "db_error" } };
+
+  const enabled = (settings as LiveEventSettingsRow | null)?.live_events_enabled ?? false;
+  if (!enabled) {
+    await suppressEffectIntent(service, intentRow.id, "creator_disabled");
+    const result = await createOrdinaryLiveEvent(service, ordinaryInput);
+    if (!result.ok) return { status: 500, body: { error: result.error } };
+    return { status: 200, body: { status: "confirmed" } };
+  }
+
+  const effectResult = await createEffectLiveEvent(service, {
+    ...ordinaryInput,
+    effectIntentId: intentRow.id,
+    packId: intentRow.pack_id,
+    packVersion: intentRow.pack_version,
+    effectId: intentRow.effect_id,
+  });
+  if (!effectResult.ok) {
+    return { status: 500, body: { error: effectResult.error } };
+  }
+
+  const { error: consumeErr } = await service
+    .from("effect_intents")
+    .update({ status: "consumed", donation_id: ctx.donationId })
+    .eq("id", intentRow.id);
+  if (consumeErr) return { status: 500, body: { error: "db_error" } };
+
+  return { status: 200, body: { status: "confirmed" } };
+}
+
+async function deliverLiveEventIfNeeded(
+  service: SupabaseClient,
+  input: VerifyInput,
+  ctx: DeliverContext,
+): Promise<VerifyResult> {
+  if (input.donation_prep_id) {
+    return deliverEffectLiveEventIfNeeded(service, input, ctx);
+  }
+  return deliverOrdinaryLiveEventIfNeeded(service, input, ctx);
 }
