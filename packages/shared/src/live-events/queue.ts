@@ -8,14 +8,10 @@
  * traffic is best-effort and never blocks rendering.
  */
 
-export type LifecycleStatus =
-  | "queued"
-  | "started"
-  | "completed"
-  | "failed"
-  | "stopped"
-  | "missed"
-  | "expired";
+import type { LifecycleStatus } from "./status";
+import { isTerminalLiveEventStatus } from "./status";
+
+export type { LifecycleStatus } from "./status";
 
 export interface QueueItem {
   id: string;
@@ -42,18 +38,6 @@ interface ItemState<T extends QueueItem> {
   item: T;
   status: LifecycleStatus;
   startedAt: number | null;
-}
-
-const TERMINAL_STATUSES = new Set<LifecycleStatus>([
-  "completed",
-  "failed",
-  "stopped",
-  "missed",
-  "expired",
-]);
-
-function isTerminal(status: LifecycleStatus): boolean {
-  return TERMINAL_STATUSES.has(status);
 }
 
 function parseTimestamp(iso: string): number {
@@ -90,7 +74,7 @@ export class LiveEventQueue<T extends QueueItem> {
       .map((id) => this.items.get(id))
       .filter(
         (state): state is ItemState<T> & { status: Exclude<LifecycleStatus, "queued" | "started"> } =>
-          state !== undefined && isTerminal(state.status),
+          state !== undefined && isTerminalLiveEventStatus(state.status),
       )
       .map((state) => ({ item: state.item, status: state.status }));
 
@@ -161,14 +145,20 @@ export class LiveEventQueue<T extends QueueItem> {
     }
   }
 
+  private expireIfOverdue(state: ItemState<T>, now: number): boolean {
+    if (now > parseTimestamp(state.item.expiresAt)) {
+      this.removeFromQueue(state.item.id);
+      this.transition(state, "expired");
+      return true;
+    }
+    return false;
+  }
+
   private expireQueued(now: number): void {
     for (const id of [...this.queueOrder]) {
       const state = this.items.get(id);
       if (!state || state.status !== "queued") continue;
-      if (now > parseTimestamp(state.item.expiresAt)) {
-        this.removeFromQueue(id);
-        this.transition(state, "expired");
-      }
+      this.expireIfOverdue(state, now);
     }
   }
 
@@ -179,9 +169,7 @@ export class LiveEventQueue<T extends QueueItem> {
       const state = this.items.get(id);
       if (!state || state.status !== "queued") continue;
 
-      if (now > parseTimestamp(state.item.expiresAt)) {
-        this.removeFromQueue(id);
-        this.transition(state, "expired");
+      if (this.expireIfOverdue(state, now)) {
         continue;
       }
 
@@ -214,7 +202,7 @@ export class LiveEventQueue<T extends QueueItem> {
 
   private transition(state: ItemState<T>, status: LifecycleStatus): void {
     state.status = status;
-    if (isTerminal(status)) {
+    if (isTerminalLiveEventStatus(status)) {
       this.terminalOrder.push(state.item.id);
     }
     this.onAck(state.item, status);

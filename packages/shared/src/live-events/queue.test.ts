@@ -27,11 +27,6 @@ function item(id: string, sequence: number, expiresAtOffset: number = DEADLINE_M
   return { id, sequence, expiresAt: iso(expiresAtOffset) };
 }
 
-function makeQueue(now: number, onAck = () => {}) {
-  const clock = { now: () => now };
-  return new LiveEventQueue<TestItem>({ clock, onAck: vi.fn(onAck) });
-}
-
 describe("LiveEventQueue", () => {
   it("starts the first queued event immediately and acks started", () => {
     const acks: { id: string; status: string }[] = [];

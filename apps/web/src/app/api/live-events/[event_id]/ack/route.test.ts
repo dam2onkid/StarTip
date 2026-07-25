@@ -5,6 +5,7 @@ import { NextRequest } from "next/server";
 const WORKER_URL = "http://localhost:3101";
 const WORKER_SECRET = "dev-worker-secret";
 const EVENT_ID = "00000000-0000-0000-0000-000000000001";
+const OVERLAY_ID = "ov-test";
 
 vi.mock("@/lib/env", () => ({
   env: {
@@ -41,7 +42,7 @@ describe("POST /api/live-events/[event_id]/ack", () => {
     expect(await res.json()).toEqual({ error: "invalid_body" });
   });
 
-  it("returns 400 invalid_body when status is missing", async () => {
+  it("returns 400 invalid_body when overlay_id or status is missing", async () => {
     const { POST } = await import("./route");
     const res = await POST(postReq({}), { params: Promise.resolve({ event_id: EVENT_ID }) });
     expect(res.status).toBe(400);
@@ -51,7 +52,7 @@ describe("POST /api/live-events/[event_id]/ack", () => {
   it("returns 400 invalid_body when status is not an allowed value", async () => {
     const { POST } = await import("./route");
     const res = await POST(
-      postReq({ status: "bogus" }),
+      postReq({ overlay_id: OVERLAY_ID, status: "bogus" }),
       { params: Promise.resolve({ event_id: EVENT_ID }) },
     );
     expect(res.status).toBe(400);
@@ -70,7 +71,7 @@ describe("POST /api/live-events/[event_id]/ack", () => {
 
     const { POST } = await import("./route");
     const res = await POST(
-      postReq({ status: "started" }),
+      postReq({ overlay_id: OVERLAY_ID, status: "started" }),
       { params: Promise.resolve({ event_id: EVENT_ID }) },
     );
     expect(res.status).toBe(200);
@@ -84,6 +85,7 @@ describe("POST /api/live-events/[event_id]/ack", () => {
       authorization: `Bearer ${WORKER_SECRET}`,
     });
     expect(JSON.parse(fetchCalls[0].init.body as string)).toEqual({
+      overlay_id: OVERLAY_ID,
       status: "started",
     });
   });
@@ -95,7 +97,7 @@ describe("POST /api/live-events/[event_id]/ack", () => {
 
     const { POST } = await import("./route");
     const res = await POST(
-      postReq({ status: "completed" }),
+      postReq({ overlay_id: OVERLAY_ID, status: "completed" }),
       { params: Promise.resolve({ event_id: EVENT_ID }) },
     );
     expect(res.status).toBe(504);

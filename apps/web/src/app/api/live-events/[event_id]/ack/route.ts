@@ -1,7 +1,8 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { env } from "@/lib/env";
+import { ACK_LIVE_EVENT_STATUSES } from "@startip/shared/live-events/status";
 
-const ACK_STATUS_VALUES = new Set(["started", "completed", "failed", "stopped", "expired"]);
+const ACK_STATUS_VALUES: Set<string> = new Set(ACK_LIVE_EVENT_STATUSES);
 const ACK_PROXY_TIMEOUT_MS = 10_000;
 
 interface RouteContext {
@@ -34,7 +35,10 @@ export async function POST(request: NextRequest, context: RouteContext) {
           "content-type": "application/json",
           authorization: `Bearer ${env.WORKER_SECRET}`,
         },
-        body: JSON.stringify({ status: body.status }),
+        body: JSON.stringify({
+          overlay_id: body.overlay_id,
+          status: body.status,
+        }),
         signal: controller.signal,
       },
     );
@@ -53,10 +57,12 @@ export async function POST(request: NextRequest, context: RouteContext) {
   }
 }
 
-function isValidBody(body: unknown): body is { status: string } {
+function isValidBody(body: unknown): body is { overlay_id: string; status: string } {
   if (typeof body !== "object" || body === null) return false;
   const b = body as Record<string, unknown>;
   return (
+    typeof b.overlay_id === "string" &&
+    b.overlay_id.length > 0 &&
     typeof b.status === "string" &&
     b.status.trim().length > 0 &&
     ACK_STATUS_VALUES.has(b.status)

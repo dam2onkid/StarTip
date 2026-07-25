@@ -124,12 +124,12 @@ function effectMediaUrl(pack: ValidatedPack, assetId: string): string | null {
   return URL.createObjectURL(blob);
 }
 
-function sendAck(eventId: string, status: string) {
+function sendAck(overlayId: string, eventId: string, status: string) {
   if (!apiBaseUrl) return;
   void fetch(`${apiBaseUrl}/api/live-events/${eventId}/ack`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ status }),
+    body: JSON.stringify({ overlay_id: overlayId, status }),
     keepalive: true,
   });
 }
@@ -149,7 +149,7 @@ export function GameOverlay() {
   if (!queueRef.current) {
     queueRef.current = new LiveEventQueue<QueueEvent>({
       clock: { now: () => Date.now() },
-      onAck: (event, status) => sendAck(event.id, status),
+      onAck: (event, status) => sendAck(event.overlay_id, event.id, status),
     });
   }
 
@@ -299,11 +299,6 @@ export function GameOverlay() {
       return;
     }
 
-    if (!pack) {
-      // Wait for the bundled pack to validate before planning an effect.
-      return;
-    }
-
     const { donation, token_display, effect } = activeEvent.payload;
     const tokenDecimals = token_display.decimals;
     const tokenSymbol = token_display.symbol;
@@ -318,6 +313,11 @@ export function GameOverlay() {
     const ttsVoice = settings?.tts_voice ?? null;
 
     if (effect) {
+      if (!pack) {
+        // Wait for the bundled pack to validate before planning an effect.
+        return;
+      }
+
       const result = planRender(
         {
           donorName: donation.donor_name,

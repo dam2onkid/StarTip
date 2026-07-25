@@ -1,15 +1,20 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import {
+  type LifecycleStatus,
+  ACK_LIVE_EVENT_STATUSES,
+  isTerminalLiveEventStatus,
+} from "@startip/shared/live-events/status";
 
 /**
  * Worker Live Events - lifecycle acknowledgements.
  *
  * `POST /live-events/:event_id/ack` receives a lifecycle transition from a
  * Live Event Client (proxied by the Next.js app). The Worker verifies that the
- * event exists, applies forward-only lifecycle rules, and persists the
- * transition. Terminal states are idempotent; backward or conflicting
- * transitions are rejected.
+ * event exists and belongs to the requesting Overlay ID, applies forward-only
+ * lifecycle rules, and persists the transition atomically. Terminal states are
+ * idempotent; backward or conflicting transitions are rejected.
  */
 
 export interface LiveEventsAckDeps {
@@ -17,6 +22,7 @@ export interface LiveEventsAckDeps {
 }
 
 const ackInputSchema = z.object({
+  overlay_id: z.string().min(1),
   status: z.enum(["started", "completed", "failed", "stopped", "expired"]),
 });
 
@@ -37,19 +43,13 @@ export type AckResult =
 
 interface LiveEventRow {
   id: string;
-  status: string;
+  overlay_id: string;
+  status: LifecycleStatus;
   expires_at: string;
 }
 
-const TERMINAL_STATUSES = new Set(["completed", "failed", "stopped", "missed", "expired"]);
-const TERMINAL_ACK_STATUSES = new Set(["completed", "failed", "stopped", "expired"]);
-
-function isTerminal(status: string): boolean {
-  return TERMINAL_STATUSES.has(status);
-}
-
-function isTerminalAck(status: string): status is "completed" | "failed" | "stopped" | "expired" {
-  return TERMINAL_ACK_STATUSES.has(status);
+function isAckStatus(status: string): status is AckInput["status"] {
+  return (ACK_LIVE_EVENT_STATUSES as string[]).includes(status);
 }
 
 export async function ackLiveEvent(
@@ -61,11 +61,11 @@ export async function ackLiveEvent(
   if (!parsed.success) {
     return { status: 400, body: { error: "invalid_body" } };
   }
-  const { status } = parsed.data;
+  const { overlay_id: overlayId, status } = parsed.data;
 
   const { data: event, error: selectErr } = await deps.service
     .from("live_events")
-    .select("id,status,expires_at")
+    .select("id,overlay_id,status,expires_at")
     .eq("id", eventId)
     .maybeSingle();
   if (selectErr) {
@@ -77,7 +77,11 @@ export async function ackLiveEvent(
 
   const row = event as LiveEventRow;
 
-  if (isTerminal(row.status)) {
+  if (row.overlay_id !== overlayId) {
+    return { status: 401, body: { error: "unauthorized" } };
+  }
+
+  if (isTerminalLiveEventStatus(row.status)) {
     return row.status === status
       ? { status: 200, body: { id: row.id, status: row.status } }
       : { status: 409, body: { error: "already_terminal" } };
@@ -88,7 +92,7 @@ export async function ackLiveEvent(
       if (new Date() > new Date(row.expires_at)) {
         return { status: 409, body: { error: "event_expired" } };
       }
-      return updateStatus(deps, eventId, status);
+      return updateStatus(deps, eventId, overlayId, row.status, status);
     }
     return row.status === "started"
       ? { status: 200, body: { id: row.id, status: row.status } }
@@ -99,17 +103,14 @@ export async function ackLiveEvent(
     if (row.status !== "queued") {
       return { status: 409, body: { error: "invalid_transition" } };
     }
-    return updateStatus(deps, eventId, status);
+    return updateStatus(deps, eventId, overlayId, row.status, status);
   }
 
-  if (isTerminalAck(status)) {
-    if (row.status === "queued" && status !== "stopped") {
+  if (isAckStatus(status)) {
+    if (row.status !== "started") {
       return { status: 409, body: { error: "invalid_transition" } };
     }
-    if (row.status === "started" || (row.status === "queued" && status === "stopped")) {
-      return updateStatus(deps, eventId, status);
-    }
-    return { status: 409, body: { error: "invalid_transition" } };
+    return updateStatus(deps, eventId, overlayId, row.status, status);
   }
 
   return { status: 400, body: { error: "invalid_body" } };
@@ -118,6 +119,8 @@ export async function ackLiveEvent(
 async function updateStatus(
   deps: LiveEventsAckDeps,
   eventId: string,
+  overlayId: string,
+  expectedStatus: LifecycleStatus,
   status: AckInput["status"],
 ): Promise<AckResult> {
   const update: Record<string, unknown> = { status };
@@ -127,12 +130,20 @@ async function updateStatus(
     update.ack_terminal_at = new Date().toISOString();
   }
 
-  const { error: updateErr } = await deps.service
+  const { data, error: updateErr } = await deps.service
     .from("live_events")
     .update(update)
-    .eq("id", eventId);
+    .eq("id", eventId)
+    .eq("overlay_id", overlayId)
+    .eq("status", expectedStatus)
+    .select("id");
+
   if (updateErr) {
     return { status: 500, body: { error: "db_error" } };
+  }
+
+  if (!data || data.length === 0) {
+    return { status: 409, body: { error: "invalid_transition" } };
   }
 
   return { status: 200, body: { id: eventId, status } };
