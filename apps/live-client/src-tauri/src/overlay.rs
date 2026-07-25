@@ -168,7 +168,8 @@ impl GameOverlay {
         self.running
     }
 
-    pub fn set_emergency_shortcut_registered(&mut self, registered: bool) {
+    #[cfg(test)]
+    fn set_emergency_shortcut_registered(&mut self, registered: bool) {
         self.emergency_shortcut_registered = registered;
     }
 
@@ -180,7 +181,36 @@ impl GameOverlay {
 #[cfg(desktop)]
 pub mod tauri_impl {
     use super::*;
-    use tauri::{Emitter, PhysicalPosition, PhysicalSize, Position, Size, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
+    use tauri::{Emitter, Manager, PhysicalPosition, PhysicalSize, Position, Size, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
+
+    impl GameOverlay {
+        pub fn register_emergency_shortcut(&mut self, app: tauri::AppHandle) -> Result<(), String> {
+            use tauri_plugin_global_shortcut::{
+                Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState,
+            };
+
+            app.plugin(tauri_plugin_global_shortcut::Builder::new().build())
+                .map_err(|e| e.to_string())?;
+
+            let shortcut = Shortcut::new(
+                Some(Modifiers::CONTROL | Modifiers::ALT | Modifiers::SUPER),
+                Code::KeyE,
+            );
+
+            app.global_shortcut()
+                .on_shortcut(shortcut, |app, _, event| {
+                    if event.state == ShortcutState::Pressed {
+                        if let Ok(mut overlay) = app.state::<std::sync::Mutex<GameOverlay>>().lock() {
+                            let _ = overlay.emergency_stop();
+                        }
+                    }
+                })
+                .map_err(|e| e.to_string())?;
+
+            self.emergency_shortcut_registered = true;
+            Ok(())
+        }
+    }
 
     fn to_display(m: &tauri::Monitor, primary: bool) -> Display {
         Display {

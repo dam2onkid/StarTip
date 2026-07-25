@@ -319,4 +319,24 @@ describe("LiveEventClient", () => {
     vi.advanceTimersByTime(30_000);
     expect(mock.createCount()).toBe(1);
   });
+
+  it("drops queued events older than the new live boundary on reconnect", () => {
+    const c = client();
+    c.start();
+    mock.simulateStatus("SUBSCRIBED");
+
+    mock.simulateInsert(eventRow("active-effect", 1, 100, "jump-scare"));
+    mock.simulateInsert(eventRow("queued-old", 2, 200, "screen-flash"));
+    expect(c.getState().activeEvent?.id).toBe("active-effect");
+    expect(c.getState().queueLength).toBe(1);
+
+    mock.simulateStatus("CLOSED");
+    expect(c.getState().status).toBe("connection-lost");
+
+    now += 60_000;
+    c.reconnectNow();
+    expect(c.getState().status).toBe("connecting");
+    expect(c.getState().activeEvent?.id).toBe("active-effect");
+    expect(c.getState().queueLength).toBe(0);
+  });
 });

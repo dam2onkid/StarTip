@@ -17,7 +17,6 @@
     "core:window:allow-show",
     "core:window:allow-hide",
     "core:tray:default",
-    "global-shortcut:allow-is-registered",
     "global-shortcut:allow-register"
   ]
 }

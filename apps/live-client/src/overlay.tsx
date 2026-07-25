@@ -98,12 +98,7 @@ function sendAck(overlayId: string, eventId: string, status: string) {
 }
 
 export function GameOverlay() {
-  const [overlayId, setOverlayId] = useState<string | null>(null);
-  const [pack, setPack] = useState<ValidatedPack | null>(null);
-  const [plan, setPlan] = useState<RenderPlan | null>(null);
-  const [mediaUrl, setMediaUrl] = useState<string | null>(null);
-  const [activeEvent, setActiveEvent] = useState<LiveEventQueueItem | null>(null);
-
+  const mediaUrlRef = useRef<string | null>(null);
   const clientRef = useRef<LiveEventClient | null>(null);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const alertStartedAtRef = useRef<number | null>(null);
@@ -111,6 +106,16 @@ export function GameOverlay() {
   const packRef = useRef<ValidatedPack | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const testAudioRef = useRef<HTMLAudioElement | null>(null);
+
+  const [overlayId, setOverlayId] = useState<string | null>(null);
+  const [pack, setPack] = useState<ValidatedPack | null>(null);
+  const [plan, setPlan] = useState<RenderPlan | null>(null);
+  const [mediaUrl, setMediaUrl] = useState<string | null>(null);
+  const [activeEvent, setActiveEvent] = useState<LiveEventQueueItem | null>(null);
+
+  useEffect(() => {
+    mediaUrlRef.current = mediaUrl;
+  }, [mediaUrl]);
 
   useEffect(() => {
     let cancelled = false;
@@ -187,10 +192,12 @@ export function GameOverlay() {
     client.start();
     clientRef.current = client;
 
-    const listeners: (() => void)[] = [];
+    const unlistenersRef: { current: (() => void)[] } = { current: [] };
+    let cleanedUp = false;
+
     const setupListeners = async () => {
-      listeners.push(
-        await listen<{ effectId: string }>("test-effect", (event) => {
+      const unlisteners = await Promise.all([
+        listen<{ effectId: string }>("test-effect", (event) => {
           const effectId = event.payload.effectId;
           if (!effectId || !clientRef.current || !overlayId) return;
           const now = Date.now();
@@ -220,10 +227,7 @@ export function GameOverlay() {
             },
           });
         }),
-      );
-
-      listeners.push(
-        await listen("test-alert", () => {
+        listen("test-alert", () => {
           if (!clientRef.current || !overlayId) return;
           const now = Date.now();
           const expiresAt = new Date(now + 60_000).toISOString();
@@ -248,10 +252,7 @@ export function GameOverlay() {
             },
           });
         }),
-      );
-
-      listeners.push(
-        await listen<{ effectId: string }>("test-audio", (event) => {
+        listen<{ effectId: string }>("test-audio", (event) => {
           const pack = packRef.current;
           if (event.payload.effectId !== "jump-scare" || !pack) return;
           const url = packAssetUrl(pack, "jump-scare-audio");
@@ -268,24 +269,33 @@ export function GameOverlay() {
           audio.onerror = () => URL.revokeObjectURL(url);
           testAudioRef.current = audio;
         }),
-      );
-
-      listeners.push(
-        await listen("emergency-stop", () => {
-          testAudioRef.current?.pause();
-          testAudioRef.current = null;
+        listen("emergency-stop", () => {
+          const activeAudio = audioRef.current;
+          if (activeAudio) {
+            activeAudio.pause();
+            if (activeAudio.src) URL.revokeObjectURL(activeAudio.src);
+            audioRef.current = null;
+          }
+          const testAudio = testAudioRef.current;
+          if (testAudio) {
+            testAudio.pause();
+            if (testAudio.src) URL.revokeObjectURL(testAudio.src);
+            testAudioRef.current = null;
+          }
+          const currentMediaUrl = mediaUrlRef.current;
+          if (currentMediaUrl) {
+            URL.revokeObjectURL(currentMediaUrl);
+            mediaUrlRef.current = null;
+            setMediaUrl(null);
+          }
+          setPlan(null);
+          setActiveEvent(null);
           clientRef.current?.emergencyStop();
         }),
-      );
-
-      listeners.push(
-        await listen("reconnect-now", () => {
+        listen("reconnect-now", () => {
           clientRef.current?.reconnectNow();
         }),
-      );
-
-      listeners.push(
-        await listen("request-live-state", () => {
+        listen("request-live-state", () => {
           const state = clientRef.current?.getState() ?? {
             status: "disconnected" as ClientConnectionStatus,
             activeEvent: null,
@@ -294,14 +304,22 @@ export function GameOverlay() {
           };
           void emit("live-state", state);
         }),
-      );
+      ]);
+
+      if (cleanedUp) {
+        for (const unlisten of unlisteners) unlisten();
+      } else {
+        unlistenersRef.current = unlisteners;
+      }
     };
 
     void setupListeners();
 
     return () => {
+      cleanedUp = true;
       client.stop();
-      for (const unlisten of listeners) {
+      clientRef.current = null;
+      for (const unlisten of unlistenersRef.current) {
         unlisten();
       }
     };
@@ -449,6 +467,7 @@ export function GameOverlay() {
       }
       if (audioRef.current) {
         audioRef.current.pause();
+        if (audioRef.current.src) URL.revokeObjectURL(audioRef.current.src);
         audioRef.current = null;
       }
     };
@@ -464,10 +483,12 @@ export function GameOverlay() {
       setMediaUrl(null);
       if (audioRef.current) {
         audioRef.current.pause();
+        if (audioRef.current.src) URL.revokeObjectURL(audioRef.current.src);
         audioRef.current = null;
       }
       if (testAudioRef.current) {
         testAudioRef.current.pause();
+        if (testAudioRef.current.src) URL.revokeObjectURL(testAudioRef.current.src);
         testAudioRef.current = null;
       }
       clientRef.current?.completeActive(Date.now());

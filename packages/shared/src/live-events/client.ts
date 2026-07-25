@@ -170,7 +170,7 @@ export class LiveEventClient {
 
   constructor(options: LiveEventClientOptions) {
     this.options = {
-      boundarySkewMs: 5000,
+      boundarySkewMs: 0,
       initialReconnectDelayMs: 1000,
       maxReconnectDelayMs: 30000,
       jitterMaxMs: 1000,
@@ -263,6 +263,13 @@ export class LiveEventClient {
     this.boundary = this.clock.now() - this.options.boundarySkewMs;
     this.setStatus("connecting");
 
+    // Reconnection establishes a new live boundary. Any queued events from the
+    // previous connection that fall behind it are dropped so they never render.
+    this.queue.clear(
+      (item) => parseTimestamp(item.createdAt ?? item.expiresAt) < this.boundary,
+      "expired",
+    );
+
     const channel = this.options.channelFactory.createChannel(
       this.options.overlayId,
       (row) => this.onInsert(row),
@@ -290,6 +297,7 @@ export class LiveEventClient {
       id: row.id,
       sequence: row.sequence,
       expiresAt: row.expires_at,
+      createdAt: row.created_at,
       overlayId: row.overlay_id,
       payload: {
         donation: row.payload.donation,
@@ -305,6 +313,10 @@ export class LiveEventClient {
     if (status.status === "SUBSCRIBED") {
       this.reconnectAttempt = 1;
       this.setStatus("ready");
+      return;
+    }
+
+    if (status.status === "SUBSCRIBING") {
       return;
     }
 

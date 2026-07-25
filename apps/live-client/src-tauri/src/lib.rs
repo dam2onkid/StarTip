@@ -99,27 +99,9 @@ pub fn run() {
 
             #[cfg(desktop)]
             {
-                use tauri_plugin_global_shortcut::{
-                    Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState,
-                };
-
-                app.handle().plugin(tauri_plugin_global_shortcut::Builder::new().build())?;
-
-                let emergency_shortcut = Shortcut::new(
-                    Some(Modifiers::CONTROL | Modifiers::ALT | Modifiers::SUPER),
-                    Code::KeyE,
-                );
-
-                app.global_shortcut().on_shortcut(emergency_shortcut, |app, _, event| {
-                    if event.state == ShortcutState::Pressed {
-                        if let Ok(mut overlay) = app.state::<Mutex<GameOverlay>>().lock() {
-                            let _ = overlay.emergency_stop();
-                        }
-                    }
-                })?;
-
+                let handle = app.handle();
                 if let Ok(mut overlay) = app.state::<Mutex<GameOverlay>>().lock() {
-                    overlay.set_emergency_shortcut_registered(true);
+                    let _ = overlay.register_emergency_shortcut(handle.clone());
                 }
             }
 

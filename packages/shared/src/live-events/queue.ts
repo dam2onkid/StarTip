@@ -17,6 +17,7 @@ export interface QueueItem {
   id: string;
   sequence: number;
   expiresAt: string;
+  createdAt?: string;
 }
 
 export interface Clock {
@@ -137,18 +138,21 @@ export class LiveEventQueue<T extends QueueItem> {
    * of items removed.
    */
   clear(predicate: (item: T) => boolean, status: LifecycleStatus = "stopped"): number {
-    let removed = 0;
-    for (const id of [...this.queueOrder]) {
+    const removedIds = new Set<string>();
+    for (const id of this.queueOrder) {
       const state = this.items.get(id);
       if (!state || state.status !== "queued") continue;
       if (predicate(state.item)) {
-        this.removeFromQueue(id);
+        removedIds.add(id);
         this.transition(state, status);
-        removed += 1;
       }
     }
+    if (removedIds.size > 0) {
+      this.queueOrder = this.queueOrder.filter((id) => !removedIds.has(id));
+      this.dirty = true;
+    }
     this.emitIfDirty();
-    return removed;
+    return removedIds.size;
   }
 
   private insertBySequence(id: string): void {
