@@ -7,6 +7,8 @@ Context-specific domain language and boundaries for `apps/live-client`.
 - **Creator:** The streamer running a live event.
 - **Donor:** A viewer who sends a tip or interaction.
 - **Game Overlay:** The transparent, pointer-pass-through full-screen surface drawn over the Creator's game.
-- **Control Window:** The Tauri window where the Creator enters the Overlay ID and selects the Target Display.
+- **Control Window:** The Tauri window where the Creator enters the Overlay ID, selects the Target Display, and controls the live event session.
 - **Target Display:** The monitor on which the Game Overlay is rendered.
 - **Overlay ID:** Prototype access identifier held only in process memory.
+- **Emergency Stop:** Immediately stops active effect media and audio, marks the active effect stopped, and clears queued Donation Effects while keeping the Game Overlay and ordinary Donation Alerts active.
+- **Stop Overlay:** Removes the entire presentation surface, including all alerts, effects, and audio.
