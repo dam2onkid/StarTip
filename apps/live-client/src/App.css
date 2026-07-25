@@ -180,9 +180,13 @@ body,
   background-color: rgba(255, 107, 107, 0.08);
 }
 
-.overlay,
-.overlay * {
+.overlay {
   background: transparent;
+  pointer-events: none;
+  user-select: none;
+}
+
+.overlay * {
   pointer-events: none;
   user-select: none;
 }
@@ -203,4 +207,54 @@ body,
   background: transparent;
   border: 1px solid rgba(236, 237, 238, 0.15);
   border-radius: var(--radius-md);
+}
+
+.overlay-alert {
+  min-width: 320px;
+  max-width: 720px;
+  padding: var(--spacing-md) var(--spacing-lg);
+  background: rgba(14, 16, 19, 0.85);
+  border: 1px solid rgba(180, 255, 57, 0.3);
+  border-radius: var(--radius-lg);
+  backdrop-filter: blur(8px);
+  animation: fadeIn 0.4s ease;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(20px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.overlay-alert-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: var(--spacing-sm);
+  flex-wrap: wrap;
+}
+
+.overlay-alert-donor {
+  font-family: "Inter Tight", Inter, system-ui, sans-serif;
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: var(--color-primary);
+}
+
+.overlay-alert-amount {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 1.25rem;
+  color: var(--color-tertiary);
+}
+
+.overlay-alert-message {
+  margin: var(--spacing-sm) 0 0;
+  text-align: center;
+  font-size: 1rem;
+  color: var(--color-secondary);
 }

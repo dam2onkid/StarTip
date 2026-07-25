@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
+import { GameOverlay } from "./overlay";
 import "./App.css";
 
 interface Display {
@@ -19,14 +20,6 @@ function App() {
   }
 
   return <ControlWindow />;
-}
-
-function GameOverlay() {
-  return (
-    <div className="overlay">
-      <div className="overlay-badge">StarTip Game Overlay</div>
-    </div>
-  );
 }
 
 function ControlWindow() {

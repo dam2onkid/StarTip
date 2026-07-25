@@ -325,6 +325,69 @@ export type Database = {
           },
         ]
       }
+      live_events: {
+        Row: {
+          ack_started_at: string | null
+          ack_terminal_at: string | null
+          created_at: string
+          creator_profile_id: string
+          donation_id: string
+          expires_at: string
+          id: string
+          overlay_id: string
+          payload: Json
+          sequence: number
+          status: string
+          terminal_reason: string | null
+          updated_at: string
+        }
+        Insert: {
+          ack_started_at?: string | null
+          ack_terminal_at?: string | null
+          created_at?: string
+          creator_profile_id: string
+          donation_id: string
+          expires_at: string
+          id?: string
+          overlay_id: string
+          payload?: Json
+          sequence?: number
+          status?: string
+          terminal_reason?: string | null
+          updated_at?: string
+        }
+        Update: {
+          ack_started_at?: string | null
+          ack_terminal_at?: string | null
+          created_at?: string
+          creator_profile_id?: string
+          donation_id?: string
+          expires_at?: string
+          id?: string
+          overlay_id?: string
+          payload?: Json
+          sequence?: number
+          status?: string
+          terminal_reason?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "live_events_creator_profile_id_fkey"
+            columns: ["creator_profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "live_events_donation_id_fkey"
+            columns: ["donation_id"]
+            isOneToOne: false
+            referencedRelation: "donations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       public_donations: {

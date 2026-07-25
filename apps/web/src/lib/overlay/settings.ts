@@ -14,7 +14,11 @@
  * to import from client components, server components, and tests alike.
  */
 
-import { displayToRawAmount, rawToDisplayAmount } from "@/lib/stellar/amount";
+import {
+  displayToRawAmount,
+  isAtLeastRaw,
+  rawToDisplayAmount,
+} from "@/lib/stellar/amount";
 
 /** The default alert duration (ms) when no row exists or the field is missing. */
 export const DEFAULT_ALERT_DURATION_MS = 10000;
@@ -109,16 +113,7 @@ export function shouldShowAlert(
   donation: OverlayDonationFilter,
   settings: OverlaySettings,
 ): boolean {
-  const minRaw = settings.minAmountRaw ?? "0";
-  let amount: bigint;
-  let min: bigint;
-  try {
-    amount = BigInt(donation.amount);
-    min = BigInt(minRaw);
-  } catch {
-    return true;
-  }
-  return amount >= min;
+  return isAtLeastRaw(donation.amount, settings.minAmountRaw ?? "0");
 }
 
 /**

@@ -2,6 +2,7 @@ import * as StellarSdk from "@stellar/stellar-sdk";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { classifyMessage } from "./moderation";
 import { toByteaHex } from "../bytea";
+import { createOrdinaryLiveEvent } from "../live-events/deliver";
 
 /**
  * `POST /verify` core logic, extracted so it can be tested as a pure function
@@ -68,6 +69,7 @@ interface DonationRow {
   message?: string | null;
   donor_name?: string | null;
   user_id?: string | null;
+  creator_profile_id?: string | null;
 }
 
 interface ProfileRow {
@@ -191,16 +193,40 @@ export async function verifyDonation(
   // 1. Match an existing row by tx_hash (the sole natural key per ADR-0005).
   const { data: existing, error: selErr } = await service
     .from("donations")
-    .select("id,status,message,donor_name,user_id")
+    .select("id,status,message,donor_name,user_id,creator_profile_id")
     .eq("tx_hash", txHash)
     .maybeSingle();
   if (selErr) return { status: 500, body: { error: "db_error" } };
   const existingRow = existing as DonationRow | null;
 
+  let donationId: string;
+  let creatorProfileId: string;
+
   if (existingRow) {
-    // Idempotent no-op on an already-confirmed row (ADR-0005).
+    creatorProfileId = existingRow.creator_profile_id!;
+
+    // Idempotent no-op on an already-confirmed row (ADR-0005), but still
+    // ensure a Live Event exists for ordinary Donations.
     if (existingRow.status === "confirmed") {
-      return { status: 200, body: { status: "confirmed" } };
+      donationId = existingRow.id;
+      const delivery = await prepareDelivery(service, {
+        creatorProfileId,
+        token,
+      });
+      if (delivery.error !== null) return { status: 500, body: { error: delivery.error } };
+      return deliverOrdinaryLiveEventIfNeeded(service, input, {
+        donationId,
+        creatorProfileId,
+        txHash,
+        token,
+        amount,
+        donorAddress,
+        donorName: existingRow.donor_name ?? null,
+        message: existingRow.message ?? null,
+        overlayId: delivery.overlayId,
+        tokenSymbol: delivery.tokenSymbol,
+        tokenDecimals: delivery.tokenDecimals,
+      });
     }
 
     // Promote indexed -> confirmed. Fill message/donor_name only when the
@@ -238,7 +264,29 @@ export async function verifyDonation(
       .update(update)
       .eq("id", existingRow.id);
     if (updErr) return { status: 500, body: { error: "db_error" } };
-    return { status: 200, body: { status: "confirmed" } };
+
+    donationId = existingRow.id;
+    const finalDonorName =
+      (update.donor_name as string | null | undefined) ?? existingRow.donor_name ?? null;
+    const finalMessage =
+      (update.message as string | null | undefined) ?? existingRow.message ?? null;
+
+    const delivery = await prepareDelivery(service, { creatorProfileId, token });
+    if (delivery.error !== null) return { status: 500, body: { error: delivery.error } };
+
+    return deliverOrdinaryLiveEventIfNeeded(service, input, {
+      donationId,
+      creatorProfileId,
+      txHash,
+      token,
+      amount,
+      donorAddress,
+      donorName: finalDonorName,
+      message: finalMessage,
+      overlayId: delivery.overlayId,
+      tokenSymbol: delivery.tokenSymbol,
+      tokenDecimals: delivery.tokenDecimals,
+    });
   }
 
   // 2. No existing row: the indexer has not seen it and no prior verify fired.
@@ -246,15 +294,20 @@ export async function verifyDonation(
   //    the creator profile (matched by handle_hash).
   const { data: profile, error: profileErr } = await service
     .from("profiles")
-    .select("id")
+    .select("id,overlay_id")
     .eq("handle_hash", handleHashBytea)
     .maybeSingle();
   if (profileErr) return { status: 500, body: { error: "db_error" } };
   if (!profile) return { status: 409, body: { error: "creator_not_found" } };
 
+  creatorProfileId = (profile as ProfileRow).id;
+
+  const delivery = await prepareDelivery(service, { creatorProfileId, token });
+  if (delivery.error !== null) return { status: 500, body: { error: delivery.error } };
+
   const insert: Record<string, unknown> = {
     tx_hash: txHash,
-    creator_profile_id: (profile as ProfileRow).id,
+    creator_profile_id: creatorProfileId,
     handle_hash: handleHashBytea,
     token,
     amount,
@@ -268,7 +321,115 @@ export async function verifyDonation(
   if (userId) {
     insert.user_id = userId;
   }
-  const { error: insErr } = await service.from("donations").insert(insert);
+  const { data: inserted, error: insErr } = await service
+    .from("donations")
+    .insert(insert)
+    .select("id")
+    .single();
   if (insErr) return { status: 500, body: { error: "db_error" } };
+  if (!inserted) return { status: 500, body: { error: "db_error" } };
+
+  donationId = (inserted as { id: string }).id;
+  return deliverOrdinaryLiveEventIfNeeded(service, input, {
+    donationId,
+    creatorProfileId,
+    txHash,
+    token,
+    amount,
+    donorAddress,
+    donorName: donorName ?? "Anonymous",
+    message: message,
+    overlayId: delivery.overlayId,
+    tokenSymbol: delivery.tokenSymbol,
+    tokenDecimals: delivery.tokenDecimals,
+  });
+}
+
+interface DeliverContext {
+  donationId: string;
+  creatorProfileId: string;
+  txHash: string;
+  token: string;
+  amount: string;
+  donorAddress: string;
+  donorName: string | null;
+  message: string | null;
+  overlayId: string;
+  tokenSymbol: string;
+  tokenDecimals: number;
+}
+
+interface PrepareDeliveryResult {
+  error: null;
+  overlayId: string;
+  tokenSymbol: string;
+  tokenDecimals: number;
+}
+
+interface PrepareDeliveryError {
+  error: string;
+}
+
+async function prepareDelivery(
+  service: SupabaseClient,
+  input: { creatorProfileId: string; token: string },
+): Promise<PrepareDeliveryResult | PrepareDeliveryError> {
+  const { data: profile, error: profileErr } = await service
+    .from("profiles")
+    .select("id,overlay_id")
+    .eq("id", input.creatorProfileId)
+    .maybeSingle();
+  if (profileErr) return { error: "db_error" };
+  if (!profile) return { error: "db_error" };
+  const { overlay_id: overlayId } = profile as { overlay_id: string | null };
+  if (!overlayId) return { error: "db_error" };
+
+  const { data: tokenRow, error: tokenErr } = await service
+    .from("tokens")
+    .select("symbol,decimals")
+    .eq("contract_address", input.token)
+    .maybeSingle();
+  if (tokenErr) return { error: "db_error" };
+
+  return {
+    error: null,
+    overlayId,
+    tokenSymbol: (tokenRow as { symbol: string | null } | null)?.symbol ?? input.token,
+    tokenDecimals: (tokenRow as { decimals: number | null } | null)?.decimals ?? 0,
+  };
+}
+
+async function deliverOrdinaryLiveEventIfNeeded(
+  service: SupabaseClient,
+  input: VerifyInput,
+  ctx: DeliverContext,
+): Promise<VerifyResult> {
+  // Effect Donations are delivered by a separate path that matches the locked
+  // Effect Intent. Skip ordinary Live Event creation when a preparation id is
+  // present so ordinary and effect events do not collide.
+  if (input.donation_prep_id) {
+    return { status: 200, body: { status: "confirmed" } };
+  }
+
+  const expiresAt = new Date(Date.now() + 30_000).toISOString();
+
+  const result = await createOrdinaryLiveEvent(service, {
+    creatorProfileId: ctx.creatorProfileId,
+    overlayId: ctx.overlayId,
+    donationId: ctx.donationId,
+    txHash: ctx.txHash,
+    donorName: ctx.donorName ?? "Anonymous",
+    donorAddress: ctx.donorAddress,
+    amount: ctx.amount,
+    token: ctx.token,
+    message: ctx.message,
+    tokenSymbol: ctx.tokenSymbol,
+    tokenDecimals: ctx.tokenDecimals,
+    expiresAt,
+  });
+
+  if (!result.ok) {
+    return { status: 500, body: { error: result.error } };
+  }
   return { status: 200, body: { status: "confirmed" } };
 }

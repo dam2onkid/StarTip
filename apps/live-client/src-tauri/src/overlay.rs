@@ -76,6 +76,10 @@ impl GameOverlay {
         self.overlay_id = Some(id);
     }
 
+    pub fn overlay_id(&self) -> Option<&str> {
+        self.overlay_id.as_deref()
+    }
+
     pub fn target_display(&self) -> Option<&str> {
         self.target_display.as_deref()
     }

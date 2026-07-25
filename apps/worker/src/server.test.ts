@@ -46,7 +46,7 @@ function createMockSupabase() {
       committed: false,
     };
     const self = {
-      select(cols: string) { state.method = "select"; state.selectCols = cols; return self; },
+      select(cols: string) { if (state.method === null) state.method = "select"; state.selectCols = cols; return self; },
       insert(payload: unknown) { state.method = "insert"; state.payload = payload; return self; },
       update(payload: unknown) { state.method = "update"; state.payload = payload; return self; },
       upsert(payload: unknown) { state.method = "upsert"; state.payload = payload; return self; },
@@ -283,7 +283,15 @@ describe("POST /verify", () => {
 
   it("returns 200 confirmed on the happy path (tx SUCCESS, event found, row upserted)", async () => {
     supabaseMock.setResponder("donations:select", () => ({ data: null, error: null }));
-    supabaseMock.setResponder("profiles:select", () => ({ data: { id: "p1" }, error: null }));
+    supabaseMock.setResponder("profiles:select", () => ({ data: { id: "p1", overlay_id: "ov1" }, error: null }));
+    supabaseMock.setResponder("donations:insert", () => ({ data: { id: "d1" }, error: null }));
+    supabaseMock.setResponder("tokens:select", () => ({ data: { symbol: "USDC", decimals: 6 }, error: null }));
+    supabaseMock.setResponder("live_events:select", () => ({ data: null, error: null }));
+    supabaseMock.setResponder("live_events:insert", () => ({
+      data: { id: "le-1", sequence: 1, created_at: "2026-07-25T12:00:00.000Z", expires_at: "2026-07-25T12:00:30.000Z" },
+      error: null,
+    }));
+    supabaseMock.setResponder("live_events:update", () => ({ data: {}, error: null }));
     getTransaction.mockResolvedValue(
       makeSuccessTxResponse(makeDonationReceivedEvent("USDC"), DONOR),
     );
@@ -362,7 +370,15 @@ describe("pollVerify", () => {
 
   it("retries on NOT_FOUND and returns 200 once the tx becomes SUCCESS", async () => {
     supabaseMock.setResponder("donations:select", () => ({ data: null, error: null }));
-    supabaseMock.setResponder("profiles:select", () => ({ data: { id: "p1" }, error: null }));
+    supabaseMock.setResponder("profiles:select", () => ({ data: { id: "p1", overlay_id: "ov1" }, error: null }));
+    supabaseMock.setResponder("donations:insert", () => ({ data: { id: "d1" }, error: null }));
+    supabaseMock.setResponder("tokens:select", () => ({ data: { symbol: "USDC", decimals: 6 }, error: null }));
+    supabaseMock.setResponder("live_events:select", () => ({ data: null, error: null }));
+    supabaseMock.setResponder("live_events:insert", () => ({
+      data: { id: "le-1", sequence: 1, created_at: "2026-07-25T12:00:00.000Z", expires_at: "2026-07-25T12:00:30.000Z" },
+      error: null,
+    }));
+    supabaseMock.setResponder("live_events:update", () => ({ data: {}, error: null }));
     // First two polls: NOT_FOUND. Third poll: SUCCESS.
     getTransaction
       .mockResolvedValueOnce(makeNotFoundResponse())

@@ -15,6 +15,11 @@ fn set_overlay_id(id: String, state: State<'_, Mutex<GameOverlay>>) {
 }
 
 #[tauri::command]
+fn get_overlay_id(state: State<'_, Mutex<GameOverlay>>) -> Result<Option<String>, String> {
+    Ok(state.lock().unwrap().overlay_id().map(String::from))
+}
+
+#[tauri::command]
 fn get_available_displays(state: State<'_, Mutex<GameOverlay>>) -> Result<Vec<Display>, String> {
     state.lock().unwrap().available_displays()
 }
@@ -54,6 +59,7 @@ pub fn run() {
     let app = tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
             set_overlay_id,
+            get_overlay_id,
             get_available_displays,
             get_primary_display,
             set_target_display,

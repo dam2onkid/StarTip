@@ -37,6 +37,20 @@ function profilesSelectChain(data: unknown, error: unknown = null) {
   return chain;
 }
 
+/**
+ * A multi-table select chain. `responses` maps a Supabase table name to the
+ * `{ data, error }` that `maybeSingle` should return for that table.
+ */
+function multiSelectChain(responses: Record<string, { data?: unknown; error?: unknown }>) {
+  return function from(table: string) {
+    const chain: Record<string, unknown> = {};
+    chain.select = vi.fn(() => chain);
+    chain.eq = vi.fn(() => chain);
+    chain.maybeSingle = vi.fn(async () => responses[table] ?? { data: null, error: null });
+    return chain;
+  };
+}
+
 function postReq(body: unknown) {
   return new NextRequest("http://localhost/api/tts", {
     method: "POST",
@@ -306,5 +320,117 @@ describe("POST /api/tts", () => {
     expect(other.status).toBe(200);
 
     expect(global.fetch).toHaveBeenCalledTimes(3);
+  });
+
+  it("builds an Alert Reading from a donation_id and forwards it to the Worker", async () => {
+    serviceFrom.mockImplementation(
+      multiSelectChain({
+        profiles: {
+          data: { id: CREATOR_PROFILE_ID, onchain_registered: true, paused: false },
+        },
+        donations: {
+          data: {
+            id: "d1",
+            donor_name: "Alice",
+            amount: "2500000",
+            token: "USDC",
+            message: "Great stream",
+            status: "confirmed",
+          },
+        },
+        overlay_settings: {
+          data: { tts_enabled: true, tts_voice: "en-US-EmmaNeural" },
+        },
+        tokens: {
+          data: { symbol: "USDC", decimals: 6 },
+        },
+      }),
+    );
+
+    const fetchCalls: { body: string }[] = [];
+    global.fetch = vi.fn(async (_url, init) => {
+      fetchCalls.push({ body: (init as RequestInit).body as string });
+      return new Response(new Uint8Array([1, 2, 3]), {
+        status: 200,
+        headers: { "content-type": "audio/mpeg" },
+      });
+    }) as unknown as typeof fetch;
+
+    const { POST } = await import("@/app/api/tts/route");
+    const res = await POST(
+      postReq({ overlay_id: "abc123", donation_id: "d1" }),
+    );
+    expect(res.status).toBe(200);
+    expect(fetchCalls).toHaveLength(1);
+    expect(JSON.parse(fetchCalls[0].body)).toEqual({
+      text: "Alice donated 2.5 USDC. Great stream",
+      voice: "en-US-EmmaNeural",
+    });
+  });
+
+  it("returns 400 invalid_body when donation_id mode includes a voice override", async () => {
+    const { POST } = await import("@/app/api/tts/route");
+    const res = await POST(
+      postReq({ overlay_id: "abc123", donation_id: "d1", voice: "en-US-EmmaNeural" }),
+    );
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: "invalid_body" });
+  });
+
+  it("returns 400 tts_unconfigured when donation_id mode has no stored voice and no override", async () => {
+    serviceFrom.mockImplementation(
+      multiSelectChain({
+        profiles: {
+          data: { id: CREATOR_PROFILE_ID, onchain_registered: true, paused: false },
+        },
+        donations: {
+          data: {
+            id: "d1",
+            donor_name: "Alice",
+            amount: "1000000",
+            token: "USDC",
+            message: null,
+            status: "confirmed",
+          },
+        },
+        overlay_settings: { data: { tts_enabled: false, tts_voice: null } },
+        tokens: { data: { symbol: "USDC", decimals: 6 } },
+      }),
+    );
+
+    global.fetch = vi.fn(async () =>
+      new Response("should not be called", { status: 500 }),
+    ) as unknown as typeof fetch;
+
+    const { POST } = await import("@/app/api/tts/route");
+    const res = await POST(
+      postReq({ overlay_id: "abc123", donation_id: "d1" }),
+    );
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: "tts_unconfigured" });
+    expect(global.fetch).toHaveBeenCalledTimes(0);
+  });
+
+  it("returns 404 donation_not_found when the donation does not belong to the creator", async () => {
+    serviceFrom.mockImplementation(
+      multiSelectChain({
+        profiles: {
+          data: { id: CREATOR_PROFILE_ID, onchain_registered: true, paused: false },
+        },
+        donations: { data: null },
+      }),
+    );
+
+    global.fetch = vi.fn(async () =>
+      new Response("should not be called", { status: 500 }),
+    ) as unknown as typeof fetch;
+
+    const { POST } = await import("@/app/api/tts/route");
+    const res = await POST(
+      postReq({ overlay_id: "abc123", donation_id: "d1" }),
+    );
+    expect(res.status).toBe(404);
+    expect(await res.json()).toEqual({ error: "donation_not_found" });
+    expect(global.fetch).toHaveBeenCalledTimes(0);
   });
 });

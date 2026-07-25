@@ -33,7 +33,7 @@ export interface RandomSource {
 }
 
 export interface RenderDeps {
-  pack: ValidatedPack;
+  pack?: ValidatedPack;
   clock?: Clock;
   random?: RandomSource;
   /** Duration used for ordinary Donation Alerts. Defaults to 10 seconds. */
@@ -277,6 +277,10 @@ export function planRender(input: RenderInput, deps: RenderDeps): RenderPlanResu
   if (!input.effect) {
     const durationMs = deps.alertDurationMs ?? DEFAULT_ALERT_DURATION_MS;
     return { ok: true, plan: buildAlertPlan(input, startedAt, durationMs) };
+  }
+
+  if (!deps.pack) {
+    return { ok: false, error: "undeclared_effect" };
   }
 
   const effect = deps.pack.manifest.effects[input.effect.effectId];

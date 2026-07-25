@@ -5,7 +5,7 @@ macOS-first Tauri v2 desktop application for the Live Event Platform. Invoke the
 ### Domain
 
 - Read `apps/live-client/CONTEXT.md` and the PRD in `.scratch/cross-live-event-platform/PRD.md` before making domain changes.
-- The Overlay ID is prototype access and must never be persisted, logged, or sent over the network. It lives only in `GameOverlay` memory.
+- The Overlay ID is the Live Event channel boundary. It lives in `GameOverlay` memory and is used as the Supabase Realtime channel filter and the lifecycle ack scope. The server persists it in `live_events` for the lifetime of the event and then terminal; the client never logs it or stores it in settings.
 - The Target Display is non-sensitive and is persisted to `settings.json` in the app config directory.
 
 ### Rust

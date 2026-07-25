@@ -44,7 +44,7 @@ function createMockSupabase() {
       committed: false,
     };
     const self = {
-      select(cols: string) { state.method = "select"; state.selectCols = cols; return self; },
+      select(cols: string) { if (state.method === null) state.method = "select"; state.selectCols = cols; return self; },
       insert(payload: unknown) { state.method = "insert"; state.payload = payload; return self; },
       update(payload: unknown) { state.method = "update"; state.payload = payload; return self; },
       upsert(payload: unknown) { state.method = "upsert"; state.payload = payload; return self; },
@@ -197,6 +197,32 @@ describe("verifyDonation", () => {
   beforeEach(() => {
     supabaseMock = createMockSupabase();
     getTransaction = vi.fn();
+    // Defaults for the ordinary Live Event delivery path. Tests may override.
+    supabaseMock.setResponder("profiles:select", () => ({
+      data: { id: "p1", overlay_id: "ov1" },
+      error: null,
+    }));
+    supabaseMock.setResponder("donations:insert", () => ({
+      data: { id: "new-donation" },
+      error: null,
+    }));
+    supabaseMock.setResponder("tokens:select", () => ({
+      data: { symbol: "USDC", decimals: 6 },
+      error: null,
+    }));
+    supabaseMock.setResponder("live_events:select", () => ({
+      data: null,
+      error: null,
+    }));
+    supabaseMock.setResponder("live_events:insert", () => ({
+      data: {
+        id: "le-1",
+        sequence: 1,
+        created_at: "2026-07-25T12:00:00.000Z",
+        expires_at: "2026-07-25T12:00:30.000Z",
+      },
+      error: null,
+    }));
   });
 
   function deps() {
@@ -260,7 +286,7 @@ describe("verifyDonation", () => {
 
   it("inserts a new confirmed row with message and donor_name from the input body when no existing row matches", async () => {
     supabaseMock.setResponder("donations:select", () => ({ data: null, error: null }));
-    supabaseMock.setResponder("profiles:select", () => ({ data: { id: "p1" }, error: null }));
+    supabaseMock.setResponder("profiles:select", () => ({ data: { id: "p1", overlay_id: "ov1" }, error: null }));
     getTransaction.mockResolvedValue(makeSuccessTxResponse(makeDonationReceivedEvent("USDC"), DONOR));
     const { verifyDonation } = await import("./confirm");
     const res = await verifyDonation(deps(), {
@@ -286,7 +312,7 @@ describe("verifyDonation", () => {
 
   it("defaults donor_name to Anonymous and message to null when not provided in the input body", async () => {
     supabaseMock.setResponder("donations:select", () => ({ data: null, error: null }));
-    supabaseMock.setResponder("profiles:select", () => ({ data: { id: "p1" }, error: null }));
+    supabaseMock.setResponder("profiles:select", () => ({ data: { id: "p1", overlay_id: "ov1" }, error: null }));
     getTransaction.mockResolvedValue(makeSuccessTxResponse(makeDonationReceivedEvent("USDC"), DONOR));
     const { verifyDonation } = await import("./confirm");
     const res = await verifyDonation(deps(), { tx_hash: TX_HASH });
@@ -300,7 +326,7 @@ describe("verifyDonation", () => {
 
   it("stores user_id on insert when an authenticated donor is provided", async () => {
     supabaseMock.setResponder("donations:select", () => ({ data: null, error: null }));
-    supabaseMock.setResponder("profiles:select", () => ({ data: { id: "p1" }, error: null }));
+    supabaseMock.setResponder("profiles:select", () => ({ data: { id: "p1", overlay_id: "ov1" }, error: null }));
     getTransaction.mockResolvedValue(makeSuccessTxResponse(makeDonationReceivedEvent("USDC"), DONOR));
     const { verifyDonation } = await import("./confirm");
     const res = await verifyDonation(deps(), { tx_hash: TX_HASH, user_id: "u-donor" });
@@ -313,7 +339,7 @@ describe("verifyDonation", () => {
 
   it("does not store user_id on insert when none is provided", async () => {
     supabaseMock.setResponder("donations:select", () => ({ data: null, error: null }));
-    supabaseMock.setResponder("profiles:select", () => ({ data: { id: "p1" }, error: null }));
+    supabaseMock.setResponder("profiles:select", () => ({ data: { id: "p1", overlay_id: "ov1" }, error: null }));
     getTransaction.mockResolvedValue(makeSuccessTxResponse(makeDonationReceivedEvent("USDC"), DONOR));
     const { verifyDonation } = await import("./confirm");
     const res = await verifyDonation(deps(), { tx_hash: TX_HASH });
@@ -324,7 +350,7 @@ describe("verifyDonation", () => {
 
   it("promotes an indexed row to confirmed, filling message and donor_name from the body when the row has indexer defaults", async () => {
     supabaseMock.setResponder("donations:select", () => ({
-      data: { id: "d9", status: "indexed", message: null, donor_name: "Anonymous" },
+      data: { id: "d9", status: "indexed", message: null, donor_name: "Anonymous", creator_profile_id: "p1" },
       error: null,
     }));
     getTransaction.mockResolvedValue(makeSuccessTxResponse(makeDonationReceivedEvent("USDC"), DONOR));
@@ -348,7 +374,7 @@ describe("verifyDonation", () => {
 
   it("does not overwrite message/donor_name on promote when the row already has non-default content", async () => {
     supabaseMock.setResponder("donations:select", () => ({
-      data: { id: "d9", status: "indexed", message: "existing", donor_name: "ExistingName" },
+      data: { id: "d9", status: "indexed", message: "existing", donor_name: "ExistingName", creator_profile_id: "p1" },
       error: null,
     }));
     getTransaction.mockResolvedValue(makeSuccessTxResponse(makeDonationReceivedEvent("USDC"), DONOR));
@@ -392,7 +418,7 @@ describe("verifyDonation", () => {
 
   it("is an idempotent no-op (no update) when the row is already confirmed", async () => {
     supabaseMock.setResponder("donations:select", () => ({
-      data: { id: "d1", status: "confirmed", message: "hi", donor_name: "Pat" },
+      data: { id: "d1", status: "confirmed", message: "hi", donor_name: "Pat", creator_profile_id: "p1" },
       error: null,
     }));
     getTransaction.mockResolvedValue(makeSuccessTxResponse(makeDonationReceivedEvent("USDC"), DONOR));
@@ -415,7 +441,7 @@ describe("verifyDonation", () => {
   });
 
   it("returns 500 db_error when the upsert fails", async () => {
-    supabaseMock.setResponder("donations:select", () => ({ data: { id: "d9", status: "indexed" }, error: null }));
+    supabaseMock.setResponder("donations:select", () => ({ data: { id: "d9", status: "indexed", creator_profile_id: "p1" }, error: null }));
     supabaseMock.setResponder("donations:update", () => ({ data: null, error: { message: "boom" } }));
     getTransaction.mockResolvedValue(makeSuccessTxResponse(makeDonationReceivedEvent("USDC"), DONOR));
     const { verifyDonation } = await import("./confirm");
@@ -426,7 +452,7 @@ describe("verifyDonation", () => {
 
   it("sets moderation_status = 'visible' on the no-existing-row insert via classifyMessage", async () => {
     supabaseMock.setResponder("donations:select", () => ({ data: null, error: null }));
-    supabaseMock.setResponder("profiles:select", () => ({ data: { id: "p1" }, error: null }));
+    supabaseMock.setResponder("profiles:select", () => ({ data: { id: "p1", overlay_id: "ov1" }, error: null }));
     getTransaction.mockResolvedValue(makeSuccessTxResponse(makeDonationReceivedEvent("USDC"), DONOR));
     const { verifyDonation } = await import("./confirm");
     const res = await verifyDonation(deps(), { tx_hash: TX_HASH });
@@ -438,7 +464,7 @@ describe("verifyDonation", () => {
   it("sets moderation_status = 'auto_hidden' on insert when the message contains a banned keyword", async () => {
     const { BANNED_KEYWORDS } = await import("./moderation");
     supabaseMock.setResponder("donations:select", () => ({ data: null, error: null }));
-    supabaseMock.setResponder("profiles:select", () => ({ data: { id: "p1" }, error: null }));
+    supabaseMock.setResponder("profiles:select", () => ({ data: { id: "p1", overlay_id: "ov1" }, error: null }));
     getTransaction.mockResolvedValue(makeSuccessTxResponse(makeDonationReceivedEvent("USDC"), DONOR));
     const { verifyDonation } = await import("./confirm");
     const res = await verifyDonation(deps(), {
@@ -453,7 +479,7 @@ describe("verifyDonation", () => {
   it("re-runs classifyMessage on the promote path when enriching with a banned keyword message", async () => {
     const { BANNED_KEYWORDS } = await import("./moderation");
     supabaseMock.setResponder("donations:select", () => ({
-      data: { id: "d9", status: "indexed", message: null, donor_name: "Anonymous" },
+      data: { id: "d9", status: "indexed", message: null, donor_name: "Anonymous", creator_profile_id: "p1" },
       error: null,
     }));
     getTransaction.mockResolvedValue(makeSuccessTxResponse(makeDonationReceivedEvent("USDC"), DONOR));
@@ -469,7 +495,7 @@ describe("verifyDonation", () => {
 
   it("does not set moderation_status on the promote path when no content is enriched", async () => {
     supabaseMock.setResponder("donations:select", () => ({
-      data: { id: "d9", status: "indexed", message: "existing", donor_name: "ExistingName" },
+      data: { id: "d9", status: "indexed", message: "existing", donor_name: "ExistingName", creator_profile_id: "p1" },
       error: null,
     }));
     getTransaction.mockResolvedValue(makeSuccessTxResponse(makeDonationReceivedEvent("USDC"), DONOR));

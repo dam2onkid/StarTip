@@ -7,6 +7,7 @@ import { env } from "./env";
 import { createVerifyApp } from "./server";
 import { createTtsApp, EdgeTtsProvider } from "./tts";
 import { createLiveEventsApp } from "./live-events/effect-intents";
+import { createLiveEventsAckApp } from "./live-events/acks";
 import { startIndexerLoop } from "./indexer";
 
 /**
@@ -42,6 +43,9 @@ app.route("/", ttsApp);
 // Live Events endpoint deps.
 const liveEventsApp = createLiveEventsApp({ service }, env.WORKER_SECRET);
 app.route("/", liveEventsApp);
+
+const liveEventsAckApp = createLiveEventsAckApp({ service }, env.WORKER_SECRET);
+app.route("/", liveEventsAckApp);
 
 // Indexer loop deps.
 const stopIndexer = startIndexerLoop(
