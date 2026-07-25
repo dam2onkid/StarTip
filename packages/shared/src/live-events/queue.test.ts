@@ -177,4 +177,26 @@ describe("LiveEventQueue", () => {
       { activeId: "b", queueLength: 0 },
     ]);
   });
+
+  it("clears queued items matching a predicate without touching the active item", () => {
+    let now = BASE;
+    const acks: { id: string; status: string }[] = [];
+    const queue = new LiveEventQueue<TestItem>({
+      clock: { now: () => now },
+      onAck: (item, status) => acks.push({ id: item.id, status }),
+    });
+
+    queue.enqueue(item("effect-1", 1));
+    queue.enqueue(item("alert-1", 2));
+    queue.enqueue(item("effect-2", 3));
+
+    const cleared = queue.clear((i) => i.id.startsWith("effect-"));
+
+    expect(cleared).toBe(1);
+    expect(queue.getState().active?.item.id).toBe("effect-1");
+    expect(queue.getState().queue.map((i) => i.id)).toEqual(["alert-1"]);
+    expect(acks).toContainEqual({ id: "effect-2", status: "stopped" });
+    expect(acks).not.toContainEqual({ id: "effect-1", status: "stopped" });
+    expect(acks).not.toContainEqual({ id: "alert-1", status: "stopped" });
+  });
 });

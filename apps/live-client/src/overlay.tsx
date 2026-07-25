@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { emit, listen } from "@tauri-apps/api/event";
 import { createClient } from "@supabase/supabase-js";
 import { planRender, type RenderPlan } from "@startip/shared/overlay/renderer";
 import {
@@ -12,7 +13,12 @@ import {
   isAtLeastRaw,
   rawToDisplayAmount,
 } from "@startip/shared/stellar/amount";
-import { LiveEventQueue } from "@startip/shared/live-events/queue";
+import {
+  LiveEventClient,
+  createSupabaseChannelFactory,
+  type ClientConnectionStatus,
+  type LiveEventQueueItem,
+} from "@startip/shared/live-events/client";
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
@@ -23,38 +29,6 @@ const alertSoundUrl = (import.meta.env.VITE_ALERT_SOUND_URL as string | undefine
 const DEFAULT_ALERT_DURATION_MS = 10_000;
 const MIN_ALERT_DURATION_MS = 1_000;
 const MAX_ALERT_DURATION_MS = 60_000;
-const QUEUE_TICK_MS = 1_000;
-
-interface LiveEventEffect {
-  pack_id: string;
-  pack_version: string;
-  effect_id: string;
-}
-
-interface LiveEventRow {
-  id: string;
-  creator_profile_id: string;
-  overlay_id: string;
-  donation_id: string;
-  sequence: number;
-  payload: {
-    donation: {
-      id: string;
-      tx_hash: string;
-      donor_name: string;
-      donor_address: string;
-      amount: string;
-      token: string;
-      message: string | null;
-    };
-    creator: { profile_id: string; overlay_id: string };
-    token_display: { contract_address: string; symbol: string; decimals: number };
-    effect: LiveEventEffect | null;
-  };
-  status: string;
-  expires_at: string;
-  created_at: string;
-}
 
 interface OverlaySettingsRow {
   alert_duration_ms: number;
@@ -64,7 +38,9 @@ interface OverlaySettingsRow {
   tts_voice: string | null;
 }
 
-type QueueEvent = LiveEventRow & { expiresAt: string };
+type TtsMode =
+  | { type: "donation"; donationId: string }
+  | { type: "overlay"; overlayId: string; text: string; voice: string };
 
 function clampAlertDuration(ms: number) {
   return Math.min(Math.max(ms, MIN_ALERT_DURATION_MS), MAX_ALERT_DURATION_MS);
@@ -72,13 +48,7 @@ function clampAlertDuration(ms: number) {
 
 function playBeep() {
   try {
-    const Ctx =
-      (
-        window as typeof window & {
-          AudioContext?: typeof AudioContext;
-          webkitAudioContext?: typeof AudioContext;
-        }
-      ).AudioContext ?? window.AudioContext;
+    const Ctx = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
     if (!Ctx) return;
     const ctx = new Ctx();
     const osc = ctx.createOscillator();
@@ -136,37 +106,32 @@ function sendAck(overlayId: string, eventId: string, status: string) {
 
 export function GameOverlay() {
   const [overlayId, setOverlayId] = useState<string | null>(null);
-  const [plan, setPlan] = useState<RenderPlan | null>(null);
   const [pack, setPack] = useState<ValidatedPack | null>(null);
+  const [plan, setPlan] = useState<RenderPlan | null>(null);
   const [mediaUrl, setMediaUrl] = useState<string | null>(null);
-  const [activeEvent, setActiveEvent] = useState<QueueEvent | null>(null);
+  const [activeEvent, setActiveEvent] = useState<LiveEventQueueItem | null>(null);
+
+  const clientRef = useRef<LiveEventClient | null>(null);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const alertStartedAtRef = useRef<number | null>(null);
   const settingsRef = useRef<OverlaySettingsRow | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
-
-  const queueRef = useRef<LiveEventQueue<QueueEvent> | null>(null);
-  if (!queueRef.current) {
-    queueRef.current = new LiveEventQueue<QueueEvent>({
-      clock: { now: () => Date.now() },
-      onAck: (event, status) => sendAck(event.overlay_id, event.id, status),
-    });
-  }
+  const testAudioRef = useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => {
-    const unsubscribe = queueRef.current!.subscribe((state) => {
-      setActiveEvent((prev) =>
-        prev?.id === state.active?.item.id
-          ? prev
-          : (state.active?.item ?? null),
-      );
-    });
-    return unsubscribe;
-  }, []);
+    let cancelled = false;
 
-  useEffect(() => {
-    const id = setInterval(() => queueRef.current?.tick(), QUEUE_TICK_MS);
-    return () => clearInterval(id);
+    invoke<string | null>("get_overlay_id")
+      .then((id) => {
+        if (!cancelled) setOverlayId(id);
+      })
+      .catch(() => {
+        // The overlay cannot function without an Overlay ID; stay empty.
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -179,20 +144,6 @@ export function GameOverlay() {
       })
       .catch(() => {
         // The bundled pack must validate; if it does not, effect events fail safe.
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-    invoke<string | null>("get_overlay_id")
-      .then((id) => {
-        if (!cancelled) setOverlayId(id);
-      })
-      .catch(() => {
-        // The overlay cannot function without an Overlay ID; stay empty.
       });
     return () => {
       cancelled = true;
@@ -217,35 +168,149 @@ export function GameOverlay() {
           // Settings are best-effort; defaults will be used.
         },
       );
+  }, [overlayId]);
 
-    const channel = supabase
-      .channel("live-events")
-      .on(
-        "postgres_changes",
-        {
-          event: "INSERT",
-          schema: "public",
-          table: "live_events",
-          filter: `overlay_id=eq.${overlayId}`,
-        },
-        (payload: { new: LiveEventRow }) => {
-          const event = payload.new;
-          queueRef.current?.enqueue({ ...event, expiresAt: event.expires_at });
-        },
-      )
-      .subscribe();
+  useEffect(() => {
+    if (!overlayId || !supabaseUrl || !supabaseAnonKey) return;
+    if (clientRef.current) return;
+
+    const client = new LiveEventClient({
+      overlayId,
+      channelFactory: createSupabaseChannelFactory(
+        createClient(supabaseUrl, supabaseAnonKey),
+      ),
+      apiBaseUrl,
+      clock: { now: () => Date.now() },
+      random: { random: () => Math.random() },
+      onAck: (itemOverlayId, eventId, status) =>
+        sendAck(itemOverlayId, eventId, status),
+      onState: (state) => {
+        setActiveEvent(state.activeEvent);
+        void emit("live-state", state);
+      },
+    });
+
+    client.start();
+    clientRef.current = client;
+
+    const listeners: (() => void)[] = [];
+    const setupListeners = async () => {
+      listeners.push(
+        await listen<{ effectId: string }>("test-effect", (event) => {
+          const effectId = event.payload.effectId;
+          if (!effectId || !clientRef.current || !overlayId) return;
+          const now = Date.now();
+          const expiresAt = new Date(now + 60_000).toISOString();
+          clientRef.current.enqueueLocal({
+            id: `local-effect-${effectId}-${now}`,
+            sequence: now,
+            expiresAt,
+            overlayId,
+            local: true,
+            payload: {
+              donation: {
+                id: `local-${now}`,
+                tx_hash: "",
+                donor_name: "Test Donor",
+                donor_address: "",
+                amount: "0",
+                token: "",
+                message: null,
+              },
+              token_display: { contract_address: "", symbol: "USDC", decimals: 7 },
+              effect: {
+                pack_id: defaultPackManifest.id,
+                pack_version: defaultPackManifest.version,
+                effect_id: effectId,
+              },
+            },
+          });
+        }),
+      );
+
+      listeners.push(
+        await listen("test-alert", () => {
+          if (!clientRef.current || !overlayId) return;
+          const now = Date.now();
+          const expiresAt = new Date(now + 60_000).toISOString();
+          clientRef.current.enqueueLocal({
+            id: `local-alert-${now}`,
+            sequence: now,
+            expiresAt,
+            overlayId,
+            local: true,
+            payload: {
+              donation: {
+                id: "__test__",
+                tx_hash: "",
+                donor_name: "Test Donor",
+                donor_address: "",
+                amount: "0",
+                token: "",
+                message: "This is a test alert.",
+              },
+              token_display: { contract_address: "", symbol: "USDC", decimals: 7 },
+              effect: null,
+            },
+          });
+        }),
+      );
+
+      listeners.push(
+        await listen<{ effectId: string }>("test-audio", (event) => {
+          if (event.payload.effectId !== "jump-scare" || !pack) return;
+          const url = effectAudioUrl(pack, "jump-scare-audio");
+          if (!url) return;
+
+          testAudioRef.current?.pause();
+
+          const audio = new Audio(url);
+          audio.volume = 0.7;
+          audio.play().catch(() => {
+            // Audio test is best-effort.
+          });
+          audio.onended = () => URL.revokeObjectURL(url);
+          audio.onerror = () => URL.revokeObjectURL(url);
+          testAudioRef.current = audio;
+        }),
+      );
+
+      listeners.push(
+        await listen("emergency-stop", () => {
+          testAudioRef.current?.pause();
+          testAudioRef.current = null;
+          clientRef.current?.emergencyStop();
+        }),
+      );
+
+      listeners.push(
+        await listen("reconnect-now", () => {
+          clientRef.current?.reconnectNow();
+        }),
+      );
+
+      listeners.push(
+        await listen("request-live-state", () => {
+          const state = clientRef.current?.getState() ?? {
+            status: "disconnected" as ClientConnectionStatus,
+            activeEvent: null,
+            queueLength: 0,
+            lastError: null,
+          };
+          void emit("live-state", state);
+        }),
+      );
+    };
+
+    void setupListeners();
 
     return () => {
-      void supabase.removeChannel(channel);
-      if (timeoutRef.current) {
-        clearTimeout(timeoutRef.current);
-      }
-      if (audioRef.current) {
-        audioRef.current.pause();
-        audioRef.current = null;
+      client.stop();
+      for (const unlisten of listeners) {
+        unlisten();
       }
     };
-  }, [overlayId]);
+  }, [overlayId, supabaseUrl, supabaseAnonKey, pack]);
 
   useEffect(() => {
     if (!plan || plan.type !== "effect" || !pack) return;
@@ -309,7 +374,6 @@ export function GameOverlay() {
       settings?.alert_duration_ms ?? DEFAULT_ALERT_DURATION_MS,
     );
     const soundEnabled = settings?.sound_enabled ?? true;
-    const ttsEnabled = settings?.tts_enabled ?? false;
     const ttsVoice = settings?.tts_voice ?? null;
 
     if (effect) {
@@ -330,7 +394,7 @@ export function GameOverlay() {
       );
 
       if (!result.ok) {
-        queueRef.current?.failActive(Date.now());
+        clientRef.current?.failActive(Date.now());
         return;
       }
 
@@ -341,8 +405,9 @@ export function GameOverlay() {
     }
 
     const minAmountRaw = displayToRawAmount(String(settings?.min_amount ?? "0"), tokenDecimals);
-    if (!isAtLeastRaw(donation.amount, minAmountRaw)) {
-      queueRef.current?.completeActive(Date.now());
+    const isTestAlert = donation.id === "__test__";
+    if (!isTestAlert && !isAtLeastRaw(donation.amount, minAmountRaw)) {
+      clientRef.current?.completeActive(Date.now());
       return;
     }
 
@@ -358,7 +423,7 @@ export function GameOverlay() {
     );
 
     if (!result.ok) {
-      queueRef.current?.failActive(Date.now());
+      clientRef.current?.failActive(Date.now());
       return;
     }
 
@@ -368,8 +433,18 @@ export function GameOverlay() {
     playAlertSound(soundEnabled);
     scheduleDismiss(result.plan.durationMs);
 
-    if (ttsEnabled && ttsVoice) {
-      void requestTTS(donation.id, result.plan.durationMs);
+    if (isTestAlert && overlayId && ttsVoice) {
+      void requestTTS(
+        {
+          type: "overlay",
+          overlayId,
+          text: "Test alert. StarTip live event client is ready.",
+          voice: ttsVoice,
+        },
+        result.plan.durationMs,
+      );
+    } else if (settings?.tts_enabled && ttsVoice) {
+      void requestTTS({ type: "donation", donationId: donation.id }, result.plan.durationMs);
     }
 
     return () => {
@@ -382,7 +457,7 @@ export function GameOverlay() {
         audioRef.current = null;
       }
     };
-  }, [activeEvent, pack]);
+  }, [activeEvent, pack, overlayId]);
 
   function scheduleDismiss(remainingMs: number) {
     if (timeoutRef.current) {
@@ -396,18 +471,27 @@ export function GameOverlay() {
         audioRef.current.pause();
         audioRef.current = null;
       }
-      queueRef.current?.completeActive(Date.now());
+      if (testAudioRef.current) {
+        testAudioRef.current.pause();
+        testAudioRef.current = null;
+      }
+      clientRef.current?.completeActive(Date.now());
     }, remainingMs);
   }
 
-  async function requestTTS(donationId: string, alertDurationMs: number) {
+  async function requestTTS(mode: TtsMode, alertDurationMs: number) {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 3000);
     try {
+      const body =
+        mode.type === "donation"
+          ? { donation_id: mode.donationId }
+          : { overlay_id: mode.overlayId, text: mode.text, voice: mode.voice };
+
       const res = await fetch(`${apiBaseUrl ?? ""}/api/tts`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ donation_id: donationId }),
+        body: JSON.stringify(body),
         signal: controller.signal,
       });
       if (!res.ok) return;
@@ -428,6 +512,7 @@ export function GameOverlay() {
 
       audio.onended = () => URL.revokeObjectURL(url);
       audio.onerror = () => URL.revokeObjectURL(url);
+      audioRef.current = audio;
       await audio.play();
     } catch {
       // Alert Reading is optional; a failed read must not hide the alert.

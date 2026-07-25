@@ -69,7 +69,7 @@ const DEFAULT_EVENT = {
   id: EVENT_ID,
   overlay_id: OVERLAY_ID,
   status: "queued",
-  expires_at: "2026-07-25T12:00:30.000Z",
+  expires_at: "2099-01-01T00:00:00.000Z",
 };
 
 describe("ackLiveEvent", () => {
@@ -196,7 +196,10 @@ describe("ackLiveEvent", () => {
   it("rejects starting a queued event that has already passed its expiry", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: false });
     vi.setSystemTime(new Date("2026-07-25T12:00:31.000Z"));
-    mock.setResponder("live_events:select", () => ({ data: DEFAULT_EVENT, error: null }));
+    mock.setResponder("live_events:select", () => ({
+      data: { ...DEFAULT_EVENT, expires_at: "2026-07-25T12:00:30.000Z" },
+      error: null,
+    }));
 
     const res = await ackLiveEvent(
       { service: mock.supabase as unknown as Parameters<typeof ackLiveEvent>[0]["service"] },

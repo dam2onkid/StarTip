@@ -1,6 +1,11 @@
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { emit, listen } from "@tauri-apps/api/event";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
+import {
+  type ClientConnectionStatus,
+  type LiveEventClientState,
+} from "@startip/shared/live-events/client";
 import { GameOverlay } from "./overlay";
 import "./App.css";
 
@@ -13,6 +18,24 @@ interface Display {
 }
 
 const currentWindow = getCurrentWebviewWindow();
+
+type ConnectionStatusLabel =
+  | "Disconnected"
+  | "Connecting"
+  | "Ready"
+  | "Overlay Running"
+  | "Connection Lost";
+
+function displayStatus(
+  connectionStatus: ClientConnectionStatus,
+  isRunning: boolean,
+): ConnectionStatusLabel {
+  if (isRunning && connectionStatus === "ready") return "Overlay Running";
+  if (connectionStatus === "ready") return "Ready";
+  if (connectionStatus === "connecting") return "Connecting";
+  if (connectionStatus === "connection-lost") return "Connection Lost";
+  return "Disconnected";
+}
 
 function App() {
   if (currentWindow.label === "overlay") {
@@ -30,37 +53,63 @@ function ControlWindow() {
   const [isBusy, setIsBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const [connectionStatus, setConnectionStatus] = useState<ClientConnectionStatus>("disconnected");
+  const [activeEvent, setActiveEvent] = useState<LiveEventClientState["activeEvent"]>(null);
+  const [queueLength, setQueueLength] = useState(0);
+  const [lastError, setLastError] = useState<string | null>(null);
+  const [emergencyShortcutRegistered, setEmergencyShortcutRegistered] = useState(false);
+
   useEffect(() => {
     let cancelled = false;
+    const unlisteners: (() => void)[] = [];
 
-    async function load() {
+    const setup = async () => {
       try {
-        const [available, target] = await Promise.all([
+        const [available, target, id, running, shortcutRegistered] = await Promise.all([
           invoke<Display[]>("get_available_displays"),
           invoke<string | null>("get_target_display"),
+          invoke<string | null>("get_overlay_id"),
+          invoke<boolean>("is_overlay_running"),
+          invoke<boolean>("is_emergency_shortcut_registered"),
         ]);
 
         if (cancelled) return;
 
         setDisplays(available);
+        setOverlayId(id ?? "");
+        setIsRunning(running);
+        setEmergencyShortcutRegistered(shortcutRegistered);
 
         const initialTarget = target ?? available.find((d) => d.primary)?.name ?? available[0]?.name ?? "";
         setSelectedDisplay(initialTarget);
-
-        const running = await invoke<boolean>("is_overlay_running");
-        if (!cancelled) {
-          setIsRunning(running);
-        }
       } catch (e) {
-        if (!cancelled) {
-          setError(String(e));
-        }
+        if (!cancelled) setError(String(e));
       }
-    }
 
-    load();
+      unlisteners.push(
+        await listen<LiveEventClientState>("live-state", (event) => {
+          setConnectionStatus(event.payload.status);
+          setActiveEvent(event.payload.activeEvent);
+          setQueueLength(event.payload.queueLength);
+          setLastError(event.payload.lastError);
+        }),
+      );
+
+      unlisteners.push(
+        await listen<{ running: boolean }>("overlay-state", (event) => {
+          setIsRunning(event.payload.running);
+        }),
+      );
+
+      // Ask the running overlay for its current state on mount.
+      void emit("request-live-state");
+    };
+
+    void setup();
+
     return () => {
       cancelled = true;
+      for (const unlisten of unlisteners) unlisten();
     };
   }, []);
 
@@ -93,7 +142,6 @@ function ControlWindow() {
     setError(null);
     try {
       await invoke("start_overlay");
-      setIsRunning(true);
     } catch (e) {
       setError(String(e));
     } finally {
@@ -106,12 +154,50 @@ function ControlWindow() {
     setError(null);
     try {
       await invoke("stop_overlay");
-      setIsRunning(false);
     } catch (e) {
       setError(String(e));
     } finally {
       setIsBusy(false);
     }
+  }
+
+  async function handleEmergencyStop() {
+    setIsBusy(true);
+    setError(null);
+    try {
+      await invoke("emergency_stop");
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
+  function handleReconnectNow() {
+    setConnectionStatus("connecting");
+    void emit("reconnect-now");
+  }
+
+  function handleTestEffect(effectId: string) {
+    void emit("test-effect", { effectId });
+  }
+
+  function handleTestAlert() {
+    void emit("test-alert");
+  }
+
+  function handleTestJumpScareAudio() {
+    void emit("test-audio", { effectId: "jump-scare" });
+  }
+
+  const statusLabel = displayStatus(connectionStatus, isRunning);
+
+  function activeEventSummary() {
+    if (!activeEvent) return "None";
+    if (activeEvent.payload.effect) {
+      return `Effect: ${activeEvent.payload.effect.effect_id}`;
+    }
+    return `Donation alert from ${activeEvent.payload.donation.donor_name}`;
   }
 
   return (
@@ -149,11 +235,35 @@ function ControlWindow() {
           </select>
         </label>
 
+        <div className="connection-card">
+          <div className={`connection-status connection-status-${statusLabel.toLowerCase().replace(/\s+/g, "-")}`}>
+            <span className="connection-status-dot" />
+            <span className="connection-status-label">{statusLabel}</span>
+          </div>
+
+          <div className="connection-meta">
+            <div className="connection-meta-row">
+              <span className="connection-meta-key">Active event</span>
+              <span className="connection-meta-value">{activeEventSummary()}</span>
+            </div>
+            <div className="connection-meta-row">
+              <span className="connection-meta-key">Queue length</span>
+              <span className="connection-meta-value">{queueLength}</span>
+            </div>
+            {connectionStatus === "connection-lost" && lastError ? (
+              <div className="connection-meta-row">
+                <span className="connection-meta-key">Last error</span>
+                <span className="connection-meta-value connection-meta-value-error">{lastError}</span>
+              </div>
+            ) : null}
+          </div>
+        </div>
+
         <div className="actions">
           <button
             className="button button-primary"
             onClick={handleStart}
-            disabled={isBusy || !selectedDisplay}
+            disabled={isBusy || !selectedDisplay || isRunning}
           >
             Start Overlay
           </button>
@@ -164,18 +274,79 @@ function ControlWindow() {
           >
             Stop Overlay
           </button>
+          <button
+            className="button button-secondary"
+            onClick={handleReconnectNow}
+            disabled={connectionStatus !== "connection-lost"}
+          >
+            Reconnect Now
+          </button>
+          <button
+            className="button button-danger"
+            onClick={handleEmergencyStop}
+            disabled={isBusy || !isRunning}
+          >
+            Emergency Stop
+          </button>
         </div>
 
-        {isRunning && (
-          <div className="status status-running">
-            <span className="status-dot" />
-            Game overlay is running
-          </div>
-        )}
+        <div className="shortcut-info">
+          <span className="shortcut-label">Emergency shortcut</span>
+          <span className="shortcut-combo">Ctrl + Opt + Cmd + E</span>
+          <span className={`shortcut-state ${emergencyShortcutRegistered ? "shortcut-state-registered" : "shortcut-state-unregistered"}`}>
+            {emergencyShortcutRegistered ? "registered" : "not registered"}
+          </span>
+        </div>
 
-        {!isRunning && selectedDisplay && (
-          <div className="status status-idle">Ready to launch on {selectedDisplay}</div>
-        )}
+        <div className="test-controls">
+          <span className="test-controls-label">Local tests</span>
+          <div className="test-controls-row">
+            <button
+              className="button button-test"
+              onClick={() => handleTestEffect("jump-scare")}
+              disabled={isBusy || !isRunning}
+            >
+              Jump Scare
+            </button>
+            <button
+              className="button button-test"
+              onClick={() => handleTestEffect("screen-flash")}
+              disabled={isBusy || !isRunning}
+            >
+              Screen Flash
+            </button>
+            <button
+              className="button button-test"
+              onClick={() => handleTestEffect("screen-cover")}
+              disabled={isBusy || !isRunning}
+            >
+              Screen Cover
+            </button>
+            <button
+              className="button button-test"
+              onClick={() => handleTestEffect("tunnel-vision")}
+              disabled={isBusy || !isRunning}
+            >
+              Tunnel Vision
+            </button>
+          </div>
+          <div className="test-controls-row">
+            <button
+              className="button button-test"
+              onClick={handleTestAlert}
+              disabled={isBusy || !isRunning}
+            >
+              Alert + TTS
+            </button>
+            <button
+              className="button button-test"
+              onClick={handleTestJumpScareAudio}
+              disabled={isBusy || !isRunning}
+            >
+              Jump Scare Audio
+            </button>
+          </div>
+        </div>
 
         {error && <div className="status status-error">{error}</div>}
       </section>

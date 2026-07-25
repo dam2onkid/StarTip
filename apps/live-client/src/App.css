@@ -352,3 +352,164 @@ body,
   background: radial-gradient(circle at center, transparent 17.5%, rgba(0, 0, 0, 0.92) 18%);
   pointer-events: none;
 }
+
+.connection-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+  padding: var(--spacing-md);
+  background-color: var(--color-neutral);
+  border: 1px solid rgba(236, 237, 238, 0.08);
+  border-radius: var(--radius-md);
+}
+
+.connection-status {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  font-family: "Inter Tight", Inter, system-ui, sans-serif;
+  font-weight: 600;
+  font-size: 1.1rem;
+}
+
+.connection-status-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background-color: var(--color-secondary);
+}
+
+.connection-status-disconnected .connection-status-dot {
+  background-color: var(--color-secondary);
+}
+.connection-status-connecting .connection-status-dot {
+  background-color: #fbbf24;
+  animation: pulse 1.5s ease-in-out infinite;
+}
+.connection-status-ready .connection-status-dot,
+.connection-status-overlay-running .connection-status-dot {
+  background-color: var(--color-tertiary);
+}
+.connection-status-connection-lost .connection-status-dot {
+  background-color: #ff6b6b;
+}
+
+.connection-status-disconnected {
+  color: var(--color-secondary);
+}
+.connection-status-connecting {
+  color: #fbbf24;
+}
+.connection-status-ready,
+.connection-status-overlay-running {
+  color: var(--color-tertiary);
+}
+.connection-status-connection-lost {
+  color: #ff6b6b;
+}
+
+.connection-meta {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+  font-size: 0.9rem;
+}
+
+.connection-meta-row {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--spacing-sm);
+}
+
+.connection-meta-key {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 0.75rem;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--color-secondary);
+}
+
+.connection-meta-value {
+  color: var(--color-primary);
+  text-align: right;
+}
+
+.connection-meta-value-error {
+  color: #ff6b6b;
+}
+
+.button-danger {
+  background-color: #ff6b6b;
+  color: var(--color-on-primary);
+}
+
+.button-test {
+  flex: 1;
+  padding: 8px 12px;
+  font-size: 0.85rem;
+  background-color: transparent;
+  color: var(--color-primary);
+  border: 1px solid var(--color-secondary);
+}
+
+.test-controls {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+}
+
+.test-controls-label {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 0.75rem;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--color-secondary);
+}
+
+.test-controls-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-sm);
+}
+
+.shortcut-info {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--spacing-sm);
+  padding: 12px;
+  background-color: var(--color-neutral);
+  border: 1px solid rgba(236, 237, 238, 0.08);
+  border-radius: var(--radius-md);
+  font-size: 0.9rem;
+}
+
+.shortcut-label {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 0.75rem;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--color-secondary);
+}
+
+.shortcut-combo {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  color: var(--color-primary);
+}
+
+.shortcut-state {
+  margin-left: auto;
+  font-size: 0.8rem;
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+}
+
+.shortcut-state-registered {
+  color: var(--color-on-primary);
+  background-color: var(--color-tertiary);
+}
+
+.shortcut-state-unregistered {
+  color: var(--color-primary);
+  background-color: rgba(156, 163, 175, 0.2);
+}

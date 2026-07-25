@@ -131,6 +131,26 @@ export class LiveEventQueue<T extends QueueItem> {
     return this.resolveActive("stopped", now);
   }
 
+  /**
+   * Remove queued items matching the predicate and transition them to
+   * `stopped`. The active item is not affected. Returns the number of items
+   * removed.
+   */
+  clear(predicate: (item: T) => boolean): number {
+    let removed = 0;
+    for (const id of [...this.queueOrder]) {
+      const state = this.items.get(id);
+      if (!state || state.status !== "queued") continue;
+      if (predicate(state.item)) {
+        this.removeFromQueue(id);
+        this.transition(state, "stopped");
+        removed += 1;
+      }
+    }
+    this.emitIfDirty();
+    return removed;
+  }
+
   private insertBySequence(id: string): void {
     const item = this.items.get(id);
     if (!item) return;

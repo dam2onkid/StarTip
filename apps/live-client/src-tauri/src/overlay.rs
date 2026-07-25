@@ -2,6 +2,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 
 use crate::display::{resolve_target_display, Display};
 
@@ -22,6 +23,7 @@ pub struct OverlayRequest {
 /// A platform-independent overlay window handle.
 pub trait OverlayWindow: Send + Sync {
     fn close(&self) -> Result<(), String>;
+    fn emit(&self, event: &str, payload: serde_json::Value) -> Result<(), String>;
 }
 
 /// A factory for querying displays and creating overlay windows.
@@ -57,6 +59,7 @@ pub struct GameOverlay {
     target_display: Option<String>,
     overlay_window: Option<Box<dyn OverlayWindow>>,
     running: bool,
+    emergency_shortcut_registered: bool,
 }
 
 impl GameOverlay {
@@ -69,6 +72,7 @@ impl GameOverlay {
             target_display: settings.target_display,
             overlay_window: None,
             running: false,
+            emergency_shortcut_registered: false,
         }
     }
 
@@ -133,27 +137,50 @@ impl GameOverlay {
         let window = self.factory.create_overlay(request)?;
         self.running = true;
         self.overlay_window = Some(window);
+
+        if let Some(window) = self.overlay_window.as_ref() {
+            let _ = window.emit("overlay-state", json!({ "running": true }));
+        }
+
         Ok(())
     }
 
     /// Stop the Game Overlay and remove any visible alert or effect.
     pub fn stop_overlay(&mut self) -> Result<(), String> {
         if let Some(window) = self.overlay_window.take() {
+            let _ = window.emit("overlay-state", json!({ "running": false }));
             window.close()?;
         }
         self.running = false;
         Ok(())
     }
 
+    /// Emergency stop the current effect media and audio while keeping the
+    /// Game Overlay active. This dispatches an event to the overlay webview.
+    pub fn emergency_stop(&mut self) -> Result<(), String> {
+        if let Some(window) = self.overlay_window.as_ref() {
+            window.emit("emergency-stop", json!({}))?;
+        }
+        Ok(())
+    }
+
     pub fn is_overlay_running(&self) -> bool {
         self.running
+    }
+
+    pub fn set_emergency_shortcut_registered(&mut self, registered: bool) {
+        self.emergency_shortcut_registered = registered;
+    }
+
+    pub fn is_emergency_shortcut_registered(&self) -> bool {
+        self.emergency_shortcut_registered
     }
 }
 
 #[cfg(desktop)]
 pub mod tauri_impl {
     use super::*;
-    use tauri::{PhysicalPosition, PhysicalSize, Position, Size, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
+    use tauri::{Emitter, PhysicalPosition, PhysicalSize, Position, Size, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
 
     fn to_display(m: &tauri::Monitor, primary: bool) -> Display {
         Display {
@@ -216,6 +243,10 @@ pub mod tauri_impl {
         fn close(&self) -> Result<(), String> {
             self.0.close().map_err(|e| e.to_string())
         }
+
+        fn emit(&self, event: &str, payload: serde_json::Value) -> Result<(), String> {
+            self.0.emit(event, payload).map_err(|e| e.to_string())
+        }
     }
 }
 
@@ -238,13 +269,19 @@ mod tests {
 
     struct MockWindow {
         closed: AtomicBool,
+        emitted: Mutex<Vec<(String, serde_json::Value)>>,
     }
 
     impl MockWindow {
         fn new(_label: &str) -> Self {
             Self {
                 closed: AtomicBool::new(false),
+                emitted: Mutex::new(Vec::new()),
             }
+        }
+
+        fn emissions(&self) -> Vec<(String, serde_json::Value)> {
+            self.emitted.lock().unwrap().clone()
         }
     }
 
@@ -253,11 +290,27 @@ mod tests {
             self.closed.store(true, Ordering::SeqCst);
             Ok(())
         }
+
+        fn emit(&self, event: &str, payload: serde_json::Value) -> Result<(), String> {
+            self.emitted.lock().unwrap().push((event.to_string(), payload));
+            Ok(())
+        }
+    }
+
+    impl OverlayWindow for std::sync::Arc<MockWindow> {
+        fn close(&self) -> Result<(), String> {
+            OverlayWindow::close(&**self)
+        }
+
+        fn emit(&self, event: &str, payload: serde_json::Value) -> Result<(), String> {
+            OverlayWindow::emit(&**self, event, payload)
+        }
     }
 
     struct MockFactory {
         displays: Vec<Display>,
         created: Mutex<Vec<OverlayRequest>>,
+        windows: Mutex<Vec<(String, std::sync::Arc<MockWindow>)>>,
     }
 
     impl MockFactory {
@@ -265,6 +318,7 @@ mod tests {
             Self {
                 displays,
                 created: Mutex::new(Vec::new()),
+                windows: Mutex::new(Vec::new()),
             }
         }
     }
@@ -272,7 +326,9 @@ mod tests {
     impl WindowFactory for MockFactory {
         fn create_overlay(&self, request: OverlayRequest) -> Result<Box<dyn OverlayWindow>, String> {
             self.created.lock().unwrap().push(request.clone());
-            Ok(Box::new(MockWindow::new(&request.label)))
+            let window = std::sync::Arc::new(MockWindow::new(&request.label));
+            self.windows.lock().unwrap().push((request.label.clone(), window.clone()));
+            Ok(Box::new(window))
         }
 
         fn displays(&self) -> Result<Vec<Display>, String> {
@@ -373,5 +429,71 @@ mod tests {
         if let Ok(text) = fs::read_to_string(&config) {
             assert!(!text.contains("secret-id"));
         }
+    }
+
+    #[test]
+    fn start_overlay_emits_overlay_state_running() {
+        let config = temp_config();
+        let factory = Arc::new(MockFactory::new(vec![display("Primary", 0, 0, 1920, 1080, true)]));
+        let mut overlay = GameOverlay::new(factory.clone(), config);
+
+        overlay.start_overlay().unwrap();
+
+        let created = factory.created.lock().unwrap();
+        let window = created[0].label.clone();
+        drop(created);
+
+        assert!(overlay.is_overlay_running());
+        let windows = factory.windows.lock().unwrap();
+        let mock = windows.iter().find(|(l, _)| l == &window).map(|(_, w)| w).unwrap();
+        assert!(mock.emissions().iter().any(|(e, p)| e == "overlay-state" && p["running"] == true));
+    }
+
+    #[test]
+    fn stop_overlay_emits_overlay_state_stopped_before_closing() {
+        let config = temp_config();
+        let factory = Arc::new(MockFactory::new(vec![display("Primary", 0, 0, 1920, 1080, true)]));
+        let mut overlay = GameOverlay::new(factory.clone(), config);
+
+        overlay.start_overlay().unwrap();
+        overlay.stop_overlay().unwrap();
+
+
+        assert!(!overlay.is_overlay_running());
+        let created = factory.created.lock().unwrap();
+        let window = created[0].label.clone();
+        drop(created);
+        let windows = factory.windows.lock().unwrap();
+        let mock = windows.iter().find(|(l, _)| l == &window).map(|(_, w)| w).unwrap();
+        let emissions = mock.emissions();
+        assert!(emissions.iter().any(|(e, p)| e == "overlay-state" && p["running"] == false));
+    }
+
+    #[test]
+    fn emergency_stop_emits_emergency_stop_event() {
+        let config = temp_config();
+        let factory = Arc::new(MockFactory::new(vec![display("Primary", 0, 0, 1920, 1080, true)]));
+        let mut overlay = GameOverlay::new(factory.clone(), config);
+
+        overlay.start_overlay().unwrap();
+        overlay.emergency_stop().unwrap();
+
+        let created = factory.created.lock().unwrap();
+        let window = created[0].label.clone();
+        drop(created);
+        let windows = factory.windows.lock().unwrap();
+        let mock = windows.iter().find(|(l, _)| l == &window).map(|(_, w)| w).unwrap();
+        assert!(mock.emissions().iter().any(|(e, _)| e == "emergency-stop"));
+    }
+
+    #[test]
+    fn emergency_shortcut_registered_flag_is_persisted_in_memory() {
+        let config = temp_config();
+        let factory = Arc::new(MockFactory::new(vec![]));
+        let mut overlay = GameOverlay::new(factory, config);
+
+        assert!(!overlay.is_emergency_shortcut_registered());
+        overlay.set_emergency_shortcut_registered(true);
+        assert!(overlay.is_emergency_shortcut_registered());
     }
 }

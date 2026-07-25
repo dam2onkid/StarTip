@@ -54,6 +54,16 @@ fn is_overlay_running(state: State<'_, Mutex<GameOverlay>>) -> bool {
     state.lock().unwrap().is_overlay_running()
 }
 
+#[tauri::command]
+fn emergency_stop(state: State<'_, Mutex<GameOverlay>>) -> Result<(), String> {
+    state.lock().unwrap().emergency_stop()
+}
+
+#[tauri::command]
+fn is_emergency_shortcut_registered(state: State<'_, Mutex<GameOverlay>>) -> bool {
+    state.lock().unwrap().is_emergency_shortcut_registered()
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let app = tauri::Builder::default()
@@ -67,6 +77,8 @@ pub fn run() {
             start_overlay,
             stop_overlay,
             is_overlay_running,
+            emergency_stop,
+            is_emergency_shortcut_registered,
         ])
         .setup(|app| {
             let main_window = app.get_webview_window("main").unwrap_or_else(|| {
@@ -84,6 +96,32 @@ pub fn run() {
             }
             let overlay = GameOverlay::new(factory, config_path);
             app.manage(Mutex::new(overlay));
+
+            #[cfg(desktop)]
+            {
+                use tauri_plugin_global_shortcut::{
+                    Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState,
+                };
+
+                app.handle().plugin(tauri_plugin_global_shortcut::Builder::new().build())?;
+
+                let emergency_shortcut = Shortcut::new(
+                    Some(Modifiers::CONTROL | Modifiers::ALT | Modifiers::SUPER),
+                    Code::KeyE,
+                );
+
+                app.global_shortcut().on_shortcut(emergency_shortcut, |app, _, event| {
+                    if event.state == ShortcutState::Pressed {
+                        if let Ok(mut overlay) = app.state::<Mutex<GameOverlay>>().lock() {
+                            let _ = overlay.emergency_stop();
+                        }
+                    }
+                })?;
+
+                if let Ok(mut overlay) = app.state::<Mutex<GameOverlay>>().lock() {
+                    overlay.set_emergency_shortcut_registered(true);
+                }
+            }
 
             let icon = tauri::image::Image::from_bytes(include_bytes!("../icons/128x128.png"))
                 .unwrap_or_else(|_| app.default_window_icon().unwrap().to_owned());
