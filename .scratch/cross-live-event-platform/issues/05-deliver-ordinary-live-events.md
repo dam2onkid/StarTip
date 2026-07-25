@@ -1,4 +1,4 @@
-Status: ready-for-agent
+Status: done
 
 # Deliver ordinary Donations to the Live Event Client
 
