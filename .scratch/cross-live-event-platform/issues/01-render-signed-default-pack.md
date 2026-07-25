@@ -1,4 +1,4 @@
-Status: ready-for-agent
+Status: done
 
 # Render the signed Default Pack through shared components
 
@@ -26,4 +26,6 @@ The Default Pack contains exactly Jump Scare, Screen Flash, Screen Cover, and Tu
 None - can start immediately.
 
 ## Comments
+
+- 2026-07-25: Implemented in commit 66aec51. Added `packages/shared/src/overlay/effect-packs.ts` (manifest/signature/hash contract), `default-pack.ts` (bundled signed Default Pack), `renderer.ts` (deterministic render planner), and corresponding tests. Full `pnpm test` and `pnpm typecheck` pass.
 
