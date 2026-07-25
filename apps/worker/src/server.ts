@@ -91,6 +91,13 @@ export function createVerifyApp(
     ) {
       return c.json({ error: "invalid_body" }, 400);
     }
+    if (
+      input.donation_prep_id !== undefined &&
+      input.donation_prep_id !== null &&
+      (typeof input.donation_prep_id !== "string" || !input.donation_prep_id.trim())
+    ) {
+      return c.json({ error: "invalid_body" }, 400);
+    }
 
     // 3. Poll.
     const result = await pollVerify(

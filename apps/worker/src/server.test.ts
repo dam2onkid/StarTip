@@ -302,6 +302,12 @@ describe("POST /verify", () => {
     expect(await res.json()).toEqual({ error: "invalid_body" });
   });
 
+  it("returns 400 invalid_body when donation_prep_id is present but empty", async () => {
+    const res = await postVerify({ tx_hash: TX_HASH, donation_prep_id: "" });
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: "invalid_body" });
+  });
+
   it("returns 409 tx_failed when the tx status is FAILED", async () => {
     getTransaction.mockResolvedValue(makeFailedResponse());
     const res = await postVerify({ tx_hash: TX_HASH });

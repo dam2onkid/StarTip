@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, fireEvent, waitFor, act } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor, act, within } from "@testing-library/react";
 
 /**
  * DonateForm unit tests. The wallet kit, donate pipeline, supabase browser
@@ -551,6 +551,138 @@ describe("DonateForm", () => {
     expect(verifyCall).toBeDefined();
     const verifyBody = JSON.parse(verifyCall![1].body as string);
     expect(verifyBody.donor_name).toBe("Fan");
+  });
+
+  it("raises the amount to the selected effect's minimum and shows a confirmation dialog", async () => {
+    donateOnChain.mockResolvedValue({ status: "PENDING", hash: "deadbeef".repeat(8) });
+    mockFetch([
+      () => jsonRes(201, { donation_prep_id: "prep-123", raw_amount: "2000000" }),
+      () => jsonRes(200, { status: "confirmed" }),
+    ]);
+    await renderAndConnect("ada", undefined, {
+      live_events_enabled: true,
+      effects: {
+        "screen-flash": { name: "Screen Flash", price: 1 },
+        "jump-scare": { name: "Jump Scare", price: 2 },
+        "tunnel-vision": { name: "Tunnel Vision", price: 3 },
+        "screen-cover": { name: "Screen Cover", price: 5 },
+      },
+    });
+
+    const amountInput = screen.getByPlaceholderText("0.00") as HTMLInputElement;
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /Jump Scare/i }));
+    });
+    expect(amountInput.value).toBe("2");
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /continue/i }));
+    });
+
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /pay & donate/i })).toBeInTheDocument(),
+    );
+    const dialog = screen.getByRole("dialog");
+    expect(within(dialog).getByText(/Confirm Donation/i)).toBeInTheDocument();
+    expect(within(dialog).getByText(/Jump Scare/i)).toBeInTheDocument();
+    expect(within(dialog).getByText(/2 USDC/i)).toBeInTheDocument();
+  });
+
+  it("uses the locked raw amount from prepare for the on-chain donation and threads donation_prep_id through verify", async () => {
+    donateOnChain.mockResolvedValue({ status: "PENDING", hash: "deadbeef".repeat(8) });
+    mockFetch([
+      () => jsonRes(201, { donation_prep_id: "prep-xyz", raw_amount: "5000000" }),
+      () => jsonRes(200, { status: "confirmed" }),
+    ]);
+    await renderAndConnect("ada", undefined, {
+      live_events_enabled: true,
+      effects: {
+        "screen-flash": { name: "Screen Flash", price: 1 },
+        "jump-scare": { name: "Jump Scare", price: 2 },
+        "tunnel-vision": { name: "Tunnel Vision", price: 3 },
+        "screen-cover": { name: "Screen Cover", price: 5 },
+      },
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /Screen Cover/i }));
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /continue/i }));
+    });
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /pay & donate/i })).toBeInTheDocument(),
+    );
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /pay & donate/i }));
+    });
+
+    await waitFor(() => expect(toastSuccess).toHaveBeenCalledOnce());
+
+    const donateArgs = donateOnChain.mock.calls[0][0] as { amount: bigint };
+    expect(donateArgs.amount).toBe(BigInt("5000000"));
+
+    const fetchCalls = (global.fetch as unknown as { mock: { calls: [string, RequestInit][] } }).mock.calls;
+    const prepareCall = fetchCalls.find((c) => c[0].includes("/api/donations/prepare"));
+    const verifyCall = fetchCalls.find((c) => c[0].includes("/api/donations/verify"));
+    expect(prepareCall).toBeDefined();
+    expect(verifyCall).toBeDefined();
+    const prepareBody = JSON.parse(prepareCall![1].body as string);
+    const verifyBody = JSON.parse(verifyCall![1].body as string);
+    expect(prepareBody.effect_id).toBe("screen-cover");
+    expect(verifyBody.donation_prep_id).toBe("prep-xyz");
+  });
+
+  it("does not lower the amount when switching to a cheaper effect", async () => {
+    await renderAndConnect("ada", undefined, {
+      live_events_enabled: true,
+      effects: {
+        "screen-flash": { name: "Screen Flash", price: 1 },
+        "jump-scare": { name: "Jump Scare", price: 2 },
+        "tunnel-vision": { name: "Tunnel Vision", price: 3 },
+        "screen-cover": { name: "Screen Cover", price: 5 },
+      },
+    });
+
+    const amountInput = screen.getByPlaceholderText("0.00") as HTMLInputElement;
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /Screen Cover/i }));
+    });
+    expect(amountInput.value).toBe("5");
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /Screen Flash/i }));
+    });
+    expect(amountInput.value).toBe("5");
+  });
+
+  it("disables submission and shows an error when the amount is below the selected effect minimum", async () => {
+    await renderAndConnect("ada", undefined, {
+      live_events_enabled: true,
+      effects: {
+        "screen-flash": { name: "Screen Flash", price: 1 },
+        "jump-scare": { name: "Jump Scare", price: 2 },
+        "tunnel-vision": { name: "Tunnel Vision", price: 3 },
+        "screen-cover": { name: "Screen Cover", price: 5 },
+      },
+    });
+
+    const amountInput = screen.getByPlaceholderText("0.00") as HTMLInputElement;
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /Jump Scare/i }));
+    });
+    expect(amountInput.value).toBe("2");
+
+    await act(async () => {
+      fireEvent.change(amountInput, { target: { value: "0.5" } });
+    });
+    await waitFor(() =>
+      expect(screen.getByTestId("amount-error")).toHaveTextContent(/Minimum 2 test USDC for Jump Scare/i),
+    );
+    expect(screen.getByRole("button", { name: /continue/i })).toBeDisabled();
   });
 
 });

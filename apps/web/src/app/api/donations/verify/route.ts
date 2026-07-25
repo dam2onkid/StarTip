@@ -6,6 +6,7 @@ interface VerifyBody {
   tx_hash: string;
   message?: string | null;
   donor_name?: string;
+  donation_prep_id?: string;
 }
 
 /**
@@ -33,6 +34,12 @@ export async function POST(request: NextRequest) {
 
   const input = body as VerifyBody;
   if (typeof input.tx_hash !== "string" || !input.tx_hash.trim()) {
+    return NextResponse.json({ error: "invalid_body" }, { status: 400 });
+  }
+  if (
+    input.donation_prep_id !== undefined &&
+    (typeof input.donation_prep_id !== "string" || !input.donation_prep_id.trim())
+  ) {
     return NextResponse.json({ error: "invalid_body" }, { status: 400 });
   }
 
@@ -74,6 +81,7 @@ export async function POST(request: NextRequest) {
       message: input.message,
       donor_name: donorName,
       user_id: userId,
+      donation_prep_id: input.donation_prep_id,
     }),
   });
   const workerBody = await workerRes.json();

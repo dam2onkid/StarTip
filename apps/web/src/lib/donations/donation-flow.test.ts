@@ -5,6 +5,7 @@ import {
   VerifyError,
   type DonationFlowInput,
   type DonationFlowState,
+  type DonationFlowAdapters,
 } from "./donation-flow";
 import { DonateError, type DonateArgs, type DonateResult } from "./donate";
 import type { TokenAllowlistEntry } from "./token";
@@ -49,21 +50,27 @@ function collectStates(flow: DonationFlow): DonationFlowState[] {
   return states;
 }
 
-function fakeAdapters(over: {
+type AdapterOverrides = {
   donate?: (args: DonateArgs) => Promise<DonateResult>;
   checkTrustline?: (walletAddress: string, token: TokenAllowlistEntry) => Promise<boolean>;
-  verify?: (txHash: string, message: string, donorName: string) => Promise<void>;
-} = {}) {
+  prepare?: DonationFlowAdapters["prepare"];
+  verify?: DonationFlowAdapters["verify"];
+};
+
+function fakeAdapters(over: AdapterOverrides = {}) {
   const donate =
     over.donate ??
     vi.fn(async () => ({ status: "PENDING", hash: "deadbeef".repeat(8) }));
   const checkTrustline =
     over.checkTrustline ??
     vi.fn(async () => true);
+  const prepare =
+    over.prepare ??
+    vi.fn(async () => ({ ok: true, donationPrepId: "prep-123", rawAmount: "1500000" }) as const);
   const verify =
     over.verify ??
     vi.fn(async () => {});
-  return { donate, checkTrustline, verify };
+  return { donate, checkTrustline, prepare, verify };
 }
 
 describe("DonationFlow", () => {
@@ -158,6 +165,7 @@ describe("DonationFlow", () => {
       "deadbeef".repeat(8),
       INPUT.message,
       INPUT.donorName,
+      undefined,
     );
   });
 
@@ -318,5 +326,88 @@ describe("DonationFlow", () => {
     await flow.start({ ...INPUT, amount: "0" });
 
     expect(flow.getState().error).toBe("Amount must be greater than zero.");
+  });
+
+  describe("with effect selection", () => {
+    it("calls prepare with handle, token, amount, and effect id", async () => {
+      const adapters = fakeAdapters();
+      const flow = new DonationFlow(adapters);
+
+      await flow.start({ ...INPUT, effectId: "jump-scare" });
+
+      expect(adapters.prepare).toHaveBeenCalledOnce();
+      const passed = (adapters.prepare as unknown as ReturnType<typeof vi.fn>).mock
+        .calls[0][0] as {
+        handle: string;
+        token: string;
+        amount: string;
+        effectId: string;
+      };
+      expect(passed.handle).toBe("ada");
+      expect(passed.token).toBe(USDC_TOKEN.contract_address);
+      expect(passed.amount).toBe("1.5");
+      expect(passed.effectId).toBe("jump-scare");
+    });
+
+    it("uses the locked raw amount from prepare for the on-chain donation", async () => {
+      const adapters = fakeAdapters({
+        prepare: vi.fn(async () => ({
+          ok: true,
+          donationPrepId: "prep-abc",
+          rawAmount: "2500000",
+        }) as const),
+      });
+      const flow = new DonationFlow(adapters);
+
+      await flow.start({ ...INPUT, amount: "2.5", effectId: "jump-scare" });
+
+      const passed = (adapters.donate as ReturnType<typeof vi.fn>).mock
+        .calls[0][0] as DonateArgs;
+      expect(passed.amount).toBe(BigInt("2500000"));
+    });
+
+    it("passes donation prep id to verify", async () => {
+      const adapters = fakeAdapters({
+        prepare: vi.fn(async () => ({
+          ok: true,
+          donationPrepId: "prep-xyz",
+          rawAmount: "1500000",
+        }) as const),
+      });
+      const flow = new DonationFlow(adapters);
+
+      await flow.start({ ...INPUT, effectId: "screen-flash" });
+
+      expect(adapters.verify).toHaveBeenCalledWith(
+        "deadbeef".repeat(8),
+        INPUT.message,
+        INPUT.donorName,
+        "prep-xyz",
+      );
+    });
+
+    it("transitions to error when prepare fails", async () => {
+      const adapters = fakeAdapters({
+        prepare: vi.fn(async () => ({ ok: false, error: "amount_below_price" }) as const),
+      });
+      const flow = new DonationFlow(adapters);
+
+      await flow.start({ ...INPUT, effectId: "screen-cover" });
+
+      expect(flow.getState()).toMatchObject({
+        phase: "error",
+        error: "The amount is below the selected effect's minimum price.",
+      });
+      expect(adapters.donate).not.toHaveBeenCalled();
+    });
+
+    it("throws if an effect is selected but no prepare adapter is provided", async () => {
+      const { donate, checkTrustline, verify } = fakeAdapters();
+      const flow = new DonationFlow({ donate, checkTrustline, verify } as DonationFlowAdapters);
+
+      await flow.start({ ...INPUT, effectId: "jump-scare" });
+
+      expect(flow.getState().phase).toBe("error");
+    });
   });
 });

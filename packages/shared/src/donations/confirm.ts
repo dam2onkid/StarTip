@@ -37,6 +37,12 @@ export interface VerifyInput {
   donor_name?: string;
   /** Supabase auth user id of the logged-in donor, if any. Anonymous donors omit this. */
   user_id?: string;
+  /**
+   * Donation preparation identity returned by the prepare step. Optional and
+   * ignored for ordinary donations; it binds an on-chain settlement to a
+   * previously-created Effect Intent for Live Events.
+   */
+  donation_prep_id?: string;
 }
 
 export interface VerifySuccessBody {

@@ -12,6 +12,36 @@ import {
 import type { TokenAllowlistEntry } from "@/lib/donations/token";
 
 /**
+ * Error thrown when the server-side prepare step (Effect Intent creation) fails.
+ * The `code` is the worker/public API error name so the UI can show a tailored
+ * message without exposing internal details.
+ */
+export class PrepareError extends Error {
+  readonly code: string;
+  constructor(code: string) {
+    super(`Prepare failed: ${code}`);
+    this.name = "PrepareError";
+    this.code = code;
+  }
+}
+
+export interface PrepareArgs {
+  handle: string;
+  token: string;
+  amount: string;
+  effectId: string;
+}
+
+export interface PrepareSuccess {
+  donationPrepId: string;
+  rawAmount: string;
+}
+
+export type PrepareResult =
+  | ({ ok: true } & PrepareSuccess)
+  | { ok: false; error: string };
+
+/**
  * DonationFlow state machine. Models the donor's journey on `/donate/[handle]`:
  *
  *   idle -> submitting -> confirming -> success
@@ -46,6 +76,8 @@ export interface DonationFlowInput {
   amount: string;
   message: string;
   donorName: string;
+  /** Selected Default Pack effect id (e.g. `jump-scare`). When omitted, the donation settles normally with no effect. */
+  effectId?: string;
 }
 
 export interface DonationFlowAdapters {
@@ -56,8 +88,18 @@ export interface DonationFlowAdapters {
     walletAddress: string,
     token: TrustlineToken,
   ): Promise<boolean>;
+  /**
+   * Create a single-use, expiring Effect Intent before the on-chain donation.
+   * Optional: when `input.effectId` is set, the flow calls this before signing.
+   */
+  prepare?(args: PrepareArgs): Promise<PrepareResult>;
   /** Poll the verify worker until the donation is confirmed. */
-  verify(txHash: string, message: string, donorName: string): Promise<void>;
+  verify(
+    txHash: string,
+    message: string,
+    donorName: string,
+    donationPrepId?: string,
+  ): Promise<void>;
 }
 
 export type DonationFlowListener = (state: DonationFlowState) => void;
@@ -90,6 +132,18 @@ export class DonationFlowValidationError extends Error {
 /**
  * Map an error from an adapter to the user-facing message the UI should render.
  */
+const PREPARE_ERROR_MESSAGES: Record<string, string> = {
+  live_events_disabled: "Live Events are currently disabled for this creator.",
+  amount_below_price: "The amount is below the selected effect's minimum price.",
+  invalid_effect: "The selected effect is not available.",
+  token_not_found: "The selected token is not supported.",
+  price_below_floor: "This effect's price is below the platform floor. Please try again later.",
+  creator_not_found: "This creator was not found.",
+  intent_exists: "This donation is already being prepared. Please try again.",
+  worker_error: "Could not prepare the donation. Please try again.",
+  db_error: "Could not prepare the donation. Please try again.",
+};
+
 function mapDonationFlowError(err: unknown): string {
   if (err instanceof DonateError) {
     return DONATE_ERROR_MESSAGES[err.code] ?? err.message;
@@ -97,6 +151,9 @@ function mapDonationFlowError(err: unknown): string {
   if (err instanceof Error && err.name === "DonateError" && "code" in err) {
     const code = (err as { code: string }).code as DonateErrorCode;
     return DONATE_ERROR_MESSAGES[code] ?? err.message;
+  }
+  if (err instanceof PrepareError) {
+    return PREPARE_ERROR_MESSAGES[err.code] ?? err.message;
   }
   if (err instanceof VerifyError) {
     return `Server error: ${err.code}`;
@@ -146,15 +203,41 @@ export class DonationFlow {
     this.setState({ phase: "submitting", error: null, txHash: null });
 
     try {
-      const rawAmount = displayToRawAmount(input.amount, input.token.decimals);
       let rawBigInt: bigint;
-      try {
-        rawBigInt = BigInt(rawAmount);
-      } catch {
-        throw new DonationFlowValidationError("Amount must be a valid number.");
-      }
-      if (rawAmount === "0" || rawBigInt <= BigInt(0)) {
-        throw new DonationFlowValidationError("Amount must be greater than zero.");
+      let donationPrepId: string | undefined;
+
+      if (input.effectId) {
+        if (!this.adapters.prepare) {
+          throw new Error("Prepare adapter is required when an effect is selected.");
+        }
+        const prepared = await this.adapters.prepare({
+          handle: input.handle,
+          token: input.token.contract_address,
+          amount: input.amount,
+          effectId: input.effectId,
+        });
+        if (!prepared.ok) {
+          throw new PrepareError(prepared.error);
+        }
+        donationPrepId = prepared.donationPrepId;
+        try {
+          rawBigInt = BigInt(prepared.rawAmount);
+        } catch {
+          throw new DonationFlowValidationError("Amount must be a valid number.");
+        }
+        if (rawBigInt <= BigInt(0)) {
+          throw new DonationFlowValidationError("Amount must be greater than zero.");
+        }
+      } else {
+        const rawAmount = displayToRawAmount(input.amount, input.token.decimals);
+        try {
+          rawBigInt = BigInt(rawAmount);
+        } catch {
+          throw new DonationFlowValidationError("Amount must be a valid number.");
+        }
+        if (rawAmount === "0" || rawBigInt <= BigInt(0)) {
+          throw new DonationFlowValidationError("Amount must be greater than zero.");
+        }
       }
 
       const hasTrustline = await this.adapters.checkTrustline(
@@ -182,6 +265,7 @@ export class DonationFlow {
         result.hash,
         input.message,
         input.donorName,
+        donationPrepId,
       );
 
       this.setState({

@@ -20,12 +20,22 @@ import {
   FieldLabel,
   FieldDescription,
 } from "@/components/ui/field";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { useDonateWallet } from "@/components/landing/donate-wallet-context";
 import { useDonationFlow } from "@/lib/donations/use-donation-flow";
 import { useTokenAllowlist } from "@/lib/donations/use-token-allowlist";
 import { useTrustline } from "@/lib/donations/use-trustline";
 import { displayToRawAmount } from "@/lib/stellar/amount";
 import { cn } from "@/lib/utils";
+import { DEFAULT_EFFECT_IDS } from "@startip/shared/live-events/pricing";
+import { defaultPackManifest, defaultPackAssets } from "@startip/shared/overlay/default-pack";
 
 export { displayToRawAmount };
 
@@ -163,6 +173,193 @@ function ConnectWalletPrompt({
   );
 }
 
+/**
+ * Render a tiny, non-interactive preview of the selected Default Pack effect.
+ * Jump Scare uses the first bundled asset, while the other effects render a
+ * CSS shape derived from the manifest geometry so the donor sees what they are
+ * triggering without loading remote executable code.
+ */
+function EffectPreview({ effectId }: { effectId: string }) {
+  const objectUrl = React.useMemo(() => {
+    const effect = defaultPackManifest.effects[effectId];
+    if (!effect) return null;
+    if (effect.type === "jump-scare") {
+      const assetId = effect.assetIds?.[0];
+      if (!assetId || typeof URL.createObjectURL !== "function") return null;
+      const asset = defaultPackManifest.assets[assetId];
+      const bytes = defaultPackAssets[assetId];
+      if (!asset || !bytes) return null;
+      const blob = new Blob([bytes as BlobPart], { type: asset.contentType });
+      return URL.createObjectURL(blob);
+    }
+    return null;
+  }, [effectId]);
+
+  React.useEffect(() => {
+    if (!objectUrl) return;
+    return () => URL.revokeObjectURL(objectUrl);
+  }, [objectUrl]);
+
+  if (objectUrl) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={objectUrl}
+        alt=""
+        className="size-full object-contain"
+      />
+    );
+  }
+
+  const effect = defaultPackManifest.effects[effectId];
+  if (!effect) return null;
+
+  if (effect.type === "screen-flash") {
+    return (
+      <div
+        className="size-full animate-pulse rounded-md bg-foreground"
+        aria-hidden
+      />
+    );
+  }
+
+  if (effect.type === "screen-cover") {
+    const obscured = effect.obscuredPct ?? 70;
+    return (
+      <div
+        className="relative size-full overflow-hidden rounded-md border border-foreground/10"
+        aria-hidden
+      >
+        <div
+          className="absolute inset-0 m-auto rounded-sm bg-foreground/80"
+          style={{ width: `${obscured}%`, height: `${obscured}%` }}
+        />
+      </div>
+    );
+  }
+
+  if (effect.type === "tunnel-vision") {
+    const diameter = effect.visibleDiameterPct ?? 35;
+    const radius = diameter / 2;
+    return (
+      <div
+        className="size-full rounded-md"
+        style={{
+          background: `radial-gradient(circle, transparent ${radius}%, rgba(0,0,0,0.7) ${radius}%)`,
+        }}
+        aria-hidden
+      />
+    );
+  }
+
+  return null;
+}
+
+interface LiveEffectCardProps {
+  id: string;
+  effect: { name: string; price: number };
+  selected: boolean;
+  onSelect: (id: string | null) => void;
+}
+
+function LiveEffectCard({ id, effect, selected, onSelect }: LiveEffectCardProps) {
+  return (
+    <button
+      type="button"
+      onClick={() => onSelect(selected ? null : id)}
+      aria-pressed={selected}
+      className={cn(
+        "relative flex flex-col gap-2 rounded-md border p-3 text-left transition-all",
+        selected
+          ? "border-primary bg-primary/10"
+          : "border-foreground/10 bg-foreground/[0.03] hover:border-foreground/20 hover:bg-foreground/[0.06]",
+      )}
+    >
+      <div className="flex items-start justify-between gap-2">
+        <span className="text-sm font-medium">{effect.name}</span>
+        {selected && <CheckIcon className="size-4 shrink-0 text-primary" aria-hidden />}
+      </div>
+      <div className="h-16 w-full overflow-hidden rounded-md bg-background/50">
+        <EffectPreview effectId={id} />
+      </div>
+      <p className="text-xs text-muted-foreground">Min {effect.price} test USDC</p>
+    </button>
+  );
+}
+
+interface DonationConfirmDialogProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onConfirm: () => void;
+  displayName: string;
+  tokenSymbol: string;
+  amount: string;
+  effectName?: string | null;
+  busy: boolean;
+}
+
+function DonationConfirmDialog({
+  open,
+  onOpenChange,
+  onConfirm,
+  displayName,
+  tokenSymbol,
+  amount,
+  effectName,
+  busy,
+}: DonationConfirmDialogProps) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Confirm Donation</DialogTitle>
+          <DialogDescription>
+            Review your donation before you sign the transaction.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-2 text-sm">
+          <div className="flex justify-between">
+            <span className="text-muted-foreground">Creator</span>
+            <span className="font-medium">{displayName}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-muted-foreground">Token</span>
+            <span className="font-medium">{tokenSymbol}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-muted-foreground">Total amount</span>
+            <span className="font-medium">{amount} {tokenSymbol}</span>
+          </div>
+          {effectName ? (
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Effect</span>
+              <span className="font-medium">{effectName}</span>
+            </div>
+          ) : null}
+        </div>
+        <DialogFooter>
+          <Button
+            type="button"
+            variant="ghost"
+            onClick={() => onOpenChange(false)}
+            disabled={busy}
+          >
+            Cancel
+          </Button>
+          <Button
+            type="button"
+            onClick={onConfirm}
+            loading={busy}
+            disabled={busy}
+          >
+            Pay & Donate
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export function DonateForm({
   handle,
   displayName = handle,
@@ -185,6 +382,8 @@ export function DonateForm({
   const [quickSelect, setQuickSelect] = React.useState<string | null>(null);
   const [message, setMessage] = React.useState("");
   const [donorName, setDonorName] = React.useState(donorDisplayName ?? "");
+  const [selectedEffect, setSelectedEffect] = React.useState<string | null>(null);
+  const [confirmOpen, setConfirmOpen] = React.useState(false);
 
   const effectiveSelectedToken =
     selectedToken && tokens.some((t) => t.contract_address === selectedToken)
@@ -220,8 +419,43 @@ export function DonateForm({
     prevPhase.current = state.phase;
   }, [state.phase, state.error, state.txHash, displayName]);
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
+  const selectedEffectPrice = selectedEffect
+    ? liveEventsConfig?.effects[selectedEffect]?.price
+    : null;
+
+  function enforceMinimumForEffect(nextAmount: string, effectId: string | null): string {
+    if (!effectId || !liveEventsConfig?.effects[effectId]) return nextAmount;
+    const price = liveEventsConfig.effects[effectId].price;
+    const num = Number(nextAmount);
+    if (!Number.isFinite(num) || num < price) {
+      return String(price);
+    }
+    return nextAmount;
+  }
+
+  function handleSelectEffect(id: string | null) {
+    setSelectedEffect(id);
+    if (id && liveEventsConfig?.effects[id]) {
+      const price = liveEventsConfig.effects[id].price;
+      const current = Number(amount);
+      if (!Number.isFinite(current) || current < price) {
+        setAmount(String(price));
+        setQuickSelect(null);
+      }
+    }
+  }
+
+  function handleQuickSelect(value: string) {
+    const next = enforceMinimumForEffect(value, selectedEffect);
+    setAmount(next);
+    if (next === value) {
+      setQuickSelect(value);
+    } else {
+      setQuickSelect(null);
+    }
+  }
+
+  async function submitDonation(effectId?: string) {
     if (!walletAddress || !effectiveSelectedToken || !amount) return;
     const token = tokens.find(
       (t) => t.contract_address === effectiveSelectedToken,
@@ -235,18 +469,55 @@ export function DonateForm({
       amount,
       message,
       donorName,
+      effectId,
     });
   }
 
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!walletAddress || !effectiveSelectedToken || !amount) return;
+
+    if (selectedEffect) {
+      setConfirmOpen(true);
+      return;
+    }
+
+    await submitDonation();
+  }
+
+  async function handleConfirm() {
+    setConfirmOpen(false);
+    if (selectedEffect) {
+      await submitDonation(selectedEffect);
+    }
+  }
+
+  const amountNum = Number(amount);
+  const minAmount = selectedEffectPrice ?? 0;
   const canSubmit =
-    walletAddress && effectiveSelectedToken && amount && !busy;
+    walletAddress &&
+    effectiveSelectedToken &&
+    amount &&
+    !busy &&
+    Number.isFinite(amountNum) &&
+    amountNum > 0 &&
+    amountNum >= minAmount;
+
+  const amountError =
+    amount &&
+    Number.isFinite(amountNum) &&
+    amountNum < minAmount
+      ? `Minimum ${minAmount} test USDC for ${liveEventsConfig?.effects[selectedEffect ?? ""]?.name}`
+      : null;
 
   const buttonLabel =
     state.phase === "submitting"
       ? "Submitting..."
       : state.phase === "confirming"
         ? "Confirming..."
-        : "Donate";
+        : selectedEffect
+          ? "Continue"
+          : "Donate";
 
   return (
     <Card className="glass-strong mx-auto w-full max-w-2xl rounded-[var(--radius-xl)] border border-foreground/10 shadow-[0_24px_80px_-32px_rgba(0,0,0,0.8)]">
@@ -368,10 +639,7 @@ export function DonateForm({
                       key={value}
                       type="button"
                       aria-pressed={quickSelect === value}
-                      onClick={() => {
-                        setAmount(value);
-                        setQuickSelect(value);
-                      }}
+                      onClick={() => handleQuickSelect(value)}
                       disabled={busy}
                       className={cn(
                         "flex-1 rounded-md border px-3 py-2.5 text-sm font-medium transition-all",
@@ -396,7 +664,10 @@ export function DonateForm({
                     }}
                     disabled={busy}
                     placeholder="0.00"
-                    className="h-12 pr-16 text-lg font-medium"
+                    className={cn(
+                      "h-12 pr-16 text-lg font-medium",
+                      amountError && "border-destructive focus-visible:ring-destructive",
+                    )}
                     required
                   />
                   {selectedTokenEntry && (
@@ -405,6 +676,16 @@ export function DonateForm({
                     </span>
                   )}
                 </div>
+                {selectedEffectPrice && !amountError ? (
+                  <p className="text-xs text-muted-foreground">
+                    {selectedEffectPrice > 0
+                      ? `Minimum ${selectedEffectPrice} test USDC for ${liveEventsConfig?.effects[selectedEffect ?? ""]?.name}`
+                      : "No minimum"}
+                  </p>
+                ) : null}
+                {amountError ? (
+                  <p className="text-xs text-destructive" data-testid="amount-error">{amountError}</p>
+                ) : null}
               </div>
             </Field>
 
@@ -416,21 +697,39 @@ export function DonateForm({
                 <div
                   className="grid grid-cols-1 gap-2 sm:grid-cols-2"
                   data-testid="live-effects-panel"
+                  role="radiogroup"
+                  aria-label="Select a donation effect"
                 >
-                  {Object.entries(liveEventsConfig.effects).map(([id, effect]) => (
-                    <div
-                      key={id}
-                      className="rounded-md border border-foreground/10 bg-foreground/[0.03] p-3"
-                    >
-                      <p className="text-sm font-medium">{effect.name}</p>
-                      <p className="text-xs text-muted-foreground">
-                        Min {effect.price} test USDC
-                      </p>
-                    </div>
-                  ))}
+                  <button
+                    type="button"
+                    onClick={() => handleSelectEffect(null)}
+                    aria-pressed={selectedEffect === null}
+                    className={cn(
+                      "relative flex flex-col justify-center gap-1 rounded-md border p-3 text-left transition-all",
+                      selectedEffect === null
+                        ? "border-primary bg-primary/10"
+                        : "border-foreground/10 bg-foreground/[0.03] hover:border-foreground/20 hover:bg-foreground/[0.06]",
+                    )}
+                  >
+                    <span className="text-sm font-medium">No effect</span>
+                    <span className="text-xs text-muted-foreground">Donate without a live effect</span>
+                  </button>
+                  {DEFAULT_EFFECT_IDS.map((id) => {
+                    const effect = liveEventsConfig.effects[id];
+                    if (!effect) return null;
+                    return (
+                      <LiveEffectCard
+                        key={id}
+                        id={id}
+                        effect={effect}
+                        selected={selectedEffect === id}
+                        onSelect={handleSelectEffect}
+                      />
+                    );
+                  })}
                 </div>
                 <FieldDescription>
-                  Effect selection is coming soon. These are the current minimums.
+                  Select an effect to trigger during the creator stream. The price is a minimum donation, not a separate fee.
                 </FieldDescription>
               </Field>
             )}
@@ -496,6 +795,17 @@ export function DonateForm({
           </Button>
         </form>
       </CardContent>
+
+      <DonationConfirmDialog
+        open={confirmOpen}
+        onOpenChange={setConfirmOpen}
+        onConfirm={handleConfirm}
+        displayName={displayName}
+        tokenSymbol={selectedTokenEntry?.symbol ?? ""}
+        amount={amount}
+        effectName={selectedEffect ? liveEventsConfig?.effects[selectedEffect]?.name : null}
+        busy={busy}
+      />
     </Card>
   );
 }
