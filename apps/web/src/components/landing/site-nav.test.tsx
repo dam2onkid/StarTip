@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor, act } from "@testing-library/react";
+import { DonateWalletProvider } from "@/components/landing/donate-wallet-context";
 
 // Controllable pathname so tests can drive the overlay suppression and the
 // active-link highlight without a Next.js router. `vi.hoisted` keeps the
@@ -66,7 +67,7 @@ vi.mock("framer-motion", async () => {
 const { SiteNav } = await import("@/components/landing/site-nav");
 
 function renderNav(ui: React.ReactElement) {
-  return render(ui);
+  return render(<DonateWalletProvider>{ui}</DonateWalletProvider>);
 }
 
 /**

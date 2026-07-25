@@ -11,6 +11,7 @@ import {
 import { Menu, X, Bell } from "lucide-react";
 import { DropdownMenu } from "radix-ui";
 import { Button } from "@/components/ui/button";
+import { DonateWalletConnector } from "@/components/landing/donate-wallet-connector";
 import { Magnetic } from "@/components/landing/magnetic";
 import { NavAvatarMenu } from "@/components/landing/nav-avatar-menu";
 import { useLogout } from "@/hooks/use-logout";
@@ -226,11 +227,16 @@ export function SiteNav({ auth = { state: "unauthenticated" } }: { auth?: NavAut
               </div>
             </>
           ) : (
-            <Magnetic strength={0.4} className="hidden md:inline-block">
-              <Button asChild size="lg">
-                <Link href="/login">Sign in/up</Link>
-              </Button>
-            </Magnetic>
+            <>
+              <div className="hidden md:block">
+                <DonateWalletConnector />
+              </div>
+              <Magnetic strength={0.4} className="hidden md:inline-block">
+                <Button asChild size="lg">
+                  <Link href="/login">Sign in/up</Link>
+                </Button>
+              </Magnetic>
+            </>
           )}
 
           {/* Mobile menu toggle — shows below md only */}

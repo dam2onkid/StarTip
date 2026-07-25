@@ -41,8 +41,8 @@ let pushActive: ((payout?: string) => void) | null = null;
 
 async function establishSession(page: Page) {
   await page.goto("/login");
-  await page.getByLabel(/email/i).fill("fan@example.com");
-  await page.getByLabel(/password/i).fill("secret123");
+  await page.getByLabel(/^email$/i).fill("fan@example.com");
+  await page.getByLabel(/^password$/i).fill("secret123");
   await page.getByRole("button", { name: /sign in/i }).click();
   await expect(page).toHaveURL(/\/dashboard$/);
 }
@@ -236,7 +236,8 @@ test.describe.serial("Creator onboarding four-gate flow", () => {
 
     // Drive the Realtime flip via the stub.
     await pushActive?.("GBPAYOUT");
-    await expect(page.getByText(/You are live on-chain/i)).toBeVisible();
+    // StrictMode can render the success toast twice in dev; first() avoids a strict-mode violation.
+    await expect(page.getByText(/You are live on-chain/i).first()).toBeVisible();
     await expect(page.getByTestId("creator-active")).toBeVisible();
   });
 });

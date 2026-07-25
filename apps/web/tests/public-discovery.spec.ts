@@ -55,7 +55,8 @@ test.describe("Public discovery", () => {
     await expect(page.getByText(/pioneer programmer\./i)).toBeVisible();
 
     // Donation stats: total received = 100 + 500 + 9999 + 300 = 10899, count = 4.
-    await expect(page.getByTestId("total-received")).toHaveText("10899");
+    await expect(page.getByTestId("total-received")).toContainText("10899");
+    await expect(page.getByTestId("total-received")).toContainText("USDC");
     await expect(page.getByTestId("donation-count")).toHaveText("4");
 
     // Per-creator leaderboard: Bob (500) > Fan (300) > Ada (100); anonymous
@@ -78,10 +79,10 @@ test.describe("Public discovery", () => {
     await expect(page).toHaveURL(/\/creator\/ada\/donate$/);
   });
 
-  test("/docs renders a static placeholder", async ({ page }) => {
+  test("/docs renders documentation content", async ({ page }) => {
     await page.goto("/docs");
-    await expect(page.getByRole("heading", { name: /docs/i })).toBeVisible();
-    await expect(page.getByTestId("docs-placeholder")).toHaveText(/documentation coming soon/i);
+    await expect(page.getByRole("heading", { name: /documentation/i })).toBeVisible();
+    await expect(page.getByText(/Do I need an account to donate?/i)).toBeVisible();
   });
 
   test("the unified nav with the Discover link is present on every public discovery route", async ({ page }) => {

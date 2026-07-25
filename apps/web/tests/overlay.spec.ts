@@ -73,6 +73,11 @@ test.describe("Overlay realtime donation alerts", () => {
     await expect(page.getByTestId("overlay-alert")).toHaveCount(0);
     await expect(page.getByText("Latecomer")).toHaveCount(0);
 
+    // Wait for the OverlayAlerts component to subscribe and expose the push seam.
+    await page.waitForFunction(() =>
+      typeof (window as unknown as { __pushOverlayDonation?: unknown }).__pushOverlayDonation === "function",
+    );
+
     // Push a new visible donation through the Realtime stub.
     await page.evaluate(() =>
       (window as unknown as {
@@ -110,6 +115,11 @@ test.describe("Overlay realtime donation alerts", () => {
 
     // Wait for the client to mount and confirm no historical alerts are replayed.
     await expect(page.getByTestId("overlay-alert")).toHaveCount(0);
+
+    // Wait for the OverlayAlerts component to subscribe and expose the push seam.
+    await page.waitForFunction(() =>
+      typeof (window as unknown as { __pushOverlayDonation?: unknown }).__pushOverlayDonation === "function",
+    );
 
     await page.evaluate(() =>
       (window as unknown as {

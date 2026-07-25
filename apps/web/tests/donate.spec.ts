@@ -83,6 +83,11 @@ async function routeApi(page: Page) {
 }
 
 test.describe("Donate flow", () => {
+  test.afterEach(async ({ page }) => {
+    // Force a full navigation away so the next test starts from a clean document
+    // and avoids duplicate form inputs when the same page object is reused.
+    await page.goto("about:blank");
+  });
   test("happy path: connect, pick token, enter amount, submit, see success", async ({ page }) => {
     await installSeams(page, "success");
     await routeApi(page);
@@ -108,14 +113,17 @@ test.describe("Donate flow", () => {
     await expect(page.getByRole("combobox", { name: /token/i })).toBeEnabled();
     await expect(page.getByRole("combobox", { name: /token/i })).toHaveText("USDC");
 
+    // React StrictMode can transiently render a duplicate amount input in dev.
+    await expect(page.locator("form input#donate-amount")).toHaveCount(1);
+
     // Enter amount.
-    await page.getByPlaceholder("0.00").fill("1.5");
+    await page.locator("form input#donate-amount").fill("1.5");
 
     // Submit.
-    await page.getByRole("button", { name: /donate/i }).click();
+    await page.locator("form").getByRole("button", { name: /donate/i }).click();
 
-    // Verify success.
-    await expect(page.locator("form").getByText(/donation confirmed/i)).toBeVisible();
+    // Verify success (the form surfaces it via a toast from the DonationFlow state machine).
+    await expect(page.getByText(/Donation confirmed!/i)).toBeVisible();
   });
 
   test("error path: paused creator surfaces a user-facing error message", async ({ page }) => {
@@ -135,15 +143,18 @@ test.describe("Donate flow", () => {
     await expect(page.getByRole("combobox", { name: /token/i })).toBeEnabled();
     await expect(page.getByRole("combobox", { name: /token/i })).toHaveText("USDC");
 
-    // Enter amount and submit.
-    await page.getByPlaceholder("0.00").fill("1.0");
-    await page.getByRole("button", { name: /donate/i }).click();
+    // React StrictMode can transiently render a duplicate amount input in dev.
+    // Wait for the form to settle to a single amount input before interacting.
+    await expect(page.locator("form input#donate-amount")).toHaveCount(1);
 
-    // Verify the Paused error message is displayed. Scoped to the form so the
-    // Next.js route announcer (also `role="alert"`) is not matched.
+    // Enter amount and submit.
+    await page.locator("form input#donate-amount").fill("1.0");
+    await page.locator("form").getByRole("button", { name: /donate/i }).click();
+
+    // Verify the Paused error message is displayed (the form surfaces it via a toast).
     await expect(
-      page.locator("form").getByRole("alert"),
-    ).toHaveText(/paused and cannot receive donations/i);
+      page.getByText(/paused and cannot receive donations/i),
+    ).toBeVisible();
   });
 
   test("no-trustline path: shows guidance and builds a change_trust + donate() two-op transaction", async ({ page }) => {
@@ -166,12 +177,15 @@ test.describe("Donate flow", () => {
     // The trustline guidance renders (the checkTrustline seam returns false).
     await expect(page.getByText(/trustline to this token is required/i)).toBeVisible();
 
-    // Enter amount and submit.
-    await page.getByPlaceholder("0.00").fill("1.0");
-    await page.getByRole("button", { name: /donate/i }).click();
+    // React StrictMode can transiently render a duplicate amount input in dev.
+    await expect(page.locator("form input#donate-amount")).toHaveCount(1);
 
-    // Verify success.
-    await expect(page.locator("form").getByText(/donation confirmed/i)).toBeVisible();
+    // Enter amount and submit.
+    await page.locator("form input#donate-amount").fill("1.0");
+    await page.locator("form").getByRole("button", { name: /donate/i }).click();
+
+    // Verify success (the form surfaces it via a toast from the DonationFlow state machine).
+    await expect(page.getByText(/Donation confirmed!/i)).toBeVisible();
 
     // Assert the donate stub received needsTrustline: true (the two-op path).
     const args = await page.evaluate(() =>

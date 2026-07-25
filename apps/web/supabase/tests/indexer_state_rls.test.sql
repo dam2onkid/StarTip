@@ -19,8 +19,8 @@ select has_table('public', 'indexer_state', 'public.indexer_state exists');
 select col_type_is('public', 'indexer_state', 'id', 'integer', 'id is integer');
 select col_type_is('public', 'indexer_state', 'last_ledger', 'integer', 'last_ledger is integer');
 select col_type_is('public', 'indexer_state', 'last_cursor', 'text', 'last_cursor is text');
-select col_is_not_null('public', 'indexer_state', 'last_ledger', 'last_ledger is NOT NULL');
-select col_is_nullable('public', 'indexer_state', 'last_cursor', 'last_cursor is nullable');
+select col_not_null('public', 'indexer_state', 'last_ledger', 'last_ledger is NOT NULL');
+select col_is_null('public', 'indexer_state', 'last_cursor', 'last_cursor is nullable');
 
 -- The seed row exists with last_ledger = 0 and last_cursor = null.
 select results_eq(

@@ -54,7 +54,10 @@ mod tests {
 
         let resolved = resolve_target_display(&displays, Some("Secondary"));
 
-        assert_eq!(resolved.as_ref().map(|d| d.name.as_str()), Some("Secondary"));
+        assert_eq!(
+            resolved.as_ref().map(|d| d.name.as_str()),
+            Some("Secondary")
+        );
         assert_eq!(resolved.map(|d| d.size), Some((2560, 1440)));
     }
 

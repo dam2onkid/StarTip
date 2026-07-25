@@ -90,7 +90,9 @@ impl GameOverlay {
 
     pub fn set_target_display(&mut self, name: Option<String>) -> Result<(), String> {
         self.target_display = name.clone();
-        let settings = Settings { target_display: name };
+        let settings = Settings {
+            target_display: name,
+        };
         save_settings(&self.config_path, &settings)
     }
 
@@ -106,7 +108,10 @@ impl GameOverlay {
     /// chosen Target Display is unavailable.
     pub fn resolved_display(&self) -> Result<Option<Display>, String> {
         let displays = self.factory.displays()?;
-        Ok(resolve_target_display(&displays, self.target_display.as_deref()))
+        Ok(resolve_target_display(
+            &displays,
+            self.target_display.as_deref(),
+        ))
     }
 
     fn build_overlay_request(display: &Display) -> OverlayRequest {
@@ -181,7 +186,10 @@ impl GameOverlay {
 #[cfg(desktop)]
 pub mod tauri_impl {
     use super::*;
-    use tauri::{Emitter, Manager, PhysicalPosition, PhysicalSize, Position, Size, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
+    use tauri::{
+        Emitter, Manager, PhysicalPosition, PhysicalSize, Position, Size, WebviewUrl,
+        WebviewWindow, WebviewWindowBuilder,
+    };
 
     impl GameOverlay {
         pub fn register_emergency_shortcut(&mut self, app: tauri::AppHandle) -> Result<(), String> {
@@ -200,7 +208,8 @@ pub mod tauri_impl {
             app.global_shortcut()
                 .on_shortcut(shortcut, |app, _, event| {
                     if event.state == ShortcutState::Pressed {
-                        if let Ok(mut overlay) = app.state::<std::sync::Mutex<GameOverlay>>().lock() {
+                        if let Ok(mut overlay) = app.state::<std::sync::Mutex<GameOverlay>>().lock()
+                        {
                             let _ = overlay.emergency_stop();
                         }
                     }
@@ -233,31 +242,49 @@ pub mod tauri_impl {
     }
 
     impl WindowFactory for TauriWindowFactory {
-        fn create_overlay(&self, request: OverlayRequest) -> Result<Box<dyn OverlayWindow>, String> {
-            let window = WebviewWindowBuilder::new(&self.window, &request.label, WebviewUrl::App(request.url.into()))
-                .title(request.title)
-                .decorations(request.decorations)
-                .transparent(request.transparent)
-                .background_color(tauri::webview::Color(0, 0, 0, 0))
-                .always_on_top(request.always_on_top)
-                .visible(false)
-                .build()
-                .map_err(|e| e.to_string())?;
+        fn create_overlay(
+            &self,
+            request: OverlayRequest,
+        ) -> Result<Box<dyn OverlayWindow>, String> {
+            let window = WebviewWindowBuilder::new(
+                &self.window,
+                &request.label,
+                WebviewUrl::App(request.url.into()),
+            )
+            .title(request.title)
+            .decorations(request.decorations)
+            .transparent(request.transparent)
+            .background_color(tauri::webview::Color(0, 0, 0, 0))
+            .always_on_top(request.always_on_top)
+            .visible(false)
+            .build()
+            .map_err(|e| e.to_string())?;
 
             window
-                .set_position(Position::Physical(PhysicalPosition::new(request.position.0, request.position.1)))
+                .set_position(Position::Physical(PhysicalPosition::new(
+                    request.position.0,
+                    request.position.1,
+                )))
                 .map_err(|e| e.to_string())?;
             window
-                .set_size(Size::Physical(PhysicalSize::new(request.size.0, request.size.1)))
+                .set_size(Size::Physical(PhysicalSize::new(
+                    request.size.0,
+                    request.size.1,
+                )))
                 .map_err(|e| e.to_string())?;
-            window.set_ignore_cursor_events(request.ignore_cursor_events).map_err(|e| e.to_string())?;
+            window
+                .set_ignore_cursor_events(request.ignore_cursor_events)
+                .map_err(|e| e.to_string())?;
             window.show().map_err(|e| e.to_string())?;
 
             Ok(Box::new(TauriOverlayWindow(window)))
         }
 
         fn displays(&self) -> Result<Vec<Display>, String> {
-            let monitors = self.window.available_monitors().map_err(|e| e.to_string())?;
+            let monitors = self
+                .window
+                .available_monitors()
+                .map_err(|e| e.to_string())?;
             Ok(monitors.iter().map(|m| to_display(m, false)).collect())
         }
 
@@ -284,8 +311,8 @@ pub mod tauri_impl {
 mod tests {
     use super::*;
     use std::fs;
-    use std::sync::Mutex;
     use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+    use std::sync::Mutex;
 
     fn display(name: &str, x: i32, y: i32, w: u32, h: u32, primary: bool) -> Display {
         Display {
@@ -322,7 +349,10 @@ mod tests {
         }
 
         fn emit(&self, event: &str, payload: serde_json::Value) -> Result<(), String> {
-            self.emitted.lock().unwrap().push((event.to_string(), payload));
+            self.emitted
+                .lock()
+                .unwrap()
+                .push((event.to_string(), payload));
             Ok(())
         }
     }
@@ -354,10 +384,16 @@ mod tests {
     }
 
     impl WindowFactory for MockFactory {
-        fn create_overlay(&self, request: OverlayRequest) -> Result<Box<dyn OverlayWindow>, String> {
+        fn create_overlay(
+            &self,
+            request: OverlayRequest,
+        ) -> Result<Box<dyn OverlayWindow>, String> {
             self.created.lock().unwrap().push(request.clone());
             let window = std::sync::Arc::new(MockWindow::new(&request.label));
-            self.windows.lock().unwrap().push((request.label.clone(), window.clone()));
+            self.windows
+                .lock()
+                .unwrap()
+                .push((request.label.clone(), window.clone()));
             Ok(Box::new(window))
         }
 
@@ -373,7 +409,8 @@ mod tests {
     fn temp_config() -> PathBuf {
         static COUNTER: AtomicUsize = AtomicUsize::new(0);
         let id = COUNTER.fetch_add(1, Ordering::SeqCst);
-        let dir = std::env::temp_dir().join(format!("live-client-test-{}-{}", std::process::id(), id));
+        let dir =
+            std::env::temp_dir().join(format!("live-client-test-{}-{}", std::process::id(), id));
         fs::create_dir_all(&dir).unwrap();
         dir.join("settings.json")
     }
@@ -386,7 +423,9 @@ mod tests {
             display("Secondary", 1920, 0, 2560, 1440, false),
         ]));
         let mut overlay = GameOverlay::new(factory.clone(), config);
-        overlay.set_target_display(Some("Secondary".to_string())).unwrap();
+        overlay
+            .set_target_display(Some("Secondary".to_string()))
+            .unwrap();
 
         overlay.start_overlay().unwrap();
 
@@ -411,7 +450,9 @@ mod tests {
             display("Secondary", 1920, 0, 2560, 1440, false),
         ]));
         let mut overlay = GameOverlay::new(factory, config);
-        overlay.set_target_display(Some("Missing".to_string())).unwrap();
+        overlay
+            .set_target_display(Some("Missing".to_string()))
+            .unwrap();
 
         overlay.start_overlay().unwrap();
 
@@ -422,7 +463,9 @@ mod tests {
     #[test]
     fn stop_overlay_closes_window_and_clears_state() {
         let config = temp_config();
-        let factory = Arc::new(MockFactory::new(vec![display("Primary", 0, 0, 1920, 1080, true)]));
+        let factory = Arc::new(MockFactory::new(vec![display(
+            "Primary", 0, 0, 1920, 1080, true,
+        )]));
         let mut overlay = GameOverlay::new(factory.clone(), config);
 
         overlay.start_overlay().unwrap();
@@ -438,10 +481,13 @@ mod tests {
         let factory = Arc::new(MockFactory::new(vec![]));
         let mut overlay = GameOverlay::new(factory, config.clone());
 
-        overlay.set_target_display(Some("Secondary".to_string())).unwrap();
+        overlay
+            .set_target_display(Some("Secondary".to_string()))
+            .unwrap();
         drop(overlay);
 
-        let settings: Settings = serde_json::from_str(&fs::read_to_string(&config).unwrap()).unwrap();
+        let settings: Settings =
+            serde_json::from_str(&fs::read_to_string(&config).unwrap()).unwrap();
         assert_eq!(settings.target_display.as_deref(), Some("Secondary"));
 
         let overlay2 = GameOverlay::new(Arc::new(MockFactory::new(vec![])), config);
@@ -464,7 +510,9 @@ mod tests {
     #[test]
     fn start_overlay_emits_overlay_state_running() {
         let config = temp_config();
-        let factory = Arc::new(MockFactory::new(vec![display("Primary", 0, 0, 1920, 1080, true)]));
+        let factory = Arc::new(MockFactory::new(vec![display(
+            "Primary", 0, 0, 1920, 1080, true,
+        )]));
         let mut overlay = GameOverlay::new(factory.clone(), config);
 
         overlay.start_overlay().unwrap();
@@ -475,34 +523,50 @@ mod tests {
 
         assert!(overlay.is_overlay_running());
         let windows = factory.windows.lock().unwrap();
-        let mock = windows.iter().find(|(l, _)| l == &window).map(|(_, w)| w).unwrap();
-        assert!(mock.emissions().iter().any(|(e, p)| e == "overlay-state" && p["running"] == true));
+        let mock = windows
+            .iter()
+            .find(|(l, _)| l == &window)
+            .map(|(_, w)| w)
+            .unwrap();
+        assert!(mock
+            .emissions()
+            .iter()
+            .any(|(e, p)| e == "overlay-state" && p["running"] == true));
     }
 
     #[test]
     fn stop_overlay_emits_overlay_state_stopped_before_closing() {
         let config = temp_config();
-        let factory = Arc::new(MockFactory::new(vec![display("Primary", 0, 0, 1920, 1080, true)]));
+        let factory = Arc::new(MockFactory::new(vec![display(
+            "Primary", 0, 0, 1920, 1080, true,
+        )]));
         let mut overlay = GameOverlay::new(factory.clone(), config);
 
         overlay.start_overlay().unwrap();
         overlay.stop_overlay().unwrap();
-
 
         assert!(!overlay.is_overlay_running());
         let created = factory.created.lock().unwrap();
         let window = created[0].label.clone();
         drop(created);
         let windows = factory.windows.lock().unwrap();
-        let mock = windows.iter().find(|(l, _)| l == &window).map(|(_, w)| w).unwrap();
+        let mock = windows
+            .iter()
+            .find(|(l, _)| l == &window)
+            .map(|(_, w)| w)
+            .unwrap();
         let emissions = mock.emissions();
-        assert!(emissions.iter().any(|(e, p)| e == "overlay-state" && p["running"] == false));
+        assert!(emissions
+            .iter()
+            .any(|(e, p)| e == "overlay-state" && p["running"] == false));
     }
 
     #[test]
     fn emergency_stop_emits_emergency_stop_event() {
         let config = temp_config();
-        let factory = Arc::new(MockFactory::new(vec![display("Primary", 0, 0, 1920, 1080, true)]));
+        let factory = Arc::new(MockFactory::new(vec![display(
+            "Primary", 0, 0, 1920, 1080, true,
+        )]));
         let mut overlay = GameOverlay::new(factory.clone(), config);
 
         overlay.start_overlay().unwrap();
@@ -512,7 +576,11 @@ mod tests {
         let window = created[0].label.clone();
         drop(created);
         let windows = factory.windows.lock().unwrap();
-        let mock = windows.iter().find(|(l, _)| l == &window).map(|(_, w)| w).unwrap();
+        let mock = windows
+            .iter()
+            .find(|(l, _)| l == &window)
+            .map(|(_, w)| w)
+            .unwrap();
         assert!(mock.emissions().iter().any(|(e, _)| e == "emergency-stop"));
     }
 

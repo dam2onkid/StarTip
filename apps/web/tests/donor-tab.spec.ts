@@ -19,8 +19,8 @@ import { expectUnifiedNav } from "./nav-helpers";
 
 async function establishSession(page: Page) {
   await page.goto("/login");
-  await page.getByLabel(/email/i).fill("fan@example.com");
-  await page.getByLabel(/password/i).fill("secret123");
+  await page.getByLabel(/^email$/i).fill("fan@example.com");
+  await page.getByLabel(/^password$/i).fill("secret123");
   await page.getByRole("button", { name: /sign in/i }).click();
   await expect(page).toHaveURL(/\/dashboard$/);
 }
@@ -61,29 +61,36 @@ test.describe("Donor tab", () => {
   });
 
   test("edits the display name via the owner UPDATE RLS path", async ({ page }) => {
-    const input = page.getByLabel(/display name/i);
+    // The profile editor is inside a dialog triggered from the identity header.
+    await page.getByRole("button", { name: /edit creator profile/i }).click();
+    const input = page.getByLabel(/^display name$/i);
     await expect(input).toHaveValue("Fan");
     await input.fill("Super Fan");
-    await page.getByRole("button", { name: /save profile/i }).click();
-    await expect(page.getByTestId("save-status")).toHaveText(/saved/i);
+    await page.getByTestId("creator-profile-save").click();
+    await expect(page.getByText("Profile saved.")).toBeVisible();
+    // The local state updates after the PATCH resolves.
+    await expect(page.getByLabel(/^display name$/i)).toHaveValue("Super Fan");
   });
 
   test("uploads an avatar and stores the public URL on the profile", async ({ page }) => {
+    // The profile editor is inside a dialog triggered from the identity header.
+    await page.getByRole("button", { name: /edit creator profile/i }).click();
+
     // Before upload, the avatar placeholder is shown (no img preview).
-    await expect(page.getByTestId("avatar-placeholder")).toBeVisible();
+    await expect(page.getByTestId("creator-avatar-placeholder")).toBeVisible();
 
     // Upload a PNG via the file input.
-    await page.getByTestId("avatar-input").setInputFiles({
+    await page.getByTestId("creator-avatar-input").setInputFiles({
       name: "me.png",
       mimeType: "image/png",
       buffer: Buffer.from("89504E470D0A1A0A", "hex"),
     });
 
-    await page.getByRole("button", { name: /save profile/i }).click();
-    await expect(page.getByTestId("save-status")).toHaveText(/saved/i);
+    await page.getByTestId("creator-profile-save").click();
+    await expect(page.getByText("Profile saved.")).toBeVisible();
 
     // After upload, the avatar preview <img> appears with the storage public URL.
-    const preview = page.getByTestId("avatar-preview");
+    const preview = page.getByTestId("creator-avatar-preview");
     await expect(preview).toBeVisible();
     await expect(preview).toHaveAttribute(
       "src",

@@ -17,10 +17,10 @@ select plan(9);
 select has_table('public', 'tokens', 'public.tokens exists');
 select col_type_is('public', 'tokens', 'contract_address', 'text', 'contract_address is text');
 select col_type_is('public', 'tokens', 'decimals', 'integer', 'decimals is integer');
-select col_is_not_null('public', 'tokens', 'symbol', 'symbol is NOT NULL');
-select col_is_not_null('public', 'tokens', 'decimals', 'decimals is NOT NULL');
-select col_is_nullable('public', 'tokens', 'name', 'name is nullable');
-select col_is_nullable('public', 'tokens', 'issuer', 'issuer is nullable');
+select col_not_null('public', 'tokens', 'symbol', 'symbol is NOT NULL');
+select col_not_null('public', 'tokens', 'decimals', 'decimals is NOT NULL');
+select col_is_null('public', 'tokens', 'name', 'name is nullable');
+select col_is_null('public', 'tokens', 'issuer', 'issuer is nullable');
 
 -- Seed a token row as the service role (superuser bypasses RLS).
 insert into public.tokens (contract_address, symbol, name, issuer, decimals)

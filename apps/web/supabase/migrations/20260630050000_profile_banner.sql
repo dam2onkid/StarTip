@@ -16,7 +16,10 @@ grant update (banner_url) on public.profiles to authenticated;
 
 -- Recreate the public read view to expose banner_url alongside the other
 -- public fields. All sensitive columns stay excluded.
-create or replace view public.public_profiles as
+-- Drop first because CREATE OR REPLACE VIEW cannot change the column list of
+-- an existing view (the new banner_url column would otherwise rename bio).
+drop view if exists public.public_profiles;
+create view public.public_profiles as
   select
     handle,
     display_name,

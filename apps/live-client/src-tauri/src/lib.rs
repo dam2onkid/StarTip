@@ -90,7 +90,9 @@ pub fn run() {
             });
 
             let factory = Arc::new(TauriWindowFactory::new(main_window));
-            let config_path = app.path().resolve("settings.json", BaseDirectory::AppConfig)?;
+            let config_path = app
+                .path()
+                .resolve("settings.json", BaseDirectory::AppConfig)?;
             if let Some(parent) = config_path.parent() {
                 std::fs::create_dir_all(parent)?;
             }
@@ -108,11 +110,22 @@ pub fn run() {
             let icon = tauri::image::Image::from_bytes(include_bytes!("../icons/128x128.png"))
                 .unwrap_or_else(|_| app.default_window_icon().unwrap().to_owned());
 
-            let show_item =
-                tauri::menu::MenuItem::with_id(app, "show", "Show Control Window", true, None::<&str>)?;
-            let stop_item =
-                tauri::menu::MenuItem::with_id(app, "stop-overlay", "Stop Overlay", true, None::<&str>)?;
-            let quit_item = tauri::menu::MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
+            let show_item = tauri::menu::MenuItem::with_id(
+                app,
+                "show",
+                "Show Control Window",
+                true,
+                None::<&str>,
+            )?;
+            let stop_item = tauri::menu::MenuItem::with_id(
+                app,
+                "stop-overlay",
+                "Stop Overlay",
+                true,
+                None::<&str>,
+            )?;
+            let quit_item =
+                tauri::menu::MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
             let menu = tauri::menu::Menu::with_items(app, &[&show_item, &stop_item, &quit_item])?;
 
             tauri::tray::TrayIconBuilder::new()

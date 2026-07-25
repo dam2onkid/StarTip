@@ -221,7 +221,9 @@ impl DonationRouter {
         // A fresh persistent entry defaults to a short TTL, so the threshold is
         // set to the target to guarantee the new entry starts at ~30 days
         // rather than only bumping once it has decayed.
-        env.storage().persistent().extend_ttl(&key, 518_400, 518_400);
+        env.storage()
+            .persistent()
+            .extend_ttl(&key, 518_400, 518_400);
 
         CreatorRegistered {
             creator_id_hash,
@@ -258,7 +260,9 @@ impl DonationRouter {
         let old_payout_address = creator.payout_address.clone();
         creator.payout_address = new_payout_address.clone();
         env.storage().persistent().set(&key, &creator);
-        env.storage().persistent().extend_ttl(&key, 518_400, 518_400);
+        env.storage()
+            .persistent()
+            .extend_ttl(&key, 518_400, 518_400);
 
         CreatorPayoutUpdated {
             creator_id_hash,
@@ -330,7 +334,9 @@ impl DonationRouter {
 
         creator.active = active;
         env.storage().persistent().set(&key, &creator);
-        env.storage().persistent().extend_ttl(&key, 518_400, 518_400);
+        env.storage()
+            .persistent()
+            .extend_ttl(&key, 518_400, 518_400);
 
         CreatorActiveChanged {
             creator_id_hash: creator_id_hash.clone(),
@@ -370,7 +376,11 @@ impl DonationRouter {
         config.platform_fee_bps = new_fee_bps;
         Self::save_config(&env, &config);
 
-        PlatformFeeUpdated { old_bps, new_bps: new_fee_bps }.publish(&env);
+        PlatformFeeUpdated {
+            old_bps,
+            new_bps: new_fee_bps,
+        }
+        .publish(&env);
     }
 
     /// Admin-only: set the paused flag. Extends instance TTL and emits
@@ -395,7 +405,11 @@ impl DonationRouter {
         config.admin = new_admin.clone();
         Self::save_config(&env, &config);
 
-        AdminUpdated { old_admin, new_admin }.publish(&env);
+        AdminUpdated {
+            old_admin,
+            new_admin,
+        }
+        .publish(&env);
     }
 
     /// Admin-only: append a token to the Token Allowlist if absent. Extends
@@ -436,7 +450,11 @@ impl DonationRouter {
             Self::save_config(&env, &config);
         }
 
-        TokenAllowlistUpdated { token, added: false }.publish(&env);
+        TokenAllowlistUpdated {
+            token,
+            added: false,
+        }
+        .publish(&env);
     }
 
     /// The core settlement path. Splits a donation into a platform fee (sent
@@ -490,23 +508,17 @@ impl DonationRouter {
 
         let token_client = soroban_sdk::token::Client::new(&env, &token);
         if fee_amount > 0 {
-            token_client.transfer(
-                &donor,
-                &config.treasury_address,
-                &fee_amount,
-            );
+            token_client.transfer(&donor, &config.treasury_address, &fee_amount);
         }
         if net_amount > 0 {
-            token_client.transfer(
-                &donor,
-                &creator.payout_address,
-                &net_amount,
-            );
+            token_client.transfer(&donor, &creator.payout_address, &net_amount);
         }
 
         // Extend TTLs: the Creator entry (persistent) and the Config
         // (instance) both get bumped so a burst of donations keeps them live.
-        env.storage().persistent().extend_ttl(&key, 518_400, 518_400);
+        env.storage()
+            .persistent()
+            .extend_ttl(&key, 518_400, 518_400);
         env.storage().instance().extend_ttl(100, 518_400);
 
         DonationReceived {
@@ -553,12 +565,12 @@ impl DonationRouter {
 mod tests {
     extern crate std;
     use super::*;
+    use soroban_sdk::token::StellarAssetClient;
+    use soroban_sdk::token::TokenClient;
     use soroban_sdk::{
         testutils::{storage::Persistent, Address as _, Events as _},
         Address, Env, Event as _,
     };
-    use soroban_sdk::token::StellarAssetClient;
-    use soroban_sdk::token::TokenClient;
     use std::panic::{catch_unwind, AssertUnwindSafe};
 
     /// 30 days at 5s per ledger. Every Creator-touching call extends the
@@ -726,8 +738,7 @@ mod tests {
         assert!(result.is_err(), "duplicate register must revert");
 
         let events = env.host().get_diagnostic_events().unwrap().0;
-        let rendered: std::string::String =
-            events.iter().map(|e| std::format!("{}", e)).collect();
+        let rendered: std::string::String = events.iter().map(|e| std::format!("{}", e)).collect();
         assert!(
             rendered.contains("Error(Contract, #8)"),
             "expected AlreadyRegistered (Error(Contract, #8)), got: {rendered}"
@@ -793,8 +804,7 @@ mod tests {
         assert!(result.is_err(), "missing creator must revert");
 
         let events = env.host().get_diagnostic_events().unwrap().0;
-        let rendered: std::string::String =
-            events.iter().map(|e| std::format!("{}", e)).collect();
+        let rendered: std::string::String = events.iter().map(|e| std::format!("{}", e)).collect();
         assert!(
             rendered.contains("Error(Contract, #3)"),
             "expected CreatorNotFound (Error(Contract, #3)), got: {rendered}"
@@ -823,8 +833,7 @@ mod tests {
         assert!(result.is_err(), "non-owner must revert");
 
         let events = env.host().get_diagnostic_events().unwrap().0;
-        let rendered: std::string::String =
-            events.iter().map(|e| std::format!("{}", e)).collect();
+        let rendered: std::string::String = events.iter().map(|e| std::format!("{}", e)).collect();
         assert!(
             rendered.contains("Error(Contract, #1)"),
             "expected Unauthorized (Error(Contract, #1)), got: {rendered}"
@@ -883,8 +892,7 @@ mod tests {
         assert!(result.is_err(), "missing creator must revert");
 
         let events = env.host().get_diagnostic_events().unwrap().0;
-        let rendered: std::string::String =
-            events.iter().map(|e| std::format!("{}", e)).collect();
+        let rendered: std::string::String = events.iter().map(|e| std::format!("{}", e)).collect();
         assert!(
             rendered.contains("Error(Contract, #3)"),
             "expected CreatorNotFound (Error(Contract, #3)), got: {rendered}"
@@ -910,8 +918,7 @@ mod tests {
         assert!(result.is_err(), "non-owner must revert");
 
         let events = env.host().get_diagnostic_events().unwrap().0;
-        let rendered: std::string::String =
-            events.iter().map(|e| std::format!("{}", e)).collect();
+        let rendered: std::string::String = events.iter().map(|e| std::format!("{}", e)).collect();
         assert!(
             rendered.contains("Error(Contract, #1)"),
             "expected Unauthorized (Error(Contract, #1)), got: {rendered}"
@@ -966,8 +973,7 @@ mod tests {
         assert!(result.is_err(), "missing creator must revert");
 
         let events = env.host().get_diagnostic_events().unwrap().0;
-        let rendered: std::string::String =
-            events.iter().map(|e| std::format!("{}", e)).collect();
+        let rendered: std::string::String = events.iter().map(|e| std::format!("{}", e)).collect();
         assert!(
             rendered.contains("Error(Contract, #3)"),
             "expected CreatorNotFound (Error(Contract, #3)), got: {rendered}"
@@ -993,8 +999,7 @@ mod tests {
         assert!(result.is_err(), "non-admin must revert");
 
         let events = env.host().get_diagnostic_events().unwrap().0;
-        let rendered: std::string::String =
-            events.iter().map(|e| std::format!("{}", e)).collect();
+        let rendered: std::string::String = events.iter().map(|e| std::format!("{}", e)).collect();
         assert!(
             rendered.contains("Error(Contract, #1)"),
             "expected Unauthorized (Error(Contract, #1)), got: {rendered}"
@@ -1039,8 +1044,7 @@ mod tests {
         assert!(result.is_err(), "non-admin must revert");
 
         let events = env.host().get_diagnostic_events().unwrap().0;
-        let rendered: std::string::String =
-            events.iter().map(|e| std::format!("{}", e)).collect();
+        let rendered: std::string::String = events.iter().map(|e| std::format!("{}", e)).collect();
         assert!(
             rendered.contains("Error(Contract, #1)"),
             "expected Unauthorized (Error(Contract, #1)), got: {rendered}"
@@ -1084,8 +1088,7 @@ mod tests {
         assert!(result.is_err(), "fee above cap must revert");
 
         let events = env.host().get_diagnostic_events().unwrap().0;
-        let rendered: std::string::String =
-            events.iter().map(|e| std::format!("{}", e)).collect();
+        let rendered: std::string::String = events.iter().map(|e| std::format!("{}", e)).collect();
         assert!(
             rendered.contains("Error(Contract, #7)"),
             "expected FeeCapExceeded (Error(Contract, #7)), got: {rendered}"
@@ -1107,8 +1110,7 @@ mod tests {
         assert!(result.is_err(), "non-admin must revert");
 
         let events = env.host().get_diagnostic_events().unwrap().0;
-        let rendered: std::string::String =
-            events.iter().map(|e| std::format!("{}", e)).collect();
+        let rendered: std::string::String = events.iter().map(|e| std::format!("{}", e)).collect();
         assert!(
             rendered.contains("Error(Contract, #1)"),
             "expected Unauthorized (Error(Contract, #1)), got: {rendered}"
@@ -1145,8 +1147,7 @@ mod tests {
         assert!(result.is_err(), "non-admin must revert");
 
         let events = env.host().get_diagnostic_events().unwrap().0;
-        let rendered: std::string::String =
-            events.iter().map(|e| std::format!("{}", e)).collect();
+        let rendered: std::string::String = events.iter().map(|e| std::format!("{}", e)).collect();
         assert!(
             rendered.contains("Error(Contract, #1)"),
             "expected Unauthorized (Error(Contract, #1)), got: {rendered}"
@@ -1185,13 +1186,11 @@ mod tests {
         let attacker = Address::generate(&env);
         let new_admin = Address::generate(&env);
 
-        let result =
-            catch_unwind(AssertUnwindSafe(|| client.set_admin(&attacker, &new_admin)));
+        let result = catch_unwind(AssertUnwindSafe(|| client.set_admin(&attacker, &new_admin)));
         assert!(result.is_err(), "non-admin must revert");
 
         let events = env.host().get_diagnostic_events().unwrap().0;
-        let rendered: std::string::String =
-            events.iter().map(|e| std::format!("{}", e)).collect();
+        let rendered: std::string::String = events.iter().map(|e| std::format!("{}", e)).collect();
         assert!(
             rendered.contains("Error(Contract, #1)"),
             "expected Unauthorized (Error(Contract, #1)), got: {rendered}"
@@ -1238,13 +1237,11 @@ mod tests {
         let attacker = Address::generate(&env);
         let token = Address::generate(&env);
 
-        let result =
-            catch_unwind(AssertUnwindSafe(|| client.add_token(&attacker, &token)));
+        let result = catch_unwind(AssertUnwindSafe(|| client.add_token(&attacker, &token)));
         assert!(result.is_err(), "non-admin must revert");
 
         let events = env.host().get_diagnostic_events().unwrap().0;
-        let rendered: std::string::String =
-            events.iter().map(|e| std::format!("{}", e)).collect();
+        let rendered: std::string::String = events.iter().map(|e| std::format!("{}", e)).collect();
         assert!(
             rendered.contains("Error(Contract, #1)"),
             "expected Unauthorized (Error(Contract, #1)), got: {rendered}"
@@ -1283,13 +1280,11 @@ mod tests {
         client.add_token(&admin, &token);
 
         let attacker = Address::generate(&env);
-        let result =
-            catch_unwind(AssertUnwindSafe(|| client.remove_token(&attacker, &token)));
+        let result = catch_unwind(AssertUnwindSafe(|| client.remove_token(&attacker, &token)));
         assert!(result.is_err(), "non-admin must revert");
 
         let events = env.host().get_diagnostic_events().unwrap().0;
-        let rendered: std::string::String =
-            events.iter().map(|e| std::format!("{}", e)).collect();
+        let rendered: std::string::String = events.iter().map(|e| std::format!("{}", e)).collect();
         assert!(
             rendered.contains("Error(Contract, #1)"),
             "expected Unauthorized (Error(Contract, #1)), got: {rendered}"
@@ -1338,8 +1333,17 @@ mod tests {
         sac.mint(&donor, &donor_balance);
 
         (
-            env, contract_id, client, admin, treasury, donor, payout, id_hash,
-            token_id, sac, token,
+            env,
+            contract_id,
+            client,
+            admin,
+            treasury,
+            donor,
+            payout,
+            id_hash,
+            token_id,
+            sac,
+            token,
         )
     }
 
@@ -1349,8 +1353,19 @@ mod tests {
     #[test]
     fn donate_happy_path_splits_and_emits_event() {
         let amount: i128 = 10_000_000; // 1 unit at 7 decimals
-        let (env, contract_id, client, _admin, treasury, donor, payout, id_hash, token_id, _sac, token) =
-            donate_setup(amount);
+        let (
+            env,
+            contract_id,
+            client,
+            _admin,
+            treasury,
+            donor,
+            payout,
+            id_hash,
+            token_id,
+            _sac,
+            token,
+        ) = donate_setup(amount);
 
         client.donate(&donor, &id_hash, &token_id, &amount);
 
@@ -1386,8 +1401,19 @@ mod tests {
     #[test]
     fn donate_reverts_when_paused() {
         let amount: i128 = 1_000;
-        let (env, _contract_id, client, admin, _treasury, donor, _payout, id_hash, token_id, _sac, _token) =
-            donate_setup(amount);
+        let (
+            env,
+            _contract_id,
+            client,
+            admin,
+            _treasury,
+            donor,
+            _payout,
+            id_hash,
+            token_id,
+            _sac,
+            _token,
+        ) = donate_setup(amount);
 
         client.set_paused(&admin, &true);
 
@@ -1397,8 +1423,7 @@ mod tests {
         assert!(result.is_err(), "paused contract must revert");
 
         let events = env.host().get_diagnostic_events().unwrap().0;
-        let rendered: std::string::String =
-            events.iter().map(|e| std::format!("{}", e)).collect();
+        let rendered: std::string::String = events.iter().map(|e| std::format!("{}", e)).collect();
         assert!(
             rendered.contains("Error(Contract, #2)"),
             "expected Paused (Error(Contract, #2)), got: {rendered}"
@@ -1410,8 +1435,19 @@ mod tests {
     #[test]
     fn donate_reverts_when_creator_missing() {
         let amount: i128 = 1_000;
-        let (env, _contract_id, client, _admin, _treasury, donor, _payout, _id_hash, token_id, _sac, _token) =
-            donate_setup(amount);
+        let (
+            env,
+            _contract_id,
+            client,
+            _admin,
+            _treasury,
+            donor,
+            _payout,
+            _id_hash,
+            token_id,
+            _sac,
+            _token,
+        ) = donate_setup(amount);
 
         let missing_id = creator_id_hash(&env, 77);
         let result = catch_unwind(AssertUnwindSafe(|| {
@@ -1420,8 +1456,7 @@ mod tests {
         assert!(result.is_err(), "missing creator must revert");
 
         let events = env.host().get_diagnostic_events().unwrap().0;
-        let rendered: std::string::String =
-            events.iter().map(|e| std::format!("{}", e)).collect();
+        let rendered: std::string::String = events.iter().map(|e| std::format!("{}", e)).collect();
         assert!(
             rendered.contains("Error(Contract, #3)"),
             "expected CreatorNotFound (Error(Contract, #3)), got: {rendered}"
@@ -1433,8 +1468,19 @@ mod tests {
     #[test]
     fn donate_reverts_when_creator_inactive() {
         let amount: i128 = 1_000;
-        let (env, _contract_id, client, admin, _treasury, donor, _payout, id_hash, token_id, _sac, _token) =
-            donate_setup(amount);
+        let (
+            env,
+            _contract_id,
+            client,
+            admin,
+            _treasury,
+            donor,
+            _payout,
+            id_hash,
+            token_id,
+            _sac,
+            _token,
+        ) = donate_setup(amount);
 
         // Force-pause the creator via the admin kill-switch.
         client.force_pause_creator(&admin, &id_hash, &false);
@@ -1445,8 +1491,7 @@ mod tests {
         assert!(result.is_err(), "inactive creator must revert");
 
         let events = env.host().get_diagnostic_events().unwrap().0;
-        let rendered: std::string::String =
-            events.iter().map(|e| std::format!("{}", e)).collect();
+        let rendered: std::string::String = events.iter().map(|e| std::format!("{}", e)).collect();
         assert!(
             rendered.contains("Error(Contract, #4)"),
             "expected CreatorInactive (Error(Contract, #4)), got: {rendered}"
@@ -1457,8 +1502,19 @@ mod tests {
     #[test]
     fn donate_reverts_for_zero_or_negative_amount() {
         let amount: i128 = 1_000;
-        let (env, _contract_id, client, _admin, _treasury, donor, _payout, id_hash, token_id, _sac, _token) =
-            donate_setup(amount);
+        let (
+            env,
+            _contract_id,
+            client,
+            _admin,
+            _treasury,
+            donor,
+            _payout,
+            id_hash,
+            token_id,
+            _sac,
+            _token,
+        ) = donate_setup(amount);
 
         // Zero amount.
         let result = catch_unwind(AssertUnwindSafe(|| {
@@ -1466,8 +1522,7 @@ mod tests {
         }));
         assert!(result.is_err(), "zero amount must revert");
         let events = env.host().get_diagnostic_events().unwrap().0;
-        let rendered: std::string::String =
-            events.iter().map(|e| std::format!("{}", e)).collect();
+        let rendered: std::string::String = events.iter().map(|e| std::format!("{}", e)).collect();
         assert!(
             rendered.contains("Error(Contract, #5)"),
             "expected InvalidAmount (Error(Contract, #5)) for zero, got: {rendered}"
@@ -1479,8 +1534,7 @@ mod tests {
         }));
         assert!(result.is_err(), "negative amount must revert");
         let events = env.host().get_diagnostic_events().unwrap().0;
-        let rendered: std::string::String =
-            events.iter().map(|e| std::format!("{}", e)).collect();
+        let rendered: std::string::String = events.iter().map(|e| std::format!("{}", e)).collect();
         assert!(
             rendered.contains("Error(Contract, #5)"),
             "expected InvalidAmount (Error(Contract, #5)) for negative, got: {rendered}"
@@ -1492,8 +1546,19 @@ mod tests {
     #[test]
     fn donate_reverts_for_token_not_in_allowlist() {
         let amount: i128 = 1_000;
-        let (env, _contract_id, client, _admin, _treasury, donor, _payout, id_hash, _token_id, _sac, _token) =
-            donate_setup(amount);
+        let (
+            env,
+            _contract_id,
+            client,
+            _admin,
+            _treasury,
+            donor,
+            _payout,
+            id_hash,
+            _token_id,
+            _sac,
+            _token,
+        ) = donate_setup(amount);
 
         // Register a second token but do NOT add it to the allowlist.
         let token_admin2 = Address::generate(&env);
@@ -1507,8 +1572,7 @@ mod tests {
         assert!(result.is_err(), "token not in allowlist must revert");
 
         let events = env.host().get_diagnostic_events().unwrap().0;
-        let rendered: std::string::String =
-            events.iter().map(|e| std::format!("{}", e)).collect();
+        let rendered: std::string::String = events.iter().map(|e| std::format!("{}", e)).collect();
         assert!(
             rendered.contains("Error(Contract, #6)"),
             "expected TokenNotAllowed (Error(Contract, #6)), got: {rendered}"

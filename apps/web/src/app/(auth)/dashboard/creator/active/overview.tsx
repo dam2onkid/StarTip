@@ -22,14 +22,14 @@ export function CreatorStatusCard({ current }: { current: CreatorProfile }) {
       </CardHeader>
       <CardContent className="flex flex-col gap-3 text-xs text-muted-foreground">
         <p className="creator-address-row" data-testid="onchain-paused">
-          <span>Status</span>
+          <span>Status</span>{" "}
           <span className="status-pill" data-tone={paused ? "paused" : "active"}>
             <span className="dot" aria-hidden />
             {paused ? "Paused" : "Active"}
           </span>
         </p>
         <p className="creator-address-row" data-testid="onchain-registered">
-          <span>On-chain registered</span>
+          <span>On-chain registered</span>{" "}
           <span className="font-mono text-foreground">yes</span>
         </p>
         <AddressRow label="Wallet" value={current.owner_address} testId="onchain-owner" />

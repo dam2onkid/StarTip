@@ -21,8 +21,8 @@ const STUB_ADDRESS = "GDF6CFYOXQTZVSLLK2RTDAUZ6N2E72IL4K2L34HXZK32KBR4NLVPLUVA";
 
 async function establishSession(page: Page) {
   await page.goto("/login");
-  await page.getByLabel(/email/i).fill("fan@example.com");
-  await page.getByLabel(/password/i).fill("secret123");
+  await page.getByLabel(/^email$/i).fill("fan@example.com");
+  await page.getByLabel(/^password$/i).fill("secret123");
   await page.getByRole("button", { name: /sign in/i }).click();
   await expect(page).toHaveURL(/\/dashboard$/);
 }
@@ -91,7 +91,7 @@ test.describe("Creator tab active features", () => {
     await expect(page.getByTestId("onchain-registered")).toContainText("yes");
     await expect(page.getByTestId("onchain-owner")).toContainText(STUB_ADDRESS);
     await expect(page.getByTestId("onchain-payout")).toContainText("GBPAYOUTADDRESS");
-    await expect(page.getByTestId("onchain-paused")).toContainText("active");
+    await expect(page.getByTestId("onchain-paused")).toContainText(/active/i);
     // Stats: Bob 500 + Troll 1 + Anonymous 9999 = 10500 confirmed (Troll is
     // hidden but still counted in stats). Count = 3.
     await expect(page.getByTestId("creator-total-received")).toContainText("10500");
@@ -101,18 +101,24 @@ test.describe("Creator tab active features", () => {
     await expect(page.getByTestId("creator-leaderboard")).toContainText("Bob");
   });
 
-  test("renders the overlay URL with the handle and a copy button", async ({ page }) => {
-    await expect(page.getByTestId("overlay-url")).toContainText(/\/overlay\/ada/);
+  test("renders the overlay URL with the overlay id and a copy button", async ({ page }) => {
+    // The Overlay URL card lives on the Overlay settings tab.
+    await page.getByRole("tab", { name: /overlay/i }).click();
+    await expect(page.getByTestId("overlay-url")).toContainText(/\/overlay\/abc123/);
     await expect(page.getByTestId("overlay-copy")).toBeVisible();
   });
 
   test("moderation list shows donations including hidden ones", async ({ page }) => {
+    // The moderation list lives on the Moderation tab.
+    await page.getByRole("tab", { name: /moderation/i }).click();
     const list = page.getByTestId("moderation-list");
     await expect(list).toContainText("Bob");
     await expect(list).toContainText("Troll");
   });
 
   test("toggling a donation's visibility persists via the moderation RLS PATCH", async ({ page }) => {
+    // The moderation list lives on the Moderation tab.
+    await page.getByRole("tab", { name: /moderation/i }).click();
     // Bob's donation (e1) is visible -> button says "Hide".
     const toggle = page.getByTestId("moderation-toggle-00000000-0000-0000-0000-000000000e1");
     await expect(toggle).toHaveText("Hide");
@@ -122,6 +128,8 @@ test.describe("Creator tab active features", () => {
   });
 
   test("payout update signs + submits and shows pending, then Realtime mirrors the new address", async ({ page }) => {
+    // Payout controls live on the Payout tab.
+    await page.getByRole("tab", { name: /payout/i }).click();
     await page.getByTestId("payout-update-input").fill("GBNEWPAYOUT");
     await page.getByTestId("payout-update-submit").click();
     await expect(page.getByText(/Payout update submitted/i)).toBeVisible();
@@ -129,10 +137,14 @@ test.describe("Creator tab active features", () => {
     await page.evaluate(() =>
       (window as unknown as { __pushCreatorUpdate?: (n: { payout_address?: string }) => void }).__pushCreatorUpdate?.({ payout_address: "GBNEWPAYOUT" }),
     );
+    // Return to Overview to read the updated on-chain status.
+    await page.getByRole("tab", { name: /overview/i }).click();
     await expect(page.getByTestId("onchain-payout")).toContainText("GBNEWPAYOUT");
   });
 
   test("pause toggle signs + submits and shows pending, then Realtime mirrors paused", async ({ page }) => {
+    // Pause controls live on the Payout tab.
+    await page.getByRole("tab", { name: /payout/i }).click();
     const toggle = page.getByTestId("pause-toggle");
     await expect(toggle).toHaveText("Pause");
     await toggle.click();
@@ -141,19 +153,23 @@ test.describe("Creator tab active features", () => {
     await page.evaluate(() =>
       (window as unknown as { __pushCreatorUpdate?: (n: { paused?: boolean }) => void }).__pushCreatorUpdate?.({ paused: true }),
     );
-    await expect(page.getByTestId("onchain-paused")).toContainText("paused");
+    // Return to Overview to read the updated on-chain status.
+    await page.getByRole("tab", { name: /overview/i }).click();
+    await expect(page.getByTestId("onchain-paused")).toContainText(/paused/i);
+    // Switch back to Payout to read the pause status text.
+    await page.getByRole("tab", { name: /payout/i }).click();
     await expect(page.getByTestId("pause-status")).toContainText("paused");
   });
 
   test("editing display name + bio persists via the owner UPDATE RLS path", async ({ page }) => {
-    await page.getByRole("button", { name: /Edit creator profile/i }).click();
-    await page.getByLabel(/display name/i).fill("Ada Lovelace");
-    await page.getByLabel(/bio/i).fill("First programmer.");
+    await page.getByRole("button", { name: /edit creator profile/i }).click();
+    await page.getByLabel(/^display name$/i).fill("Ada Lovelace");
+    await page.getByLabel(/^bio$/i).fill("First programmer.");
     await page.getByTestId("creator-profile-save").click();
-    await expect(page.getByTestId("creator-save-status")).toContainText(/saved/i);
+    await expect(page.getByText("Profile saved.")).toBeVisible();
     // The local state updates after the PATCH resolves.
-    await expect(page.getByLabel(/display name/i)).toHaveValue("Ada Lovelace");
-    await expect(page.getByLabel(/bio/i)).toHaveValue("First programmer.");
+    await expect(page.getByLabel(/^display name$/i)).toHaveValue("Ada Lovelace");
+    await expect(page.getByLabel(/^bio$/i)).toHaveValue("First programmer.");
   });
 
   test("shows the unified nav with the Discover link on the dashboard", async ({ page }) => {
