@@ -1,3 +1,4 @@
+/// <reference lib="dom" />
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 /**
@@ -127,36 +128,66 @@ export async function createOrdinaryLiveEvent(
     };
   }
 
+  const createdAt = new Date().toISOString();
+  const eventId = crypto.randomUUID();
+
+  const { data: seq, error: seqErr } = await service
+    .rpc("next_live_event_sequence")
+    .returns<{ next_live_event_sequence: number }>()
+    .single();
+  if (seqErr) return { ok: false, error: "db_error" };
+
+  const seqData = seq as { next_live_event_sequence: number } | null;
+  if (!seqData) return { ok: false, error: "db_error" };
+
+  const meta: LiveEventMeta = {
+    id: eventId,
+    sequence: seqData.next_live_event_sequence,
+    created_at: createdAt,
+    expires_at: input.expiresAt,
+  };
+
   const { data: inserted, error: insertErr } = await service
     .from("live_events")
     .insert({
+      id: eventId,
       creator_profile_id: input.creatorProfileId,
       overlay_id: input.overlayId,
       donation_id: input.donationId,
+      sequence: seqData.next_live_event_sequence,
       status: "queued",
+      created_at: createdAt,
       expires_at: input.expiresAt,
+      payload: buildPayload(input, meta) as unknown as Record<string, unknown>,
     })
     .select("id,sequence,created_at,expires_at")
     .single();
 
-  if (insertErr) return { ok: false, error: "db_error" };
+  if (insertErr) {
+    if (insertErr.code === "23505") {
+      const { data: retry, error: retryErr } = await service
+        .from("live_events")
+        .select("id,sequence,created_at,expires_at")
+        .eq("donation_id", input.donationId)
+        .maybeSingle();
+      if (retryErr || !retry) return { ok: false, error: "db_error" };
+      const row = retry as LiveEventRow;
+      return {
+        ok: true,
+        event: {
+          id: row.id,
+          sequence: row.sequence,
+          createdAt: row.created_at,
+          expiresAt: row.expires_at,
+        },
+      };
+    }
+    return { ok: false, error: "db_error" };
+  }
+
   if (!inserted) return { ok: false, error: "db_error" };
 
   const row = inserted as LiveEventRow;
-  const meta: LiveEventMeta = {
-    id: row.id,
-    sequence: row.sequence,
-    created_at: row.created_at,
-    expires_at: row.expires_at,
-  };
-
-  const { error: updateErr } = await service
-    .from("live_events")
-    .update({ payload: buildPayload(input, meta) as unknown as Record<string, unknown> })
-    .eq("id", row.id);
-
-  if (updateErr) return { ok: false, error: "db_error" };
-
   return {
     ok: true,
     event: {

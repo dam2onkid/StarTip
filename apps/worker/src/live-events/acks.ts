@@ -7,9 +7,8 @@ import type { SupabaseClient } from "@supabase/supabase-js";
  *
  * `POST /live-events/:event_id/ack` receives a lifecycle transition from a
  * Live Event Client (proxied by the Next.js app). The Worker verifies that the
- * event exists, that the overlay_id matches the stored row, and transitions the
- * event status from `queued` to `started` or from any non-terminal state to a
- * terminal state (`completed` / `failed`).
+ * event exists and transitions the event status from `queued` to `started` or
+ * from any non-terminal state to a terminal state (`completed` / `failed`).
  */
 
 export interface LiveEventsAckDeps {
@@ -17,7 +16,6 @@ export interface LiveEventsAckDeps {
 }
 
 const ackInputSchema = z.object({
-  overlay_id: z.string().min(1),
   status: z.enum(["started", "completed", "failed"]),
 });
 
@@ -38,11 +36,10 @@ export type AckResult =
 
 interface LiveEventRow {
   id: string;
-  overlay_id: string;
   status: string;
 }
 
-const TERMINAL_STATUSES = new Set(["completed", "failed", "missed"]);
+const TERMINAL_STATUSES = new Set(["completed", "failed", "stopped", "missed", "expired"]);
 
 export async function ackLiveEvent(
   deps: LiveEventsAckDeps,
@@ -53,13 +50,12 @@ export async function ackLiveEvent(
   if (!parsed.success) {
     return { status: 400, body: { error: "invalid_body" } };
   }
-  const { overlay_id: overlayId, status } = parsed.data;
+  const { status } = parsed.data;
 
   const { data: event, error: selectErr } = await deps.service
     .from("live_events")
-    .select("id,overlay_id,status")
+    .select("id,status")
     .eq("id", eventId)
-    .eq("overlay_id", overlayId)
     .maybeSingle();
   if (selectErr) {
     return { status: 500, body: { error: "db_error" } };

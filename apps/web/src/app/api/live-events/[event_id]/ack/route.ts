@@ -34,7 +34,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
           "content-type": "application/json",
           authorization: `Bearer ${env.WORKER_SECRET}`,
         },
-        body: JSON.stringify({ overlay_id: body.overlay_id, status: body.status }),
+        body: JSON.stringify({ status: body.status }),
         signal: controller.signal,
       },
     );
@@ -53,13 +53,12 @@ export async function POST(request: NextRequest, context: RouteContext) {
   }
 }
 
-function isValidBody(body: unknown): body is { overlay_id: string; status: string } {
+function isValidBody(body: unknown): body is { status: string } {
   if (typeof body !== "object" || body === null) return false;
   const b = body as Record<string, unknown>;
   return (
-    typeof b.overlay_id === "string" &&
-    b.overlay_id.trim().length > 0 &&
     typeof b.status === "string" &&
+    b.status.trim().length > 0 &&
     ACK_STATUS_VALUES.has(b.status)
   );
 }

@@ -64,7 +64,6 @@ function createMockSupabase() {
 
 const SECRET = "test-secret";
 const EVENT_ID = "00000000-0000-0000-0000-000000000001";
-const OVERLAY_ID = "overlay-1";
 
 describe("ackLiveEvent", () => {
   let mock: ReturnType<typeof createMockSupabase>;
@@ -73,8 +72,8 @@ describe("ackLiveEvent", () => {
     mock = createMockSupabase();
   });
 
-  it("returns 400 invalid_body when overlay_id is missing", async () => {
-    const res = await ackLiveEvent({ service: mock.supabase as unknown as Parameters<typeof ackLiveEvent>[0]["service"] }, EVENT_ID, { overlay_id: "", status: "started" });
+  it("returns 400 invalid_body when status is missing", async () => {
+    const res = await ackLiveEvent({ service: mock.supabase as unknown as Parameters<typeof ackLiveEvent>[0]["service"] }, EVENT_ID, { status: "" as unknown as "started" });
     expect(res.status).toBe(400);
     expect(res.body).toEqual({ error: "invalid_body" });
   });
@@ -83,26 +82,26 @@ describe("ackLiveEvent", () => {
     const res = await ackLiveEvent(
       { service: mock.supabase as unknown as Parameters<typeof ackLiveEvent>[0]["service"] },
       EVENT_ID,
-      { overlay_id: OVERLAY_ID, status: "bogus" } as unknown as Parameters<typeof ackLiveEvent>[2],
+      { status: "bogus" } as unknown as Parameters<typeof ackLiveEvent>[2],
     );
     expect(res.status).toBe(400);
     expect(res.body).toEqual({ error: "invalid_body" });
   });
 
-  it("returns 404 event_not_found when the overlay_id does not match", async () => {
+  it("returns 404 event_not_found when the event does not exist", async () => {
     mock.setResponder("live_events:select", () => ({ data: null, error: null }));
-    const res = await ackLiveEvent({ service: mock.supabase as unknown as Parameters<typeof ackLiveEvent>[0]["service"] }, EVENT_ID, { overlay_id: OVERLAY_ID, status: "started" });
+    const res = await ackLiveEvent({ service: mock.supabase as unknown as Parameters<typeof ackLiveEvent>[0]["service"] }, EVENT_ID, { status: "started" });
     expect(res.status).toBe(404);
     expect(res.body).toEqual({ error: "event_not_found" });
   });
 
   it("transitions a queued event to started and records ack_started_at", async () => {
     mock.setResponder("live_events:select", () => ({
-      data: { id: EVENT_ID, overlay_id: OVERLAY_ID, status: "queued" },
+      data: { id: EVENT_ID, status: "queued" },
       error: null,
     }));
     mock.setResponder("live_events:update", () => ({ data: {}, error: null }));
-    const res = await ackLiveEvent({ service: mock.supabase as unknown as Parameters<typeof ackLiveEvent>[0]["service"] }, EVENT_ID, { overlay_id: OVERLAY_ID, status: "started" });
+    const res = await ackLiveEvent({ service: mock.supabase as unknown as Parameters<typeof ackLiveEvent>[0]["service"] }, EVENT_ID, { status: "started" });
     expect(res.status).toBe(200);
     expect(res.body).toEqual({ id: EVENT_ID, status: "started" });
 
@@ -114,11 +113,11 @@ describe("ackLiveEvent", () => {
 
   it("transitions a started event to completed and records ack_terminal_at", async () => {
     mock.setResponder("live_events:select", () => ({
-      data: { id: EVENT_ID, overlay_id: OVERLAY_ID, status: "started" },
+      data: { id: EVENT_ID, status: "started" },
       error: null,
     }));
     mock.setResponder("live_events:update", () => ({ data: {}, error: null }));
-    const res = await ackLiveEvent({ service: mock.supabase as unknown as Parameters<typeof ackLiveEvent>[0]["service"] }, EVENT_ID, { overlay_id: OVERLAY_ID, status: "completed" });
+    const res = await ackLiveEvent({ service: mock.supabase as unknown as Parameters<typeof ackLiveEvent>[0]["service"] }, EVENT_ID, { status: "completed" });
     expect(res.status).toBe(200);
     expect(res.body).toEqual({ id: EVENT_ID, status: "completed" });
 
@@ -129,20 +128,20 @@ describe("ackLiveEvent", () => {
 
   it("returns 409 already_terminal when the event is already completed with a different status", async () => {
     mock.setResponder("live_events:select", () => ({
-      data: { id: EVENT_ID, overlay_id: OVERLAY_ID, status: "completed" },
+      data: { id: EVENT_ID, status: "completed" },
       error: null,
     }));
-    const res = await ackLiveEvent({ service: mock.supabase as unknown as Parameters<typeof ackLiveEvent>[0]["service"] }, EVENT_ID, { overlay_id: OVERLAY_ID, status: "failed" });
+    const res = await ackLiveEvent({ service: mock.supabase as unknown as Parameters<typeof ackLiveEvent>[0]["service"] }, EVENT_ID, { status: "failed" });
     expect(res.status).toBe(409);
     expect(res.body).toEqual({ error: "already_terminal" });
   });
 
   it("returns 200 idempotently when the event already has the requested status", async () => {
     mock.setResponder("live_events:select", () => ({
-      data: { id: EVENT_ID, overlay_id: OVERLAY_ID, status: "started" },
+      data: { id: EVENT_ID, status: "started" },
       error: null,
     }));
-    const res = await ackLiveEvent({ service: mock.supabase as unknown as Parameters<typeof ackLiveEvent>[0]["service"] }, EVENT_ID, { overlay_id: OVERLAY_ID, status: "started" });
+    const res = await ackLiveEvent({ service: mock.supabase as unknown as Parameters<typeof ackLiveEvent>[0]["service"] }, EVENT_ID, { status: "started" });
     expect(res.status).toBe(200);
     expect(res.body).toEqual({ id: EVENT_ID, status: "started" });
     expect(mock.calls.some((c) => c.table === "live_events" && c.method === "update")).toBe(false);
@@ -155,7 +154,7 @@ describe("createLiveEventsAckApp", () => {
   beforeEach(() => {
     mock = createMockSupabase();
     mock.setResponder("live_events:select", () => ({
-      data: { id: EVENT_ID, overlay_id: OVERLAY_ID, status: "queued" },
+      data: { id: EVENT_ID, status: "queued" },
       error: null,
     }));
     mock.setResponder("live_events:update", () => ({ data: {}, error: null }));
@@ -166,7 +165,7 @@ describe("createLiveEventsAckApp", () => {
     const res = await app.request(`/live-events/${EVENT_ID}/ack`, {
       method: "POST",
       headers: { authorization: "Bearer wrong-secret" },
-      body: JSON.stringify({ overlay_id: OVERLAY_ID, status: "started" }),
+      body: JSON.stringify({ status: "started" }),
     });
     expect(res.status).toBe(401);
     expect(await res.json()).toEqual({ error: "unauthorized" });
@@ -177,7 +176,7 @@ describe("createLiveEventsAckApp", () => {
     const res = await app.request(`/live-events/${EVENT_ID}/ack`, {
       method: "POST",
       headers: { authorization: `Bearer ${SECRET}` },
-      body: JSON.stringify({ overlay_id: OVERLAY_ID, status: "started" }),
+      body: JSON.stringify({ status: "started" }),
     });
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ id: EVENT_ID, status: "started" });

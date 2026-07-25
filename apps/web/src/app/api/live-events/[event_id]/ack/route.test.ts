@@ -41,7 +41,7 @@ describe("POST /api/live-events/[event_id]/ack", () => {
     expect(await res.json()).toEqual({ error: "invalid_body" });
   });
 
-  it("returns 400 invalid_body when overlay_id or status is missing", async () => {
+  it("returns 400 invalid_body when status is missing", async () => {
     const { POST } = await import("./route");
     const res = await POST(postReq({}), { params: Promise.resolve({ event_id: EVENT_ID }) });
     expect(res.status).toBe(400);
@@ -51,7 +51,7 @@ describe("POST /api/live-events/[event_id]/ack", () => {
   it("returns 400 invalid_body when status is not an allowed value", async () => {
     const { POST } = await import("./route");
     const res = await POST(
-      postReq({ overlay_id: "ov1", status: "bogus" }),
+      postReq({ status: "bogus" }),
       { params: Promise.resolve({ event_id: EVENT_ID }) },
     );
     expect(res.status).toBe(400);
@@ -70,7 +70,7 @@ describe("POST /api/live-events/[event_id]/ack", () => {
 
     const { POST } = await import("./route");
     const res = await POST(
-      postReq({ overlay_id: "ov1", status: "started" }),
+      postReq({ status: "started" }),
       { params: Promise.resolve({ event_id: EVENT_ID }) },
     );
     expect(res.status).toBe(200);
@@ -84,7 +84,6 @@ describe("POST /api/live-events/[event_id]/ack", () => {
       authorization: `Bearer ${WORKER_SECRET}`,
     });
     expect(JSON.parse(fetchCalls[0].init.body as string)).toEqual({
-      overlay_id: "ov1",
       status: "started",
     });
   });
@@ -96,7 +95,7 @@ describe("POST /api/live-events/[event_id]/ack", () => {
 
     const { POST } = await import("./route");
     const res = await POST(
-      postReq({ overlay_id: "ov1", status: "completed" }),
+      postReq({ status: "completed" }),
       { params: Promise.resolve({ event_id: EVENT_ID }) },
     );
     expect(res.status).toBe(504);

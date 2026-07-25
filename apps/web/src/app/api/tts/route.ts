@@ -9,16 +9,14 @@ import { buildReadingText } from "@/lib/overlay/settings";
  * endpoint.
  *
  * The Overlay has no session, so the route identifies the caller by a
- * per-Creator `overlay_id`. It resolves the opaque Overlay ID to a registered,
- * not-paused Creator profile, enforces a per-Overlay-ID rate limit, attaches
- * the Worker secret server-side, and forwards `{ text, voice }` to the Worker.
+ * per-Creator `overlay_id` (legacy browser Overlay) or a verified `donation_id`
+ * (Live Event Client). It enforces a per-Overlay-ID rate limit, attaches the
+ * Worker secret server-side, and forwards `{ text, voice }` to the Worker.
  *
- * Two request shapes are supported:
- *   * `{ overlay_id, text, voice }` - legacy browser Overlay proxy.
- *   * `{ overlay_id, donation_id }` - Live Event Client proxy. The server
- *     builds the Alert Reading text from the verified Donation, the Creator's
- *     stored Voice, and the token metadata so the Worker never receives
- *     arbitrary client text.
+ * For Live Event Client requests the server builds the Alert Reading text from
+ * the verified Donation, the Creator's stored Voice, and the token metadata so
+ * the Worker never receives arbitrary client text and the configured Voice is
+ * always respected.
  */
 
 const ttsRateLimiter = createRateLimiter({
@@ -30,7 +28,7 @@ const TTS_PROXY_TIMEOUT_MS = 15_000;
 
 type TtsBody =
   | { overlay_id: string; text: string; voice: string }
-  | { overlay_id: string; donation_id: string };
+  | { donation_id: string };
 
 export async function POST(request: NextRequest) {
   let body: unknown;
@@ -44,45 +42,46 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "invalid_body" }, { status: 400 });
   }
 
-  const overlayId = body.overlay_id.trim();
-
   const service = createServiceClient();
-  const { data: profile, error: profileErr } = await service
-    .from("profiles")
-    .select("id,onchain_registered,paused")
-    .eq("overlay_id", overlayId)
-    .maybeSingle();
-  if (profileErr) {
-    return NextResponse.json({ error: "db_error" }, { status: 500 });
-  }
-  const creatorProfile = profile as
-    | { id: string; onchain_registered: boolean; paused: boolean }
-    | null;
-  if (
-    !creatorProfile ||
-    !creatorProfile.onchain_registered ||
-    creatorProfile.paused
-  ) {
-    return NextResponse.json({ error: "creator_not_found" }, { status: 404 });
-  }
-
-  if (ttsRateLimiter.isRateLimited(overlayId)) {
-    return NextResponse.json({ error: "rate_limited" }, { status: 429 });
-  }
-
+  let overlayId: string;
   let text: string;
   let voice: string;
 
   if ("donation_id" in body) {
-    const resolved = await resolveDonationReading(service, creatorProfile.id, body);
+    const resolved = await resolveDonationReading(service, body.donation_id.trim());
     if (resolved.error !== null) {
       return NextResponse.json({ error: resolved.error }, { status: resolved.status });
     }
+    overlayId = resolved.overlayId;
     text = resolved.text;
     voice = resolved.voice;
   } else {
+    overlayId = body.overlay_id.trim();
     text = body.text;
     voice = body.voice;
+
+    const { data: profile, error: profileErr } = await service
+      .from("profiles")
+      .select("id,onchain_registered,paused")
+      .eq("overlay_id", overlayId)
+      .maybeSingle();
+    if (profileErr) {
+      return NextResponse.json({ error: "db_error" }, { status: 500 });
+    }
+    const creatorProfile = profile as
+      | { id: string; onchain_registered: boolean; paused: boolean }
+      | null;
+    if (
+      !creatorProfile ||
+      !creatorProfile.onchain_registered ||
+      creatorProfile.paused
+    ) {
+      return NextResponse.json({ error: "creator_not_found" }, { status: 404 });
+    }
+  }
+
+  if (ttsRateLimiter.isRateLimited(overlayId)) {
+    return NextResponse.json({ error: "rate_limited" }, { status: 429 });
   }
 
   const controller = new AbortController();
@@ -120,6 +119,7 @@ interface ResolveSuccess {
   error: null;
   text: string;
   voice: string;
+  overlayId: string;
   status: 200;
 }
 
@@ -128,24 +128,41 @@ interface ResolveError {
   status: number;
   text?: never;
   voice?: never;
+  overlayId?: never;
 }
 
 async function resolveDonationReading(
   service: ReturnType<typeof createServiceClient>,
-  creatorProfileId: string,
-  body: { donation_id: string },
+  donationId: string,
 ): Promise<ResolveSuccess | ResolveError> {
   const { data: donation, error: donationErr } = await service
     .from("donations")
-    .select("id,donor_name,amount,token,message,status")
-    .eq("id", body.donation_id.trim())
-    .eq("creator_profile_id", creatorProfileId)
+    .select("id,creator_profile_id,donor_name,amount,token,message,status")
+    .eq("id", donationId)
     .maybeSingle();
   if (donationErr) {
     return { error: "db_error", status: 500 };
   }
   if (!donation) {
     return { error: "donation_not_found", status: 404 };
+  }
+
+  const creatorProfileId = donation.creator_profile_id as string;
+
+  const { data: profile, error: profileErr } = await service
+    .from("profiles")
+    .select("id,onchain_registered,paused,overlay_id")
+    .eq("id", creatorProfileId)
+    .maybeSingle();
+  if (profileErr) {
+    return { error: "db_error", status: 500 };
+  }
+  if (
+    !profile ||
+    !(profile as { onchain_registered: boolean }).onchain_registered ||
+    (profile as { paused: boolean }).paused
+  ) {
+    return { error: "creator_not_found", status: 404 };
   }
 
   const { data: settings, error: settingsErr } = await service
@@ -185,23 +202,27 @@ async function resolveDonationReading(
     voice: ttsVoice,
   });
 
-  return { error: null, text: reading, voice: ttsVoice, status: 200 };
+  return {
+    error: null,
+    text: reading,
+    voice: ttsVoice,
+    overlayId: (profile as { overlay_id: string }).overlay_id,
+    status: 200,
+  };
 }
 
 function isValidBody(body: unknown): body is TtsBody {
   if (typeof body !== "object" || body === null) return false;
   const b = body as Record<string, unknown>;
-  if (typeof b.overlay_id !== "string" || b.overlay_id.trim().length === 0) {
-    return false;
-  }
 
   const hasDonationId = typeof b.donation_id === "string" && b.donation_id.trim().length > 0;
   const hasText = typeof b.text === "string" && b.text.length > 0;
   const hasVoice = typeof b.voice === "string" && b.voice.length > 0;
+  const hasOverlayId = typeof b.overlay_id === "string" && b.overlay_id.trim().length > 0;
 
   if (hasDonationId) {
-    return !hasText && !hasVoice;
+    return !hasText && !hasVoice && !hasOverlayId;
   }
 
-  return hasText && hasVoice;
+  return hasOverlayId && hasText && hasVoice;
 }

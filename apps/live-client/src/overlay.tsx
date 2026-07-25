@@ -14,6 +14,10 @@ const apiBaseUrl = import.meta.env.VITE_API_BASE_URL as string | undefined;
 const alertSoundUrl = (import.meta.env.VITE_ALERT_SOUND_URL as string | undefined)
   ?? `${apiBaseUrl ?? ""}/alert.mp3`;
 
+const DEFAULT_ALERT_DURATION_MS = 10_000;
+const MIN_ALERT_DURATION_MS = 1_000;
+const MAX_ALERT_DURATION_MS = 60_000;
+
 interface LiveEventRow {
   id: string;
   creator_profile_id: string;
@@ -47,6 +51,10 @@ interface OverlaySettingsRow {
   tts_voice: string | null;
 }
 
+function clampAlertDuration(ms: number) {
+  return Math.min(Math.max(ms, MIN_ALERT_DURATION_MS), MAX_ALERT_DURATION_MS);
+}
+
 function playBeep() {
   try {
     const Ctx = (window as typeof window & { AudioContext?: typeof AudioContext; webkitAudioContext?: typeof AudioContext }).AudioContext
@@ -76,7 +84,6 @@ function playAlertSound(enabled: boolean) {
   }
   const audio = new Audio(alertSoundUrl);
   audio.play().catch(() => {
-    // Fall back to a synthesized beep when the configured sound cannot load.
     playBeep();
   });
 }
@@ -87,7 +94,7 @@ export function GameOverlay() {
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const alertStartedAtRef = useRef<number | null>(null);
   const currentEventIdRef = useRef<string | null>(null);
-  const currentOverlayIdRef = useRef<string | null>(null);
+  const settingsRef = useRef<OverlaySettingsRow | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -108,6 +115,22 @@ export function GameOverlay() {
 
     const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
+    // Load the Creator's overlay settings once so each Live Event renders
+    // immediately without waiting for a settings round-trip.
+    void supabase
+      .from("overlay_settings")
+      .select("alert_duration_ms,min_amount,sound_enabled,tts_enabled,tts_voice")
+      .eq("overlay_id", overlayId)
+      .maybeSingle()
+      .then(
+        ({ data }) => {
+          if (data) settingsRef.current = data as OverlaySettingsRow;
+        },
+        () => {
+          // Settings are best-effort; defaults will be used.
+        },
+      );
+
     const channel = supabase
       .channel("live-events")
       .on(
@@ -119,7 +142,7 @@ export function GameOverlay() {
           filter: `overlay_id=eq.${overlayId}`,
         },
         (payload: { new: LiveEventRow }) => {
-          void handleLiveEvent(payload.new, overlayId);
+          void handleLiveEvent(payload.new);
         },
       )
       .subscribe();
@@ -132,54 +155,41 @@ export function GameOverlay() {
     };
   }, [overlayId]);
 
-  async function handleLiveEvent(event: LiveEventRow, currentOverlayId: string) {
-    // Notify the server that rendering has started. This is best-effort and
-    // must not delay the visual acknowledgement.
-    sendAck(event.id, "started", currentOverlayId);
+  async function handleLiveEvent(event: LiveEventRow) {
+    sendAck(event.id, "started");
     currentEventIdRef.current = event.id;
-    currentOverlayIdRef.current = currentOverlayId;
 
-    const supabase = createClient(supabaseUrl!, supabaseAnonKey!);
-    const [{ data: settings }, { data: token }] = await Promise.all([
-      supabase
-        .from("overlay_settings")
-        .select("alert_duration_ms,min_amount,sound_enabled,tts_enabled,tts_voice")
-        .eq("creator_profile_id", event.creator_profile_id)
-        .maybeSingle() as unknown as Promise<{ data: OverlaySettingsRow | null }>,
-      supabase
-        .from("tokens")
-        .select("symbol,decimals")
-        .eq("contract_address", event.payload.donation.token)
-        .maybeSingle() as unknown as Promise<{ data: { symbol: string; decimals: number } | null }>,
-    ]);
+    const { donation, token_display } = event.payload;
 
-    const decimals = token?.decimals ?? event.payload.token_display.decimals ?? 0;
-    const symbol = token?.symbol ?? event.payload.token_display.symbol ?? event.payload.donation.token;
-    const alertDurationMs = settings?.alert_duration_ms ?? 10000;
+    const tokenDecimals = token_display.decimals;
+    const tokenSymbol = token_display.symbol;
+
+    const settings = settingsRef.current;
+    const alertDurationMs = clampAlertDuration(settings?.alert_duration_ms ?? DEFAULT_ALERT_DURATION_MS);
     const soundEnabled = settings?.sound_enabled ?? true;
     const ttsEnabled = settings?.tts_enabled ?? false;
     const ttsVoice = settings?.tts_voice ?? null;
 
-    const minAmountRaw = displayToRawAmount(String(settings?.min_amount ?? "0"), decimals);
-    if (!isAtLeastRaw(event.payload.donation.amount, minAmountRaw)) {
-      sendAck(event.id, "completed", currentOverlayId);
+    const minAmountRaw = displayToRawAmount(String(settings?.min_amount ?? "0"), tokenDecimals);
+    if (!isAtLeastRaw(donation.amount, minAmountRaw)) {
+      sendAck(event.id, "completed");
       return;
     }
 
-    const amountDisplay = rawToDisplayAmount(event.payload.donation.amount, decimals);
+    const amountDisplay = rawToDisplayAmount(donation.amount, tokenDecimals);
     const result = planRender(
       {
-        donorName: event.payload.donation.donor_name,
+        donorName: donation.donor_name,
         amountDisplay,
-        tokenSymbol: symbol,
-        message: event.payload.donation.message,
+        tokenSymbol,
+        message: donation.message,
         effect: null,
       },
       { alertDurationMs },
     );
 
     if (!result.ok) {
-      sendAck(event.id, "failed", currentOverlayId);
+      sendAck(event.id, "failed");
       return;
     }
 
@@ -191,11 +201,10 @@ export function GameOverlay() {
     alertStartedAtRef.current = Date.now();
 
     playAlertSound(soundEnabled);
-
     scheduleDismiss(result.plan.durationMs);
 
     if (ttsEnabled && ttsVoice) {
-      void requestTTS(currentOverlayId, event.payload.donation.id, result.plan.durationMs);
+      void requestTTS(donation.id, result.plan.durationMs);
     }
   }
 
@@ -205,26 +214,26 @@ export function GameOverlay() {
     }
     timeoutRef.current = setTimeout(() => {
       setPlan(null);
-      if (currentEventIdRef.current && currentOverlayIdRef.current) {
-        sendAck(currentEventIdRef.current, "completed", currentOverlayIdRef.current);
+      if (currentEventIdRef.current) {
+        sendAck(currentEventIdRef.current, "completed");
       }
     }, remainingMs);
   }
 
-  async function requestTTS(currentOverlayId: string, donationId: string, alertDurationMs: number) {
+  async function requestTTS(donationId: string, alertDurationMs: number) {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 3000);
     try {
       const res = await fetch(`${apiBaseUrl ?? ""}/api/tts`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ overlay_id: currentOverlayId, donation_id: donationId }),
+        body: JSON.stringify({ donation_id: donationId }),
         signal: controller.signal,
       });
       if (!res.ok) return;
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
-      const audio = new Audio(url);
+      const audio = new Audio();
       await new Promise<void>((resolve, reject) => {
         audio.onloadedmetadata = () => resolve();
         audio.onerror = () => reject(new Error("audio load failed"));
@@ -236,8 +245,10 @@ export function GameOverlay() {
       if (remaining > 0) {
         scheduleDismiss(remaining);
       }
+
+      audio.onended = () => URL.revokeObjectURL(url);
+      audio.onerror = () => URL.revokeObjectURL(url);
       await audio.play();
-      URL.revokeObjectURL(url);
     } catch {
       // Alert Reading is optional; a failed read must not hide the alert.
     } finally {
@@ -245,12 +256,12 @@ export function GameOverlay() {
     }
   }
 
-  function sendAck(eventId: string, status: string, currentOverlayId: string) {
+  function sendAck(eventId: string, status: string) {
     if (!apiBaseUrl) return;
     void fetch(`${apiBaseUrl}/api/live-events/${eventId}/ack`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ overlay_id: currentOverlayId, status }),
+      body: JSON.stringify({ status }),
       keepalive: true,
     });
   }

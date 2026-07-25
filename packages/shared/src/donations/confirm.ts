@@ -80,6 +80,9 @@ function nowIso(): string {
   return new Date().toISOString();
 }
 
+/** Live Events that do not start within 30 seconds expire (PRD). */
+const LIVE_EVENT_EXPIRY_MS = 30_000;
+
 /**
  * Extract the source account (G...) from a transaction envelope. Handles V0,
  * V1, and fee-bump envelopes (drilling into the inner tx for fee-bump). The
@@ -209,11 +212,6 @@ export async function verifyDonation(
     // ensure a Live Event exists for ordinary Donations.
     if (existingRow.status === "confirmed") {
       donationId = existingRow.id;
-      const delivery = await prepareDelivery(service, {
-        creatorProfileId,
-        token,
-      });
-      if (delivery.error !== null) return { status: 500, body: { error: delivery.error } };
       return deliverOrdinaryLiveEventIfNeeded(service, input, {
         donationId,
         creatorProfileId,
@@ -223,9 +221,6 @@ export async function verifyDonation(
         donorAddress,
         donorName: existingRow.donor_name ?? null,
         message: existingRow.message ?? null,
-        overlayId: delivery.overlayId,
-        tokenSymbol: delivery.tokenSymbol,
-        tokenDecimals: delivery.tokenDecimals,
       });
     }
 
@@ -271,9 +266,6 @@ export async function verifyDonation(
     const finalMessage =
       (update.message as string | null | undefined) ?? existingRow.message ?? null;
 
-    const delivery = await prepareDelivery(service, { creatorProfileId, token });
-    if (delivery.error !== null) return { status: 500, body: { error: delivery.error } };
-
     return deliverOrdinaryLiveEventIfNeeded(service, input, {
       donationId,
       creatorProfileId,
@@ -283,9 +275,6 @@ export async function verifyDonation(
       donorAddress,
       donorName: finalDonorName,
       message: finalMessage,
-      overlayId: delivery.overlayId,
-      tokenSymbol: delivery.tokenSymbol,
-      tokenDecimals: delivery.tokenDecimals,
     });
   }
 
@@ -294,16 +283,13 @@ export async function verifyDonation(
   //    the creator profile (matched by handle_hash).
   const { data: profile, error: profileErr } = await service
     .from("profiles")
-    .select("id,overlay_id")
+    .select("id")
     .eq("handle_hash", handleHashBytea)
     .maybeSingle();
   if (profileErr) return { status: 500, body: { error: "db_error" } };
   if (!profile) return { status: 409, body: { error: "creator_not_found" } };
 
   creatorProfileId = (profile as ProfileRow).id;
-
-  const delivery = await prepareDelivery(service, { creatorProfileId, token });
-  if (delivery.error !== null) return { status: 500, body: { error: delivery.error } };
 
   const insert: Record<string, unknown> = {
     tx_hash: txHash,
@@ -339,9 +325,6 @@ export async function verifyDonation(
     donorAddress,
     donorName: donorName ?? "Anonymous",
     message: message,
-    overlayId: delivery.overlayId,
-    tokenSymbol: delivery.tokenSymbol,
-    tokenDecimals: delivery.tokenDecimals,
   });
 }
 
@@ -354,9 +337,6 @@ interface DeliverContext {
   donorAddress: string;
   donorName: string | null;
   message: string | null;
-  overlayId: string;
-  tokenSymbol: string;
-  tokenDecimals: number;
 }
 
 interface PrepareDeliveryResult {
@@ -411,11 +391,17 @@ async function deliverOrdinaryLiveEventIfNeeded(
     return { status: 200, body: { status: "confirmed" } };
   }
 
-  const expiresAt = new Date(Date.now() + 30_000).toISOString();
+  const delivery = await prepareDelivery(service, {
+    creatorProfileId: ctx.creatorProfileId,
+    token: ctx.token,
+  });
+  if (delivery.error !== null) return { status: 500, body: { error: delivery.error } };
+
+  const expiresAt = new Date(Date.now() + LIVE_EVENT_EXPIRY_MS).toISOString();
 
   const result = await createOrdinaryLiveEvent(service, {
     creatorProfileId: ctx.creatorProfileId,
-    overlayId: ctx.overlayId,
+    overlayId: delivery.overlayId,
     donationId: ctx.donationId,
     txHash: ctx.txHash,
     donorName: ctx.donorName ?? "Anonymous",
@@ -423,8 +409,8 @@ async function deliverOrdinaryLiveEventIfNeeded(
     amount: ctx.amount,
     token: ctx.token,
     message: ctx.message,
-    tokenSymbol: ctx.tokenSymbol,
-    tokenDecimals: ctx.tokenDecimals,
+    tokenSymbol: delivery.tokenSymbol,
+    tokenDecimals: delivery.tokenDecimals,
     expiresAt,
   });
 

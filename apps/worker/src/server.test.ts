@@ -22,7 +22,7 @@ const DONOR_ADDRESS = DONOR.publicKey();
 const TX_HASH = "deadbeef".repeat(8);
 const SECRET = "test-secret";
 
-type Method = "select" | "insert" | "update" | "upsert" | "delete";
+type Method = "select" | "insert" | "update" | "upsert" | "delete" | "rpc";
 interface RecordedCall {
   table: string;
   method: Method;
@@ -54,6 +54,7 @@ function createMockSupabase() {
       eq(col: string, value: unknown) { state.filters[col] = value; return self; },
       maybeSingle() { return commit(); },
       single() { return commit(); },
+      returns() { return self; },
       then(onFulfilled?: (v: { data: unknown; error: unknown }) => unknown,
            onRejected?: (e: unknown) => unknown) {
         return commit().then(
@@ -78,7 +79,20 @@ function createMockSupabase() {
     }
     return self;
   }
-  const supabase = { from: vi.fn((table: string) => query(table)) };
+  function rpc(fn: string) {
+    const rpcState = { returned: false };
+    const self = {
+      returns() { rpcState.returned = true; return self; },
+      single() {
+        const call: RecordedCall = { table: `rpc:${fn}`, method: "rpc", filters: {}, payload: rpcState.returned, selectCols: null };
+        calls.push(call);
+        const r = responders[`rpc:${fn}`];
+        return Promise.resolve(r ? r(call) : { data: null, error: null });
+      },
+    };
+    return self;
+  }
+  const supabase = { from: vi.fn((table: string) => query(table)), rpc: vi.fn((fn: string) => rpc(fn)) };
   return { supabase, calls, setResponder };
 }
 
@@ -287,11 +301,11 @@ describe("POST /verify", () => {
     supabaseMock.setResponder("donations:insert", () => ({ data: { id: "d1" }, error: null }));
     supabaseMock.setResponder("tokens:select", () => ({ data: { symbol: "USDC", decimals: 6 }, error: null }));
     supabaseMock.setResponder("live_events:select", () => ({ data: null, error: null }));
+    supabaseMock.setResponder("rpc:next_live_event_sequence", () => ({ data: { next_live_event_sequence: 1 }, error: null }));
     supabaseMock.setResponder("live_events:insert", () => ({
       data: { id: "le-1", sequence: 1, created_at: "2026-07-25T12:00:00.000Z", expires_at: "2026-07-25T12:00:30.000Z" },
       error: null,
     }));
-    supabaseMock.setResponder("live_events:update", () => ({ data: {}, error: null }));
     getTransaction.mockResolvedValue(
       makeSuccessTxResponse(makeDonationReceivedEvent("USDC"), DONOR),
     );
@@ -374,11 +388,11 @@ describe("pollVerify", () => {
     supabaseMock.setResponder("donations:insert", () => ({ data: { id: "d1" }, error: null }));
     supabaseMock.setResponder("tokens:select", () => ({ data: { symbol: "USDC", decimals: 6 }, error: null }));
     supabaseMock.setResponder("live_events:select", () => ({ data: null, error: null }));
+    supabaseMock.setResponder("rpc:next_live_event_sequence", () => ({ data: { next_live_event_sequence: 1 }, error: null }));
     supabaseMock.setResponder("live_events:insert", () => ({
       data: { id: "le-1", sequence: 1, created_at: "2026-07-25T12:00:00.000Z", expires_at: "2026-07-25T12:00:30.000Z" },
       error: null,
     }));
-    supabaseMock.setResponder("live_events:update", () => ({ data: {}, error: null }));
     // First two polls: NOT_FOUND. Third poll: SUCCESS.
     getTransaction
       .mockResolvedValueOnce(makeNotFoundResponse())

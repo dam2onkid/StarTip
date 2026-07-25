@@ -68,6 +68,13 @@ function validBody(overrides: Record<string, unknown> = {}) {
   };
 }
 
+function donationIdBody(overrides: Record<string, unknown> = {}) {
+  return {
+    donation_id: "d1",
+    ...overrides,
+  };
+}
+
 describe("POST /api/tts", () => {
   beforeEach(() => {
     vi.resetModules();
@@ -326,11 +333,12 @@ describe("POST /api/tts", () => {
     serviceFrom.mockImplementation(
       multiSelectChain({
         profiles: {
-          data: { id: CREATOR_PROFILE_ID, onchain_registered: true, paused: false },
+          data: { id: CREATOR_PROFILE_ID, onchain_registered: true, paused: false, overlay_id: "abc123" },
         },
         donations: {
           data: {
             id: "d1",
+            creator_profile_id: CREATOR_PROFILE_ID,
             donor_name: "Alice",
             amount: "2500000",
             token: "USDC",
@@ -358,7 +366,7 @@ describe("POST /api/tts", () => {
 
     const { POST } = await import("@/app/api/tts/route");
     const res = await POST(
-      postReq({ overlay_id: "abc123", donation_id: "d1" }),
+      postReq(donationIdBody()),
     );
     expect(res.status).toBe(200);
     expect(fetchCalls).toHaveLength(1);
@@ -371,21 +379,22 @@ describe("POST /api/tts", () => {
   it("returns 400 invalid_body when donation_id mode includes a voice override", async () => {
     const { POST } = await import("@/app/api/tts/route");
     const res = await POST(
-      postReq({ overlay_id: "abc123", donation_id: "d1", voice: "en-US-EmmaNeural" }),
+      postReq(donationIdBody({ voice: "en-US-EmmaNeural" })),
     );
     expect(res.status).toBe(400);
     expect(await res.json()).toEqual({ error: "invalid_body" });
   });
 
-  it("returns 400 tts_unconfigured when donation_id mode has no stored voice and no override", async () => {
+  it("returns 400 tts_unconfigured when donation_id mode has no stored voice", async () => {
     serviceFrom.mockImplementation(
       multiSelectChain({
         profiles: {
-          data: { id: CREATOR_PROFILE_ID, onchain_registered: true, paused: false },
+          data: { id: CREATOR_PROFILE_ID, onchain_registered: true, paused: false, overlay_id: "abc123" },
         },
         donations: {
           data: {
             id: "d1",
+            creator_profile_id: CREATOR_PROFILE_ID,
             donor_name: "Alice",
             amount: "1000000",
             token: "USDC",
@@ -404,18 +413,18 @@ describe("POST /api/tts", () => {
 
     const { POST } = await import("@/app/api/tts/route");
     const res = await POST(
-      postReq({ overlay_id: "abc123", donation_id: "d1" }),
+      postReq(donationIdBody()),
     );
     expect(res.status).toBe(400);
     expect(await res.json()).toEqual({ error: "tts_unconfigured" });
     expect(global.fetch).toHaveBeenCalledTimes(0);
   });
 
-  it("returns 404 donation_not_found when the donation does not belong to the creator", async () => {
+  it("returns 404 donation_not_found when the donation does not exist", async () => {
     serviceFrom.mockImplementation(
       multiSelectChain({
         profiles: {
-          data: { id: CREATOR_PROFILE_ID, onchain_registered: true, paused: false },
+          data: { id: CREATOR_PROFILE_ID, onchain_registered: true, paused: false, overlay_id: "abc123" },
         },
         donations: { data: null },
       }),
@@ -427,7 +436,7 @@ describe("POST /api/tts", () => {
 
     const { POST } = await import("@/app/api/tts/route");
     const res = await POST(
-      postReq({ overlay_id: "abc123", donation_id: "d1" }),
+      postReq(donationIdBody()),
     );
     expect(res.status).toBe(404);
     expect(await res.json()).toEqual({ error: "donation_not_found" });

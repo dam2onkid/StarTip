@@ -10,7 +10,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
  * idempotency when called again for the same donation.
  */
 
-type Method = "select" | "insert" | "update";
+type Method = "select" | "insert" | "update" | "rpc";
 interface RecordedCall {
   table: string;
   method: Method;
@@ -88,7 +88,21 @@ function createMockSupabase() {
     return self;
   }
 
-  const supabase = { from: vi.fn((table: string) => query(table)) };
+  function rpc(fn: string) {
+    const state = { returned: false as false | { type: "returns" } };
+    const chain = {
+      returns<T>() { state.returned = { type: "returns" }; return chain as unknown as { single: () => Promise<{ data: T; error: unknown }> }; },
+      single() {
+        const call: RecordedCall = { table: `rpc:${fn}`, method: "rpc", filters: {}, payload: state.returned, selectCols: null };
+        calls.push(call);
+        const r = responders[`rpc:${fn}`];
+        return Promise.resolve(r ? r(call) : { data: null, error: null });
+      },
+    };
+    return chain;
+  }
+
+  const supabase = { from: vi.fn((table: string) => query(table)), rpc: vi.fn((fn: string) => rpc(fn)) };
   return { supabase, calls, setResponder };
 }
 
@@ -118,6 +132,7 @@ describe("createOrdinaryLiveEvent", () => {
 
   it("creates a Live Event with the ordinary Donation envelope", async () => {
     mock.setResponder("live_events:select", () => ({ data: null, error: null }));
+    mock.setResponder("rpc:next_live_event_sequence", () => ({ data: { next_live_event_sequence: 42 }, error: null }));
     mock.setResponder("live_events:insert", () => ({
       data: {
         id: "le-1",
@@ -127,7 +142,6 @@ describe("createOrdinaryLiveEvent", () => {
       },
       error: null,
     }));
-    mock.setResponder("live_events:update", () => ({ data: {}, error: null }));
 
     const { createOrdinaryLiveEvent } = await import("./deliver");
     const result = await createOrdinaryLiveEvent(
@@ -137,7 +151,6 @@ describe("createOrdinaryLiveEvent", () => {
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(result.event.id).toBe("le-1");
     expect(result.event.sequence).toBe(42);
 
     const insertCall = mock.calls.find((c) => c.table === "live_events" && c.method === "insert");
@@ -146,18 +159,14 @@ describe("createOrdinaryLiveEvent", () => {
       creator_profile_id: "11111111-1111-1111-1111-111111111111",
       overlay_id: "abc123overlayid",
       donation_id: "22222222-2222-2222-2222-222222222222",
+      sequence: 42,
       expires_at: "2026-07-25T12:00:30.000Z",
       status: "queued",
     });
-    expect((insertCall?.payload as Record<string, unknown>).payload).toBeUndefined();
 
-    const updateCall = mock.calls.find((c) => c.table === "live_events" && c.method === "update");
-    expect(updateCall).toBeDefined();
-    const payload = (updateCall?.payload as Record<string, unknown>).payload as Record<string, unknown>;
+    const payload = (insertCall?.payload as Record<string, unknown>).payload as Record<string, unknown>;
     expect(payload.event).toMatchObject({
-      id: "le-1",
       sequence: 42,
-      created_at: "2026-07-25T12:00:00.000Z",
       expires_at: "2026-07-25T12:00:30.000Z",
     });
     expect(payload.donation).toMatchObject({
@@ -179,6 +188,9 @@ describe("createOrdinaryLiveEvent", () => {
       decimals: 6,
     });
     expect(payload.effect).toBeNull();
+
+    const updateCalls = mock.calls.filter((c) => c.table === "live_events" && c.method === "update");
+    expect(updateCalls).toHaveLength(0);
   });
 
   it("is idempotent on the same donation", async () => {
@@ -207,8 +219,24 @@ describe("createOrdinaryLiveEvent", () => {
     expect(insertCalls).toHaveLength(0);
   });
 
+  it("returns db_error when the sequence reservation fails", async () => {
+    mock.setResponder("live_events:select", () => ({ data: null, error: null }));
+    mock.setResponder("rpc:next_live_event_sequence", () => ({ data: null, error: { message: "boom" } }));
+
+    const { createOrdinaryLiveEvent } = await import("./deliver");
+    const result = await createOrdinaryLiveEvent(
+      mock.supabase as unknown as SupabaseClient,
+      validInput(),
+    );
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error).toBe("db_error");
+  });
+
   it("returns db_error when the insert fails", async () => {
     mock.setResponder("live_events:select", () => ({ data: null, error: null }));
+    mock.setResponder("rpc:next_live_event_sequence", () => ({ data: { next_live_event_sequence: 42 }, error: null }));
     mock.setResponder("live_events:insert", () => ({ data: null, error: { message: "boom" } }));
 
     const { createOrdinaryLiveEvent } = await import("./deliver");
@@ -222,18 +250,18 @@ describe("createOrdinaryLiveEvent", () => {
     expect(result.error).toBe("db_error");
   });
 
-  it("returns db_error when the payload update fails", async () => {
-    mock.setResponder("live_events:select", () => ({ data: null, error: null }));
-    mock.setResponder("live_events:insert", () => ({
-      data: {
-        id: "le-1",
-        sequence: 42,
-        created_at: "2026-07-25T12:00:00.000Z",
-        expires_at: "2026-07-25T12:00:30.000Z",
-      },
-      error: null,
-    }));
-    mock.setResponder("live_events:update", () => ({ data: null, error: { message: "boom" } }));
+  it("is idempotent when a concurrent insert wins the unique donation_id index", async () => {
+    let selectCalls = 0;
+    mock.setResponder("live_events:select", () => {
+      selectCalls++;
+      if (selectCalls === 1) return { data: null, error: null };
+      return {
+        data: { id: "le-existing", sequence: 99, created_at: "2026-07-25T12:00:00.000Z", expires_at: "2026-07-25T12:00:30.000Z" },
+        error: null,
+      };
+    });
+    mock.setResponder("rpc:next_live_event_sequence", () => ({ data: { next_live_event_sequence: 42 }, error: null }));
+    mock.setResponder("live_events:insert", () => ({ data: null, error: { code: "23505" } }));
 
     const { createOrdinaryLiveEvent } = await import("./deliver");
     const result = await createOrdinaryLiveEvent(
@@ -241,8 +269,8 @@ describe("createOrdinaryLiveEvent", () => {
       validInput(),
     );
 
-    expect(result.ok).toBe(false);
-    if (result.ok) return;
-    expect(result.error).toBe("db_error");
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.event.sequence).toBe(99);
   });
 });
