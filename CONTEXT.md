@@ -187,6 +187,146 @@ route must not be guessable from public information, since it is the
 Creator's private OBS browser-source URL.
 _Avoid_: alert widget, notification layer.
 
+**Live Event Platform**:
+The system that turns server-issued Live Events into synchronized experiences
+for a Creator playing a game and the audience watching the Creator's stream.
+Its first supported participant is the Creator, not every Player in a shared
+game session. The audience normally sees the Creator's captured Game Overlay;
+the browser Overlay is a fallback rather than a simultaneous renderer.
+_Avoid_: Overlay (the existing OBS browser source), event server.
+
+**Live Events Enabled**:
+The Creator's explicit opt-in to offer Donation Effects. It is off by default;
+when off, the donate page offers ordinary Donations only and the server cannot
+create new Effect Intents or execute an earlier Effect Intent whose Donation
+settles after the Creator disables Live Events. Changing it does not control
+an effect already running on the Creator's device.
+_Avoid_: pack enabled, overlay online, client ready.
+
+**Live Event Client**:
+The desktop application used by a Creator while playing a game. Its Control
+Window accepts the Overlay ID, selects the Target Display, reports status, and
+starts or stops a separate Game Overlay. While running, it receives Live
+Events and presents both ordinary Donation Alerts and Donation Effects through
+the Game Overlay so the Creator directly experiences the same captured
+surface as the audience. A Donation with an effect receives compact
+attribution instead of a second full Donation Alert. The MVP emits audio
+through the macOS default output and provides local test controls, while the
+Creator owns OBS visual and audio capture configuration.
+_Avoid_: Overlay app, player client, desktop Overlay.
+
+**Game Overlay**:
+The borderless, transparent, full-screen surface displayed above a Creator's
+windowed or borderless game on the same display by the Live Event Client. Its
+initial interaction contract always lets pointer input pass through to the
+game; selective or exclusive interaction may be introduced by a later
+contract version.
+_Avoid_: Overlay (the existing OBS browser source), game window.
+
+**Target Display**:
+The display a Creator chooses for the Game Overlay. The Live Event Client
+remembers the choice and falls back to the primary display if the chosen
+display is disconnected.
+_Avoid_: game monitor, main screen.
+
+**Emergency Stop**:
+The Creator-controlled action that immediately hides the Game Overlay and
+stops its current Donation Effect, then clears queued Donation Effects. The MVP
+exposes it through the fixed `Control + Option + Command + E` global shortcut
+even though it has no effect customization controls; the separate `Stop
+Overlay` action stops the entire Game Overlay, including ordinary Donation
+Alerts.
+_Avoid_: pause setting, disable effect, kill app.
+
+**Live Event**:
+A server-issued occurrence presented by the Live Event Platform. A Live Event
+identifies one verified Donation and optionally its Donor-selected Donation
+Effect; a Donation without an effect still produces one Live Event for its
+Donation Alert. The server issues it only after the Worker verifies settlement
+in a Stellar ledger and validates the Creator, token, amount, and, when
+present, the Effect Intent, enabled catalog, and effect requirement; it does
+not wait for the full indexer pipeline. If the Creator has disabled Live
+Events by settlement time, the effect is suppressed and the same Donation
+becomes an ordinary Donation Alert with reason `creator_disabled`. The initial
+contract cannot make the Game Overlay capture pointer input.
+_Avoid_: notification, alert (ambiguous with Donation Alert).
+
+**Live Event Queue**:
+The durable, Creator-scoped FIFO ordering of validated Live Events. Realtime
+delivery presents events only during the Live Event Client's current connected
+session; events missed while offline are recorded but never replayed after
+reconnect. The client runs one Donation Effect at a time without interruption
+and skips an event that expires before it starts.
+_Avoid_: alert queue, effect stack, playlist.
+
+**Live Event Lifecycle**:
+The forward-only, best-effort state of a Live Event: `queued` becomes `started`,
+then `completed`, `failed`, or `stopped`; a queued event may instead become
+`missed` when no client acknowledgement arrives, or `expired` when a client
+held it past its deadline without starting. The client never waits for an
+acknowledgement response before rendering. `completed`, `failed`, `stopped`,
+`missed`, and `expired` are terminal. The MVP deadline is fixed at 30 seconds
+after event creation; an event must start before that deadline.
+_Avoid_: donation status, effect status, queue state.
+
+**Effect Pack**:
+A first-party, signed, versioned collection of declarative Donation Effects
+that a Creator may enable for Donors. A Creator configures the enabled catalog
+and each effect's permitted amount requirement within the pack's constraints.
+An Effect Pack cannot contain arbitrary executable code. A pack version is
+immutable and must be downloaded and verified before the Creator can enable
+it; a Live Event pins the exact pack version and never initiates a pack
+download.
+_Avoid_: plugin (implementation-oriented), theme, overlay pack.
+
+**Default Pack**:
+The Effect Pack bundled with the MVP Live Event Client. It contains Jump
+Scare, Screen Flash, Screen Cover, and Tunnel Vision; the MVP has no pack
+download, update, marketplace, or pack-management interface. Its default
+Effect Prices are 2 test USDC for Jump Scare, 1 for Screen Flash, 5 for Screen
+Cover, and 3 for Tunnel Vision; the platform floor is 0.10 test USDC. Jump
+Scare is centered at up to 80% of the display for 2 seconds, with GIFs capped
+at 4 seconds. Screen Flash fades through white once over 1 second. Screen Cover
+obscures the central 70% for 3 seconds. Tunnel Vision leaves a central circular
+view about 35% of the display width for 5 seconds. Every effect is
+non-interactive and ends automatically.
+_Avoid_: starter pack, basic effects, free pack.
+
+**Donation Effect**:
+An optional audiovisual experience a Donor selects for a Donation from the
+Creator's enabled Effect Packs, such as a jump scare, flash, screen
+obstruction, or reduced visible area. `No effect` is the default Donation
+choice. The Creator experiences a selected effect directly through the Game
+Overlay while the audience can see the same captured effect on the stream.
+Its compact attribution contains Donor Name, amount, token symbol, and effect
+name, but not the Donation message. A Donation with an effect never produces
+an Alert Reading.
+_Avoid_: Donation Alert, animation, filter.
+
+**Effect Price**:
+The minimum total Donation amount required to select a Donation Effect. The
+Default Pack supplies an initial value and the Creator may change it in the
+dashboard subject to the platform floor; it is not a surcharge or a separate
+fee, and the full amount remains a Donation.
+_Avoid_: effect fee, add-on price, surcharge.
+
+**Effect Intent**:
+A single-use, expiring off-chain record that binds a Donor's selected Donation
+Effect to the exact Creator, token, amount requirement, and Donation before
+signature. Settlement data is matched back to this locked record before a Live
+Event is issued; no effect metadata or lifecycle state is stored in
+DonationRouter. It does not override the Creator's current Live Events Enabled
+state at settlement time.
+_Avoid_: effect transaction, on-chain effect, event purchase.
+
+**Jump Scare**:
+A Donation Effect that uniformly selects one bundled image or GIF at random
+from its Effect Pack and presents it abruptly. An asset may include bundled
+audio, which the MVP preloads and plays at a fixed 70% volume; Emergency Stop
+ends both media and audio immediately. Repeating the same asset on consecutive
+activations is allowed.
+_Avoid_: jump-scare pack, scare alert.
+
 **Overlay ID**:
 An opaque, unguessable token identifying a Creator's Overlay, distinct from
 Handle. Generated automatically once onboarding completes; the Creator may
@@ -194,6 +334,9 @@ regenerate it from the dashboard, which immediately invalidates the previous
 `/overlay/[overlay_id]` URL (old browser sources 404). Never derived from or
 exposed alongside the Handle. Analogous to a stream key: whoever holds it can
 view the Creator's live Overlay, so it is not published anywhere public.
+During Live Event Client prototyping, it may also grant access to receive that
+Creator's Live Events and report their lifecycle, but never to change the
+Creator's catalog, pricing, or configuration.
 _Avoid_: stream key (used only as an analogy), overlay token (implementation
 detail), overlay handle.
 
@@ -202,7 +345,10 @@ The visual card rendered on the Overlay for a single Donation (Donor Name,
 amount + token symbol, message), auto-dismissed after `alert_duration_ms`
 (spec §11.3) or, when Text-to-Speech is enabled, after the Alert Reading
 finishes if that takes longer. Distinct from the Alert Reading: the Alert can
-render before, during, or without a Reading.
+render before, during, or without a Reading. The browser Overlay and Live Event
+Client resolve the same alert duration, minimum amount, sound, Text-to-Speech,
+and Voice settings for Donations without effects. A Donation Effect uses its
+fixed pack preset instead and is not suppressed by the alert minimum amount.
 _Avoid_: alert (ambiguous with Alert Reading), toast.
 
 **Alert Reading**:
@@ -211,7 +357,10 @@ message, capped to the first ~200 characters) in the Creator's configured
 Voice. Plays once, after the Overlay's alert sound (when enabled), and never
 replays. Absent when Text-to-Speech is disabled, the Creator has not chosen a
 Voice, or synthesis fails/times out; the Donation Alert always renders
-regardless of whether the Reading succeeds.
+regardless of whether the Reading succeeds. It applies only to Donations
+without a Donation Effect. The Live Event Client renders the alert immediately
+while requesting Worker synthesis in parallel and abandons the Reading after
+the MVP's 3-second synthesis timeout.
 _Avoid_: TTS, narration, speech (be specific: an Alert Reading is scoped to
 one Donation Alert).
 
