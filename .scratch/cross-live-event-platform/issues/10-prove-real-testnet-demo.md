@@ -1,4 +1,4 @@
-Status: ready-for-agent
+Status: in-progress
 
 # Prove the complete local macOS demo with real testnet Donations
 
@@ -25,6 +25,17 @@ The acceptance run must also verify the Creator and OBS see the same Tauri surfa
 - [ ] Manual pixel-focused verification covers transparent composition, effect geometry, GIF scaling, menu-bar behavior, and OBS visual and audio capture.
 - [ ] Targeted lint, typecheck, Rust format, Rust lint, Rust tests, database migration tests, Web, Worker, and shared suites, browser Playwright coverage, and the Tauri development build pass.
 - [ ] Any baseline failure discovered during validation is fixed or explicitly separated with reproducible evidence, while every touched path remains clean and non-flaky.
+
+## Progress
+
+- Fixed Rust formatting in `live-client` and `contracts`.
+- Fixed Supabase migration `20260630050000_profile_banner.sql` so `supabase db reset` applies cleanly.
+- Added `supabase/seed.sql` and updated RLS test helpers for the local pgTAP version.
+- Stabilized the Playwright E2E suite (donate, creator-tab, donor-tab, onboarding, overlay, public-discovery).
+- `pnpm typecheck`, `pnpm lint`, `pnpm test`, `pnpm test:e2e --workers=1`, `cargo build`, and `supabase db reset` all pass.
+- Commit `32dcd40` on `feat/tauri` contains the test/migration fixes.
+
+The runtime demo verification (real testnet Donation through Tauri overlay) is still pending.
 
 ## Blocked by
 
