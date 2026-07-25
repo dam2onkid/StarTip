@@ -7,8 +7,9 @@ import type { SupabaseClient } from "@supabase/supabase-js";
  *
  * `POST /live-events/:event_id/ack` receives a lifecycle transition from a
  * Live Event Client (proxied by the Next.js app). The Worker verifies that the
- * event exists and transitions the event status from `queued` to `started` or
- * from any non-terminal state to a terminal state (`completed` / `failed`).
+ * event exists, applies forward-only lifecycle rules, and persists the
+ * transition. Terminal states are idempotent; backward or conflicting
+ * transitions are rejected.
  */
 
 export interface LiveEventsAckDeps {
@@ -16,7 +17,7 @@ export interface LiveEventsAckDeps {
 }
 
 const ackInputSchema = z.object({
-  status: z.enum(["started", "completed", "failed"]),
+  status: z.enum(["started", "completed", "failed", "stopped", "expired"]),
 });
 
 export type AckInput = z.infer<typeof ackInputSchema>;
@@ -37,9 +38,19 @@ export type AckResult =
 interface LiveEventRow {
   id: string;
   status: string;
+  expires_at: string;
 }
 
 const TERMINAL_STATUSES = new Set(["completed", "failed", "stopped", "missed", "expired"]);
+const TERMINAL_ACK_STATUSES = new Set(["completed", "failed", "stopped", "expired"]);
+
+function isTerminal(status: string): boolean {
+  return TERMINAL_STATUSES.has(status);
+}
+
+function isTerminalAck(status: string): status is "completed" | "failed" | "stopped" | "expired" {
+  return TERMINAL_ACK_STATUSES.has(status);
+}
 
 export async function ackLiveEvent(
   deps: LiveEventsAckDeps,
@@ -54,7 +65,7 @@ export async function ackLiveEvent(
 
   const { data: event, error: selectErr } = await deps.service
     .from("live_events")
-    .select("id,status")
+    .select("id,status,expires_at")
     .eq("id", eventId)
     .maybeSingle();
   if (selectErr) {
@@ -65,18 +76,50 @@ export async function ackLiveEvent(
   }
 
   const row = event as LiveEventRow;
-  if (TERMINAL_STATUSES.has(row.status)) {
+
+  if (isTerminal(row.status)) {
     return row.status === status
       ? { status: 200, body: { id: row.id, status: row.status } }
       : { status: 409, body: { error: "already_terminal" } };
   }
 
-  if (status === "started" && row.status !== "queued") {
+  if (status === "started") {
+    if (row.status === "queued") {
+      if (new Date() > new Date(row.expires_at)) {
+        return { status: 409, body: { error: "event_expired" } };
+      }
+      return updateStatus(deps, eventId, status);
+    }
     return row.status === "started"
       ? { status: 200, body: { id: row.id, status: row.status } }
       : { status: 409, body: { error: "invalid_transition" } };
   }
 
+  if (status === "expired") {
+    if (row.status !== "queued") {
+      return { status: 409, body: { error: "invalid_transition" } };
+    }
+    return updateStatus(deps, eventId, status);
+  }
+
+  if (isTerminalAck(status)) {
+    if (row.status === "queued" && status !== "stopped") {
+      return { status: 409, body: { error: "invalid_transition" } };
+    }
+    if (row.status === "started" || (row.status === "queued" && status === "stopped")) {
+      return updateStatus(deps, eventId, status);
+    }
+    return { status: 409, body: { error: "invalid_transition" } };
+  }
+
+  return { status: 400, body: { error: "invalid_body" } };
+}
+
+async function updateStatus(
+  deps: LiveEventsAckDeps,
+  eventId: string,
+  status: AckInput["status"],
+): Promise<AckResult> {
   const update: Record<string, unknown> = { status };
   if (status === "started") {
     update.ack_started_at = new Date().toISOString();

@@ -18,13 +18,21 @@ vi.mock("@startip/shared/indexer/dispatch", () => ({
   processPoll: vi.fn(),
 }));
 
+vi.mock("@startip/shared/live-events/sweep", () => ({
+  sweepExpiredLiveEvents: vi.fn(),
+}));
+
 const { processPoll } = await import("@startip/shared/indexer/dispatch");
 const mockProcessPoll = vi.mocked(processPoll);
+const { sweepExpiredLiveEvents } = await import("@startip/shared/live-events/sweep");
+const mockSweep = vi.mocked(sweepExpiredLiveEvents);
 
 describe("startIndexerLoop", () => {
   beforeEach(() => {
     vi.useFakeTimers();
     mockProcessPoll.mockReset();
+    mockSweep.mockReset();
+    mockSweep.mockResolvedValue({ updated: 0, error: null });
   });
 
   afterEach(() => {

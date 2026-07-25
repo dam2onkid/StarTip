@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { env } from "@/lib/env";
 
-const ACK_STATUS_VALUES = new Set(["started", "completed", "failed"]);
+const ACK_STATUS_VALUES = new Set(["started", "completed", "failed", "stopped", "expired"]);
 const ACK_PROXY_TIMEOUT_MS = 10_000;
 
 interface RouteContext {

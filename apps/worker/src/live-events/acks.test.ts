@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { ackLiveEvent, createLiveEventsAckApp } from "./acks";
 
 type Method = "select" | "update";
@@ -72,6 +72,10 @@ describe("ackLiveEvent", () => {
     mock = createMockSupabase();
   });
 
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it("returns 400 invalid_body when status is missing", async () => {
     const res = await ackLiveEvent({ service: mock.supabase as unknown as Parameters<typeof ackLiveEvent>[0]["service"] }, EVENT_ID, { status: "" as unknown as "started" });
     expect(res.status).toBe(400);
@@ -97,7 +101,7 @@ describe("ackLiveEvent", () => {
 
   it("transitions a queued event to started and records ack_started_at", async () => {
     mock.setResponder("live_events:select", () => ({
-      data: { id: EVENT_ID, status: "queued" },
+      data: { id: EVENT_ID, status: "queued", expires_at: "2026-07-25T12:00:30.000Z" },
       error: null,
     }));
     mock.setResponder("live_events:update", () => ({ data: {}, error: null }));
@@ -145,6 +149,71 @@ describe("ackLiveEvent", () => {
     expect(res.status).toBe(200);
     expect(res.body).toEqual({ id: EVENT_ID, status: "started" });
     expect(mock.calls.some((c) => c.table === "live_events" && c.method === "update")).toBe(false);
+  });
+
+  it("rejects starting a queued event that has already passed its expiry", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: false });
+    vi.setSystemTime(new Date("2026-07-25T12:00:31.000Z"));
+    mock.setResponder("live_events:select", () => ({
+      data: { id: EVENT_ID, status: "queued", expires_at: "2026-07-25T12:00:30.000Z" },
+      error: null,
+    }));
+
+    const res = await ackLiveEvent(
+      { service: mock.supabase as unknown as Parameters<typeof ackLiveEvent>[0]["service"] },
+      EVENT_ID,
+      { status: "started" },
+    );
+    expect(res.status).toBe(409);
+    expect(res.body).toEqual({ error: "event_expired" });
+  });
+
+  it("transitions a queued event to expired", async () => {
+    mock.setResponder("live_events:select", () => ({
+      data: { id: EVENT_ID, status: "queued", expires_at: "2026-07-25T12:00:30.000Z" },
+      error: null,
+    }));
+    mock.setResponder("live_events:update", () => ({ data: {}, error: null }));
+    const res = await ackLiveEvent(
+      { service: mock.supabase as unknown as Parameters<typeof ackLiveEvent>[0]["service"] },
+      EVENT_ID,
+      { status: "expired" },
+    );
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ id: EVENT_ID, status: "expired" });
+
+    const update = mock.calls.find((c) => c.table === "live_events" && c.method === "update");
+    expect(update!.payload).toMatchObject({ status: "expired" });
+    expect((update!.payload as Record<string, unknown>).ack_terminal_at).toEqual(expect.any(String));
+  });
+
+  it("transitions a started event to stopped", async () => {
+    mock.setResponder("live_events:select", () => ({
+      data: { id: EVENT_ID, status: "started" },
+      error: null,
+    }));
+    mock.setResponder("live_events:update", () => ({ data: {}, error: null }));
+    const res = await ackLiveEvent(
+      { service: mock.supabase as unknown as Parameters<typeof ackLiveEvent>[0]["service"] },
+      EVENT_ID,
+      { status: "stopped" },
+    );
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ id: EVENT_ID, status: "stopped" });
+  });
+
+  it("rejects completing a queued event before it has started", async () => {
+    mock.setResponder("live_events:select", () => ({
+      data: { id: EVENT_ID, status: "queued", expires_at: "2026-07-25T12:00:30.000Z" },
+      error: null,
+    }));
+    const res = await ackLiveEvent(
+      { service: mock.supabase as unknown as Parameters<typeof ackLiveEvent>[0]["service"] },
+      EVENT_ID,
+      { status: "completed" },
+    );
+    expect(res.status).toBe(409);
+    expect(res.body).toEqual({ error: "invalid_transition" });
   });
 });
 

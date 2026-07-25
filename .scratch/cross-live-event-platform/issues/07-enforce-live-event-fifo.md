@@ -1,4 +1,4 @@
-Status: ready-for-agent
+Status: done
 
 # Preserve FIFO ordering and terminal lifecycle outcomes
 
@@ -10,18 +10,18 @@ An event must start within 30 seconds of creation. Locally queued events that pa
 
 ## Acceptance criteria
 
-- [ ] Ordinary Donation Alerts and Donation Effects are consumed in ascending Creator sequence without overlapping effects.
-- [ ] The observable client queue allows only one active Donation Effect at a time.
-- [ ] Lifecycle follows `queued -> started -> completed | failed | stopped`, with `queued -> missed` and `queued -> expired` as terminal alternatives.
-- [ ] Completed, failed, stopped, missed, and expired states are terminal.
-- [ ] Lifecycle acknowledgements are idempotent, forward-only, and reject backward or conflicting transitions.
-- [ ] Rendering never waits for an acknowledgement response.
-- [ ] The event deadline is fixed at 30 seconds after creation and applies to starting, not finishing, an event.
-- [ ] An event received into the local queue but held beyond its deadline becomes expired and does not render.
-- [ ] A persisted event with no client acknowledgement by its deadline becomes missed.
-- [ ] A failed effect moves to failed, does not retry automatically, and allows the next eligible event to proceed.
-- [ ] Unique sequencing and concurrent creation remain safe under database integration tests.
-- [ ] Shared FIFO tests use externally observable states and deterministic clocks to cover ordering, deadlines, terminal transitions, and failure advancement.
+- [x] Ordinary Donation Alerts and Donation Effects are consumed in ascending Creator sequence without overlapping effects.
+- [x] The observable client queue allows only one active Donation Effect at a time.
+- [x] Lifecycle follows `queued -> started -> completed | failed | stopped`, with `queued -> missed` and `queued -> expired` as terminal alternatives.
+- [x] Completed, failed, stopped, missed, and expired states are terminal.
+- [x] Lifecycle acknowledgements are idempotent, forward-only, and reject backward or conflicting transitions.
+- [x] Rendering never waits for an acknowledgement response.
+- [x] The event deadline is fixed at 30 seconds after creation and applies to starting, not finishing, an event.
+- [x] An event received into the local queue but held beyond its deadline becomes expired and does not render.
+- [x] A persisted event with no client acknowledgement by its deadline becomes missed.
+- [x] A failed effect moves to failed, does not retry automatically, and allows the next eligible event to proceed.
+- [x] Unique sequencing and concurrent creation remain safe under database integration tests.
+- [x] Shared FIFO tests use externally observable states and deterministic clocks to cover ordering, deadlines, terminal transitions, and failure advancement.
 
 ## Blocked by
 

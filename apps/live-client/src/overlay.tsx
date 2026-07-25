@@ -12,6 +12,7 @@ import {
   isAtLeastRaw,
   rawToDisplayAmount,
 } from "@startip/shared/stellar/amount";
+import { LiveEventQueue } from "@startip/shared/live-events/queue";
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
@@ -22,6 +23,7 @@ const alertSoundUrl = (import.meta.env.VITE_ALERT_SOUND_URL as string | undefine
 const DEFAULT_ALERT_DURATION_MS = 10_000;
 const MIN_ALERT_DURATION_MS = 1_000;
 const MAX_ALERT_DURATION_MS = 60_000;
+const QUEUE_TICK_MS = 1_000;
 
 interface LiveEventEffect {
   pack_id: string;
@@ -61,6 +63,8 @@ interface OverlaySettingsRow {
   tts_enabled: boolean;
   tts_voice: string | null;
 }
+
+type QueueEvent = LiveEventRow & { expiresAt: string };
 
 function clampAlertDuration(ms: number) {
   return Math.min(Math.max(ms, MIN_ALERT_DURATION_MS), MAX_ALERT_DURATION_MS);
@@ -120,17 +124,50 @@ function effectMediaUrl(pack: ValidatedPack, assetId: string): string | null {
   return URL.createObjectURL(blob);
 }
 
+function sendAck(eventId: string, status: string) {
+  if (!apiBaseUrl) return;
+  void fetch(`${apiBaseUrl}/api/live-events/${eventId}/ack`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ status }),
+    keepalive: true,
+  });
+}
+
 export function GameOverlay() {
   const [overlayId, setOverlayId] = useState<string | null>(null);
   const [plan, setPlan] = useState<RenderPlan | null>(null);
   const [pack, setPack] = useState<ValidatedPack | null>(null);
   const [mediaUrl, setMediaUrl] = useState<string | null>(null);
+  const [activeEvent, setActiveEvent] = useState<QueueEvent | null>(null);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const alertStartedAtRef = useRef<number | null>(null);
-  const currentEventIdRef = useRef<string | null>(null);
-  const pendingEventRef = useRef<LiveEventRow | null>(null);
   const settingsRef = useRef<OverlaySettingsRow | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+
+  const queueRef = useRef<LiveEventQueue<QueueEvent> | null>(null);
+  if (!queueRef.current) {
+    queueRef.current = new LiveEventQueue<QueueEvent>({
+      clock: { now: () => Date.now() },
+      onAck: (event, status) => sendAck(event.id, status),
+    });
+  }
+
+  useEffect(() => {
+    const unsubscribe = queueRef.current!.subscribe((state) => {
+      setActiveEvent((prev) =>
+        prev?.id === state.active?.item.id
+          ? prev
+          : (state.active?.item ?? null),
+      );
+    });
+    return unsubscribe;
+  }, []);
+
+  useEffect(() => {
+    const id = setInterval(() => queueRef.current?.tick(), QUEUE_TICK_MS);
+    return () => clearInterval(id);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -147,14 +184,6 @@ export function GameOverlay() {
       cancelled = true;
     };
   }, []);
-
-  useEffect(() => {
-    if (pack && pendingEventRef.current) {
-      const event = pendingEventRef.current;
-      pendingEventRef.current = null;
-      void handleLiveEvent(event);
-    }
-  }, [pack]);
 
   useEffect(() => {
     let cancelled = false;
@@ -200,7 +229,8 @@ export function GameOverlay() {
           filter: `overlay_id=eq.${overlayId}`,
         },
         (payload: { new: LiveEventRow }) => {
-          void handleLiveEvent(payload.new);
+          const event = payload.new;
+          queueRef.current?.enqueue({ ...event, expiresAt: event.expires_at });
         },
       )
       .subscribe();
@@ -254,17 +284,27 @@ export function GameOverlay() {
     };
   }, [plan, pack]);
 
-  async function handleLiveEvent(event: LiveEventRow) {
-    const { donation, token_display, effect } = event.payload;
-
-    if (effect && !pack) {
-      pendingEventRef.current = event;
+  useEffect(() => {
+    if (!activeEvent) {
+      setPlan(null);
+      setMediaUrl(null);
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+        timeoutRef.current = null;
+      }
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current = null;
+      }
       return;
     }
 
-    sendAck(event.id, "started");
-    currentEventIdRef.current = event.id;
+    if (!pack) {
+      // Wait for the bundled pack to validate before planning an effect.
+      return;
+    }
 
+    const { donation, token_display, effect } = activeEvent.payload;
     const tokenDecimals = token_display.decimals;
     const tokenSymbol = token_display.symbol;
     const amountDisplay = rawToDisplayAmount(donation.amount, tokenDecimals);
@@ -277,7 +317,7 @@ export function GameOverlay() {
     const ttsEnabled = settings?.tts_enabled ?? false;
     const ttsVoice = settings?.tts_voice ?? null;
 
-    if (effect && pack) {
+    if (effect) {
       const result = planRender(
         {
           donorName: donation.donor_name,
@@ -290,12 +330,8 @@ export function GameOverlay() {
       );
 
       if (!result.ok) {
-        sendAck(event.id, "failed");
+        queueRef.current?.failActive(Date.now());
         return;
-      }
-
-      if (timeoutRef.current) {
-        clearTimeout(timeoutRef.current);
       }
 
       setPlan(result.plan);
@@ -306,7 +342,7 @@ export function GameOverlay() {
 
     const minAmountRaw = displayToRawAmount(String(settings?.min_amount ?? "0"), tokenDecimals);
     if (!isAtLeastRaw(donation.amount, minAmountRaw)) {
-      sendAck(event.id, "completed");
+      queueRef.current?.completeActive(Date.now());
       return;
     }
 
@@ -322,12 +358,8 @@ export function GameOverlay() {
     );
 
     if (!result.ok) {
-      sendAck(event.id, "failed");
+      queueRef.current?.failActive(Date.now());
       return;
-    }
-
-    if (timeoutRef.current) {
-      clearTimeout(timeoutRef.current);
     }
 
     setPlan(result.plan);
@@ -339,22 +371,32 @@ export function GameOverlay() {
     if (ttsEnabled && ttsVoice) {
       void requestTTS(donation.id, result.plan.durationMs);
     }
-  }
+
+    return () => {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+        timeoutRef.current = null;
+      }
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current = null;
+      }
+    };
+  }, [activeEvent, pack]);
 
   function scheduleDismiss(remainingMs: number) {
     if (timeoutRef.current) {
       clearTimeout(timeoutRef.current);
     }
     timeoutRef.current = setTimeout(() => {
+      timeoutRef.current = null;
       setPlan(null);
       setMediaUrl(null);
       if (audioRef.current) {
         audioRef.current.pause();
         audioRef.current = null;
       }
-      if (currentEventIdRef.current) {
-        sendAck(currentEventIdRef.current, "completed");
-      }
+      queueRef.current?.completeActive(Date.now());
     }, remainingMs);
   }
 
@@ -392,16 +434,6 @@ export function GameOverlay() {
     } finally {
       clearTimeout(timeout);
     }
-  }
-
-  function sendAck(eventId: string, status: string) {
-    if (!apiBaseUrl) return;
-    void fetch(`${apiBaseUrl}/api/live-events/${eventId}/ack`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ status }),
-      keepalive: true,
-    });
   }
 
   if (plan?.type === "donation-alert") {
