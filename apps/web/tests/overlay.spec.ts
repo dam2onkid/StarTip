@@ -105,6 +105,44 @@ test.describe("Overlay realtime donation alerts", () => {
     await expect(lateAlert.getByTestId("alert-symbol")).toContainText("USDC");
   });
 
+  test("an effect donation degrades to a normal alert in the browser fallback", async ({ page }) => {
+    await page.goto("/overlay/abc123");
+
+    // Wait for the client to mount and confirm no historical alerts are replayed.
+    await expect(page.getByTestId("overlay-alert")).toHaveCount(0);
+
+    await page.evaluate(() =>
+      (window as unknown as {
+        __pushOverlayDonation?: (row: {
+          id: string;
+          donor_name: string;
+          amount: string;
+          token: string;
+          message: string | null;
+          created_at: string;
+          effect?: { effect_id: string };
+        }) => void;
+      }).__pushOverlayDonation?.({
+        id: "00000000-0000-0000-0000-0000000000e9",
+        donor_name: "EffectDonor",
+        amount: "5",
+        token: "USDC",
+        message: "Hello from the fallback",
+        created_at: "2026-06-06T00:00:00Z",
+        effect: { effect_id: "jump-scare" },
+      }),
+    );
+
+    const alert = page
+      .getByTestId("overlay-alert")
+      .filter({ hasText: "EffectDonor" })
+      .filter({ hasText: "Hello from the fallback" });
+    await expect(alert).toBeVisible();
+    await expect(alert.getByTestId("alert-amount")).toContainText("5");
+    await expect(alert.getByTestId("alert-symbol")).toContainText("USDC");
+    await expect(page.getByText("Jump Scare")).toHaveCount(0);
+  });
+
   test("404s for an unknown / not-registered / paused overlay_id", async ({ page }) => {
     const res = await page.goto("/overlay/unknown");
     expect(res?.status()).toBe(404);

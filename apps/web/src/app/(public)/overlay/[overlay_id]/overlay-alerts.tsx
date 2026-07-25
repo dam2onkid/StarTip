@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import { planRender } from "@startip/shared/overlay/renderer";
 import { createBrowserClient } from "@/lib/supabase/client";
 import {
   shouldShowAlert,
@@ -443,7 +444,24 @@ function AlertCard({
     return cleanup;
   }, [donation.id, durationMs, isInsert, soundEnabled, ttsEnabled, ttsVoice]);
 
-  const amount = rawToDisplayAmount(donation.amount, decimals);
+  // Render the donation through the shared Donation Alert renderer. The browser
+  // fallback is not a synchronized effect renderer, so any effect donation is
+  // intentionally degraded to a normal Donation Alert.
+  const planResult = planRender(
+    {
+      donorName: donation.donor_name,
+      amountDisplay: rawToDisplayAmount(donation.amount, decimals),
+      tokenSymbol: symbol,
+      message: donation.message,
+      effect: null,
+    },
+    { alertDurationMs: durationMs },
+  );
+
+  if (!planResult.ok || planResult.plan.type !== "donation-alert") {
+    return null;
+  }
+  const plan = planResult.plan;
 
   return (
     <motion.div
@@ -459,22 +477,22 @@ function AlertCard({
           data-testid="alert-donor-name"
           className="text-primary"
         >
-          {donation.donor_name}
+          {plan.donorName}
         </span>
         {" donated "}
         <span className="font-mono text-[1.45rem] tabular-nums text-primary">
-          <span data-testid="alert-amount">{amount}</span>
+          <span data-testid="alert-amount">{plan.amountDisplay}</span>
           <span data-testid="alert-symbol" className="ml-1">
-            {symbol}
+            {plan.tokenSymbol}
           </span>
         </span>
       </p>
-      {donation.message ? (
+      {plan.message ? (
         <p
           data-testid="alert-message"
           className="mt-3 break-words text-[1.3rem] leading-snug text-muted-foreground"
         >
-          &quot;{donation.message}&quot;
+          &quot;{plan.message}&quot;
         </p>
       ) : null}
     </motion.div>
