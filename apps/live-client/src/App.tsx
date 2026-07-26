@@ -314,7 +314,8 @@ function ControlWindow() {
   }
 
   return (
-    <main className="control">
+    <div className="control-shell">
+      <main className="control">
       <header className="control-header">
         <div className="control-header-bar">
           <span className="control-kicker">Live event control</span>
@@ -555,7 +556,8 @@ function ControlWindow() {
           </section>
         )}
       </section>
-    </main>
+      </main>
+    </div>
   );
 }
 
