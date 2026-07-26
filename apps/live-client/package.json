@@ -4,10 +4,10 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "tauri dev",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "tauri": "tauri",
+    "web": "vite",
     "test": "cd src-tauri && cargo test",
     "typecheck": "tsc --noEmit && cd src-tauri && cargo check"
   },

@@ -9,6 +9,8 @@ import {
 import { GameOverlay } from "./overlay";
 import "./App.css";
 
+const BROWSER_OVERLAY_ORIGIN = "http://localhost:3000";
+
 interface Display {
   name: string;
   position: [number, number];
@@ -17,7 +19,56 @@ interface Display {
   primary: boolean;
 }
 
-const currentWindow = getCurrentWebviewWindow();
+function isTauriRuntime() {
+  if (typeof window === "undefined") return false;
+
+  return typeof (window as typeof window & { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__ !== "undefined";
+}
+
+function getWindowLabel() {
+  if (!isTauriRuntime()) return "main";
+
+  return getCurrentWebviewWindow().label;
+}
+
+function extractOverlayId(value: string) {
+  const normalized = value.trim();
+  if (!normalized) return null;
+
+  if (/^[0-9a-f]{32}$/i.test(normalized)) {
+    return normalized.toLowerCase();
+  }
+
+  const pathMatch = normalized.match(/\/overlay\/([0-9a-f]{32})(?:[/?#]|$)/i);
+  if (pathMatch) {
+    return pathMatch[1].toLowerCase();
+  }
+
+  try {
+    const url = new URL(normalized);
+    const match = url.pathname.match(/\/overlay\/([0-9a-f]{32})(?:\/|$)/i);
+    if (match) {
+      return match[1].toLowerCase();
+    }
+  } catch {}
+
+  return null;
+}
+
+function getBrowserPreviewUrl(value: string) {
+  const normalized = value.trim();
+  if (!normalized) return null;
+
+  try {
+    const url = new URL(normalized);
+    return url.toString();
+  } catch {}
+
+  const overlayId = extractOverlayId(normalized);
+  if (!overlayId) return null;
+
+  return `${BROWSER_OVERLAY_ORIGIN}/overlay/${overlayId}`;
+}
 
 type ConnectionStatusLabel =
   | "Disconnected"
@@ -46,7 +97,7 @@ function displayStatus(
 }
 
 function App() {
-  if (currentWindow.label === "overlay") {
+  if (getWindowLabel() === "overlay") {
     return <GameOverlay />;
   }
 
@@ -54,6 +105,7 @@ function App() {
 }
 
 function ControlWindow() {
+  const tauriRuntime = isTauriRuntime();
   const [overlayId, setOverlayId] = useState("");
   const [displays, setDisplays] = useState<Display[]>([]);
   const [selectedDisplay, setSelectedDisplay] = useState<string>("");
@@ -68,8 +120,23 @@ function ControlWindow() {
     lastError: null,
   });
   const [emergencyShortcutRegistered, setEmergencyShortcutRegistered] = useState(false);
+  const [browserPreviewWindow, setBrowserPreviewWindow] = useState<Window | null>(null);
 
   useEffect(() => {
+    if (!tauriRuntime) {
+      setDisplays([
+        {
+          name: "Browser Preview",
+          position: [0, 0],
+          size: [0, 0],
+          scale_factor: 1,
+          primary: true,
+        },
+      ]);
+      setSelectedDisplay("Browser Preview");
+      return;
+    }
+
     let cancelled = false;
     const unlisteners: (() => void)[] = [];
 
@@ -118,13 +185,17 @@ function ControlWindow() {
       cancelled = true;
       for (const unlisten of unlisteners) unlisten();
     };
-  }, []);
+  }, [tauriRuntime]);
 
   async function handleOverlayIdChange(value: string) {
     setOverlayId(value);
-    if (value.trim()) {
+    if (!tauriRuntime) return;
+
+    const normalizedOverlayId = extractOverlayId(value);
+    if (normalizedOverlayId) {
       try {
-        await invoke("set_overlay_id", { id: value.trim() });
+        await invoke("set_overlay_id", { id: normalizedOverlayId });
+        setError(null);
       } catch (e) {
         setError(String(e));
       }
@@ -133,6 +204,8 @@ function ControlWindow() {
 
   async function handleDisplayChange(name: string) {
     setSelectedDisplay(name);
+    if (!tauriRuntime) return;
+
     setIsBusy(true);
     setError(null);
     try {
@@ -145,6 +218,25 @@ function ControlWindow() {
   }
 
   async function handleStart() {
+    if (!tauriRuntime) {
+      const previewUrl = getBrowserPreviewUrl(overlayId);
+      if (!previewUrl) {
+        setError("Enter a valid Overlay ID or overlay URL.");
+        return;
+      }
+
+      const openedWindow = window.open(previewUrl, "_blank");
+      if (!openedWindow) {
+        setError("Could not open the browser overlay preview window.");
+        return;
+      }
+
+      setBrowserPreviewWindow(openedWindow);
+      setIsRunning(true);
+      setError(null);
+      return;
+    }
+
     setIsBusy(true);
     setError(null);
     try {
@@ -157,6 +249,14 @@ function ControlWindow() {
   }
 
   async function handleStop() {
+    if (!tauriRuntime) {
+      browserPreviewWindow?.close();
+      setBrowserPreviewWindow(null);
+      setIsRunning(false);
+      setError(null);
+      return;
+    }
+
     setIsBusy(true);
     setError(null);
     try {
@@ -169,6 +269,8 @@ function ControlWindow() {
   }
 
   async function handleEmergencyStop() {
+    if (!tauriRuntime) return;
+
     setIsBusy(true);
     setError(null);
     try {
@@ -181,22 +283,27 @@ function ControlWindow() {
   }
 
   function handleReconnectNow() {
+    if (!tauriRuntime) return;
     void emit("reconnect-now");
   }
 
   function handleTestEffect(effectId: string) {
+    if (!tauriRuntime) return;
     void emit("test-effect", { effectId });
   }
 
   function handleTestAlert() {
+    if (!tauriRuntime) return;
     void emit("test-alert");
   }
 
   function handleTestJumpScareAudio() {
+    if (!tauriRuntime) return;
     void emit("test-audio", { effectId: "jump-scare" });
   }
 
   const statusLabel = displayStatus(liveState.status, isRunning);
+  const browserPreviewUrl = getBrowserPreviewUrl(overlayId);
 
   function activeEventSummary() {
     if (!liveState.activeEvent) return "None";
@@ -209,20 +316,68 @@ function ControlWindow() {
   return (
     <main className="control">
       <header className="control-header">
-        <h1 className="control-title">StarTip Live Event Client</h1>
-        <p className="control-subtitle">Control window for the game overlay</p>
+        <div className="control-header-bar">
+          <span className="control-kicker">Live event control</span>
+          <span className={`control-mode-pill ${tauriRuntime ? "control-mode-pill-live" : "control-mode-pill-preview"}`}>
+            {tauriRuntime ? "Desktop shell" : "Browser preview"}
+          </span>
+        </div>
+
+        <div className="control-hero">
+          <div className="control-hero-copy">
+            <h1 className="control-title">StarTip Live Event Client</h1>
+            <p className="control-subtitle">
+              Run the creator-facing overlay, choose the target display, and keep emergency controls within one reach.
+            </p>
+          </div>
+
+          <aside className="signal-card" aria-label="Current overlay state">
+            <span className="signal-card-label">Signal</span>
+            <div className={`signal-card-status signal-card-status-${STATUS_CLASS[statusLabel]}`}>
+              <span className="signal-card-dot" />
+              <span>{statusLabel}</span>
+            </div>
+            <dl className="signal-card-meta">
+              <div>
+                <dt>Queue</dt>
+                <dd>{liveState.queueLength}</dd>
+              </div>
+              <div>
+                <dt>Mode</dt>
+                <dd>{tauriRuntime ? "Desktop overlay" : "Web fallback"}</dd>
+              </div>
+            </dl>
+          </aside>
+        </div>
       </header>
 
-      <section className="control-form">
+      <section className="control-grid">
+        <section className="panel panel-session">
+          <div className="panel-header">
+            <div>
+              <span className="panel-label">Session</span>
+              <h2 className="panel-title">Attach the current overlay</h2>
+            </div>
+          </div>
+
+        {!tauriRuntime ? (
+          <div className="status status-idle">
+            Browser preview mode. Start Overlay opens the web fallback so you can test with pnpm dev before launching Tauri.
+          </div>
+        ) : null}
+
         <label className="field">
           <span className="field-label">Overlay ID</span>
           <input
             className="field-input"
             value={overlayId}
             onChange={(e) => handleOverlayIdChange(e.currentTarget.value)}
-            placeholder="Enter overlay ID"
+            placeholder="Paste overlay URL or enter overlay ID"
             disabled={isBusy}
           />
+          <span className="field-hint">
+            Paste the full browser overlay URL for local preview, or paste the raw overlay ID when running the desktop shell.
+          </span>
         </label>
 
         <label className="field">
@@ -231,7 +386,7 @@ function ControlWindow() {
             className="field-select"
             value={selectedDisplay}
             onChange={(e) => handleDisplayChange(e.currentTarget.value)}
-            disabled={isBusy || displays.length === 0}
+            disabled={!tauriRuntime || isBusy || displays.length === 0}
           >
             {displays.map((display) => (
               <option key={display.name} value={display.name}>
@@ -239,9 +394,21 @@ function ControlWindow() {
               </option>
             ))}
           </select>
+          <span className="field-hint">
+            In browser preview this stays pinned to a local placeholder. In Tauri it targets the real creator display.
+          </span>
         </label>
+        </section>
 
-        <div className="connection-card">
+        <section className="panel panel-runtime">
+          <div className="panel-header">
+            <div>
+              <span className="panel-label">Runtime</span>
+              <h2 className="panel-title">Monitor the live signal</h2>
+            </div>
+          </div>
+
+          <div className="connection-card">
           <div className={`connection-status connection-status-${STATUS_CLASS[statusLabel]}`}>
             <span className="connection-status-dot" />
             <span className="connection-status-label">{statusLabel}</span>
@@ -264,74 +431,101 @@ function ControlWindow() {
             ) : null}
           </div>
         </div>
+        </section>
 
-        <div className="actions">
+        <section className="panel panel-actions">
+          <div className="panel-header">
+            <div>
+              <span className="panel-label">Controls</span>
+              <h2 className="panel-title">Drive the overlay</h2>
+            </div>
+          </div>
+
+          <div className="actions">
           <button
             className="button button-primary"
             onClick={handleStart}
-            disabled={isBusy || !selectedDisplay || isRunning}
+            disabled={tauriRuntime ? isBusy || !selectedDisplay || isRunning : isBusy || !browserPreviewUrl || isRunning}
           >
             Start Overlay
           </button>
           <button
             className="button button-secondary"
             onClick={handleStop}
-            disabled={isBusy || !isRunning}
+            disabled={tauriRuntime ? isBusy || !isRunning : isBusy || !isRunning}
           >
             Stop Overlay
           </button>
           <button
             className="button button-secondary"
             onClick={handleReconnectNow}
-            disabled={liveState.status !== "connection-lost"}
+            disabled={!tauriRuntime || liveState.status !== "connection-lost"}
           >
             Reconnect Now
           </button>
           <button
             className="button button-danger"
             onClick={handleEmergencyStop}
-            disabled={isBusy || !isRunning}
+            disabled={!tauriRuntime || isBusy || !isRunning}
           >
             Emergency Stop
           </button>
         </div>
+        </section>
 
-        <div className="shortcut-info">
+        <section className="panel panel-utility">
+          <div className="panel-header">
+            <div>
+              <span className="panel-label">Safety</span>
+              <h2 className="panel-title">Emergency shortcut</h2>
+            </div>
+          </div>
+
+          <div className="shortcut-info">
           <span className="shortcut-label">Emergency shortcut</span>
           <span className="shortcut-combo">Ctrl + Opt + Cmd + E</span>
           <span className={`shortcut-state ${emergencyShortcutRegistered ? "shortcut-state-registered" : "shortcut-state-unregistered"}`}>
             {emergencyShortcutRegistered ? "registered" : "not registered"}
           </span>
         </div>
+        </section>
 
-        <div className="test-controls">
+        <section className="panel panel-tests">
+          <div className="panel-header">
+            <div>
+              <span className="panel-label">Local tests</span>
+              <h2 className="panel-title">Dry-run the renderer</h2>
+            </div>
+          </div>
+
+          <div className="test-controls">
           <span className="test-controls-label">Local tests</span>
           <div className="test-controls-row">
             <button
               className="button button-test"
               onClick={() => handleTestEffect("jump-scare")}
-              disabled={isBusy || !isRunning}
+              disabled={!tauriRuntime || isBusy || !isRunning}
             >
               Jump Scare
             </button>
             <button
               className="button button-test"
               onClick={() => handleTestEffect("screen-flash")}
-              disabled={isBusy || !isRunning}
+              disabled={!tauriRuntime || isBusy || !isRunning}
             >
               Screen Flash
             </button>
             <button
               className="button button-test"
               onClick={() => handleTestEffect("screen-cover")}
-              disabled={isBusy || !isRunning}
+              disabled={!tauriRuntime || isBusy || !isRunning}
             >
               Screen Cover
             </button>
             <button
               className="button button-test"
               onClick={() => handleTestEffect("tunnel-vision")}
-              disabled={isBusy || !isRunning}
+              disabled={!tauriRuntime || isBusy || !isRunning}
             >
               Tunnel Vision
             </button>
@@ -340,21 +534,26 @@ function ControlWindow() {
             <button
               className="button button-test"
               onClick={handleTestAlert}
-              disabled={isBusy || !isRunning}
+              disabled={!tauriRuntime || isBusy || !isRunning}
             >
               Alert + TTS
             </button>
             <button
               className="button button-test"
               onClick={handleTestJumpScareAudio}
-              disabled={isBusy || !isRunning}
+              disabled={!tauriRuntime || isBusy || !isRunning}
             >
               Jump Scare Audio
             </button>
           </div>
         </div>
+        </section>
 
-        {error && <div className="status status-error">{error}</div>}
+        {error && (
+          <section className="panel panel-error">
+            <div className="status status-error">{error}</div>
+          </section>
+        )}
       </section>
     </main>
   );
